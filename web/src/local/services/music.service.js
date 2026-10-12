@@ -6,18 +6,23 @@ import * as notification from './notification.service'
 const UA =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148';
 
-/* 音乐元数据/播放链接中转。
-   本地版没有服务端，浏览器直连网易云/酷狗会被 CORS 拦截。
-   部署 Cloudflare Workers（见仓库 workers/ 目录）后，二选一配置中转地址：
-   1) 构建时环境变量 VITE_MUSIC_PROXY = 'https://xxx.workers.dev'；
-   2) 部署后在 dist/config.js 里改 musicProxy（无需重新构建，优先生效）。
-   留空则直连（仅调试用）。 */
+/* 解析中转地址优先级：
+   1) 用户在「设置 → 音乐 → 解析服务」里手填的（localStorage）
+   2) 运行时配置 public/config.js 的 musicProxy（云端或本地中转都可能是这个）
+   3) 构建时环境变量 VITE_MUSIC_PROXY */
+const OVERRIDE_KEY = 'eunoia.musicProxy'
 function proxyBase() {
+  let local = ''
+  try {
+    local = (window.localStorage && localStorage.getItem(OVERRIDE_KEY)) || ''
+  } catch (e) {
+    /* 隐私模式下 localStorage 不可用，忽略 */
+  }
   const rt =
     typeof window !== 'undefined' && window.__EUNOIA_CONFIG__ && window.__EUNOIA_CONFIG__.musicProxy
       ? String(window.__EUNOIA_CONFIG__.musicProxy).trim()
       : ''
-  return rt || (import.meta.env && import.meta.env.VITE_MUSIC_PROXY) || ''
+  return (local || rt || (import.meta.env && import.meta.env.VITE_MUSIC_PROXY) || '').trim()
 }
 
 function withProxy(url) {

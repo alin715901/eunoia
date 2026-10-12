@@ -32,6 +32,21 @@
         <button class="ms-primary" :disabled="saving" @click="saveManual">{{ saving ? '导入中…' : '导入歌曲' }}</button>
       </div>
 
+      <!-- ═══ 解析服务（可选：换成自己电脑上跑的本地中转） ═══ -->
+      <div class="ms-card">
+        <div class="ms-title"><AppIcon name="music" :size="15" color="var(--accent)" /> 解析服务</div>
+        <input v-model="proxyUrl" class="ms-input" placeholder="留空则用默认云服务，例如 http://127.0.0.1:8787" />
+        <div class="ms-hint-row">
+          <AppIcon name="music" :size="13" color="var(--accent)" />
+          <span>默认云端解析能取歌名/封面/歌词；想让导入的歌能<b>播放</b>，请在电脑上跑 tools/local-proxy/server.js，然后把地址填在这里</span>
+        </div>
+        <div class="ms-proxy-row">
+          <button class="ms-ghost grow" @click="saveProxy">保存</button>
+          <button class="ms-primary soft grow" :disabled="testing" @click="testProxy">{{ testing ? '测试中…' : '测试连接' }}</button>
+        </div>
+        <p v-if="proxyMsg" class="ms-file-name">{{ proxyMsg }}</p>
+      </div>
+
       <!-- ═══ 链接导入（网易云/酷狗/音频直链，支持批量） ═══ -->
       <div class="ms-card">
         <div class="ms-title"><AppIcon name="download" :size="15" color="var(--accent)" /> 链接导入</div>
@@ -108,8 +123,56 @@ const vinylEl = ref(null)
 /* 一键缓存封面/歌词 */
 const cacheBtnLoading = ref(false)
 const cacheProgress = ref('')
+
+/* 解析服务地址：本地中转优先于云端配置 */
+const PROXY_KEY = 'eunoia.musicProxy'
+const proxyUrl = ref('')
+const proxyMsg = ref('')
+const testing = ref(false)
 let cachePollTimer = null
 /* 唱片图片圆形裁剪 */
+function defaultProxy() {
+  try {
+    return (window.__EUNOIA_CONFIG__ && window.__EUNOIA_CONFIG__.musicProxy) || ''
+  } catch (e) {
+    return ''
+  }
+}
+function saveProxy() {
+  const v = String(proxyUrl.value || '').trim().replace(/\/+$/, '')
+  try {
+    if (v) localStorage.setItem(PROXY_KEY, v)
+    else localStorage.removeItem(PROXY_KEY)
+  } catch (e) {
+    proxyMsg.value = '无法保存（浏览器禁止访问存储）'
+    return
+  }
+  proxyMsg.value = v ? `已切换到 ${v}` : '已恢复默认云服务'
+}
+async function testProxy() {
+  if (testing.value) return
+  testing.value = true
+  proxyMsg.value = ''
+  const v = String(proxyUrl.value || '').trim().replace(/\/+$/, '')
+  if (!v) {
+    proxyMsg.value = '请先填写地址'
+    testing.value = false
+    return
+  }
+  try {
+    const r = await fetch(`${v}/?url=${encodeURIComponent('https://music.163.com/api/song/detail?ids=[186016]')}`, {
+      cache: 'no-store'
+    })
+    const t = (await r.text()).slice(0, 200)
+    if (r.ok && t.includes('songs')) proxyMsg.value = '连接成功，可以正常解析歌曲'
+    else proxyMsg.value = `有响应但异常：HTTP ${r.status} ${t}`
+  } catch (e) {
+    proxyMsg.value = '连不上，确认电脑上已运行 server.js 且端口正确（也是一种可能：https 页面不能访问 http 地址，须用 127.0.0.1）'
+  }
+  testing.value = false
+}
+
+/* 自定义唱片 */
 const cropSrc = ref('')
 const showCrop = ref(false)
 
@@ -263,6 +326,11 @@ function resetVinyl() {
 
 onMounted(() => {
   store.init(desktop.currentContactId)
+  try {
+    proxyUrl.value = localStorage.getItem(PROXY_KEY) || ''
+  } catch (e) {
+    proxyUrl.value = ''
+  }
 })
 </script>
 
@@ -296,7 +364,9 @@ onMounted(() => {
   flex: 0 0 auto; width: 46px; border-radius: 12px; border: 1px solid var(--border);
   background: var(--bg-soft); display: flex; align-items: center; justify-content: center;
 }
-.ms-file-name { font-size: 11px; color: var(--accent); margin: 8px 0 0; }
+.ms-file-name { font-size: 11px; color: var(--accent); margin: 8px 0 0; word-break: break-all; }
+.ms-proxy-row { display: flex; gap: 10px; margin-top: 2px; }
+.ms-proxy-row .grow { flex: 1; min-width: 0; }
 .ms-primary {
   width: 100%; margin-top: 14px; padding: 13px 0; border: none; border-radius: 999px;
   background: var(--accent); color: #fff; font-size: 14px; font-weight: 700;
