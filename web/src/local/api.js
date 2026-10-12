@@ -18,6 +18,7 @@ import * as listenService from './services/listen.service'
 import * as musicService from './services/music.service'
 import * as musicCache from './services/musicCache'
 import * as mochiService from './services/mochi.service'
+import * as backupService from './services/backup.service'
 import * as notification from './services/notification.service'
 
 const fail = (msg) => {
@@ -979,6 +980,28 @@ export async function saveSettings(payload = {}) {
     settingsRepo.setGlobal(k, v)
   }
   return readGlobalSettings()
+}
+
+/* ─────────── 数据备份 / 恢复 ─────────── */
+
+// 导出弹窗概览：板块（含条数）/ 联系人（含关联条数）/ 全量总条数
+export async function getBackupOverview() {
+  return backupService.backupOverview()
+}
+
+// 生成备份对象（JSON 可序列化）；scope 见 backup.service.buildBackup
+export async function buildBackup(scope) {
+  return backupService.buildBackup(scope)
+}
+
+// 导入备份：mode 'merge' 合并 / 'overwrite' 覆盖
+export async function importBackup(payload, mode) {
+  return backupService.importBackup(payload, mode)
+}
+
+// 备份文件预校验（导入前用，错误信息直接展示；同步，因为底层校验是纯函数）
+export function validateBackupFile(payload) {
+  return backupService.validateBackup(payload)
 }
 
 export async function getBadges() {
