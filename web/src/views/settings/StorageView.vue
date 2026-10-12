@@ -53,7 +53,7 @@
           导出为 JSON 文件保存，换设备 / 换浏览器时导入即可恢复。图片、语音等附件都存在数据库里，会一起打包进备份。
         </p>
         <div class="bk-btns">
-          <button class="mini-btn" @click="openExport('full')">全部导出</button>
+          <button class="mini-btn" @click="exportAll">全部导出</button>
           <button class="mini-btn" @click="openExport('feature')">按板块导出</button>
           <button class="mini-btn" @click="openExport('contacts')">按联系人导出</button>
           <button class="mini-btn" :disabled="importing" @click="pickFile">{{ importing ? '导入中…' : '导入数据' }}</button>
@@ -98,7 +98,7 @@
       </div>
 
       <div v-else class="exp-pane">
-        <p class="exp-desc">勾选联系人，与该联系人相关的全部数据（聊天、设置、桌面、钱包、纪念日、字卡等）都会导出。</p>
+        <p class="exp-desc">勾选联系人，与该联系人相关的全部数据（聊天、红包、设置、桌面、纪念日、字卡等）都会导出。</p>
         <label class="ck-row ck-all">
           <input type="checkbox" :checked="allContactsPicked" @change="toggleAllContacts" />
           <span class="ck-name">全选</span>
@@ -234,6 +234,30 @@ function toggleAllContacts(e) {
   picked.value.contacts = e.target.checked ? overview.value.contacts.map((c) => c.id) : []
 }
 
+function downloadBackup(data) {
+  const blob = new Blob([JSON.stringify(data)], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  const d = new Date()
+  const pad = (n) => String(n).padStart(2, '0')
+  a.href = url
+  a.download = `eunoia-backup-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.json`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 2000)
+}
+
+/* 全部导出：无需选择，直接下载 */
+function exportAll() {
+  try {
+    downloadBackup(buildBackup({ type: 'full' }))
+    toast.pushToast({ title: '已导出备份文件' })
+  } catch (e) {
+    toast.pushToast({ title: '导出失败', text: e.message })
+  }
+}
+
 function doExport() {
   try {
     const data = buildBackup({
@@ -241,17 +265,7 @@ function doExport() {
       features: picked.value.features,
       contacts: picked.value.contacts
     })
-    const blob = new Blob([JSON.stringify(data)], { type: 'application/json' })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    const d = new Date()
-    const pad = (n) => String(n).padStart(2, '0')
-    a.href = url
-    a.download = `eunoia-backup-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.json`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    setTimeout(() => URL.revokeObjectURL(url), 2000)
+    downloadBackup(data)
     exportOpen.value = false
     toast.pushToast({ title: '已导出备份文件' })
   } catch (e) {

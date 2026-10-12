@@ -28,15 +28,15 @@ const EXPORT_TABLES = [
   'listen_together', 'app_items'
 ]
 
-/* 大板块 → 数据表（对齐桌面功能；感知 / 心迹为即时功能不落库，无需导出） */
+/* 大板块 → 数据表（对齐桌面功能；感知 / 心迹为即时功能不落库，无需导出。
+ * 红包（wallets）属于聊天的一部分，随聊天板块一起导出，不单列。） */
 export const BACKUP_FEATURES = [
-  { key: 'chat', label: '聊天', tables: ['chat_messages'] },
+  { key: 'chat', label: '聊天', tables: ['chat_messages', 'wallets'] },
   { key: 'music', label: '音乐', tables: ['songs', 'song_favs'] },
   { key: 'cards', label: '字卡', tables: ['card_groups', 'cards'] },
   { key: 'letters', label: '信件', tables: ['letters'] },
   { key: 'moments', label: '朋友圈', tables: ['moments', 'moment_interactions'] },
   { key: 'favorites', label: '收藏', tables: ['favorites'] },
-  { key: 'wallets', label: '钱包', tables: ['wallets'] },
   { key: 'anniversaries', label: '纪念日', tables: ['anniversaries'] },
   { key: 'divinations', label: '占卜', tables: ['divinations'] },
   { key: 'companion', label: '陪伴邀请', tables: ['companion_invites'] },
@@ -83,7 +83,7 @@ const AUTO_TARGETS = new Set(['contacts', 'cards', 'card_groups', 'songs', 'chat
 
 const LABELS = {
   contacts: '联系人', contact_members: '群成员', contact_settings: '联系人设置', contact_desktop: '桌面配置',
-  card_groups: '字卡分组', cards: '字卡', chat_messages: '聊天消息', favorites: '收藏', wallets: '钱包',
+  card_groups: '字卡分组', cards: '字卡', chat_messages: '聊天消息', favorites: '收藏', wallets: '红包',
   moments: '朋友圈', moment_interactions: '朋友圈互动', letters: '信件', divinations: '占卜记录',
   global_settings: '全局设置', proactive_jobs: '主动消息任务', group_member_settings: '群成员设置',
   anniversaries: '纪念日', songs: '歌曲', song_favs: '歌曲收藏', companion_invites: '陪伴邀请',
@@ -521,7 +521,6 @@ export function backupOverview() {
   }
   const features = BACKUP_FEATURES
     .map((f) => ({ key: f.key, label: f.label, count: f.tables.reduce((s, t) => s + count(t), 0) }))
-    .filter((f) => f.count > 0)
   const counts = contactCounts()
   const contacts = db
     .prepare('SELECT id, kind, name, avatar FROM contacts ORDER BY CASE WHEN kind = \'group\' THEN 1 ELSE 0 END, sort_order, id')
