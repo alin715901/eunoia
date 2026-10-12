@@ -54,6 +54,8 @@ export default {
     headers.set('User-Agent', pickUA(targetUrl.hostname))
     const referer = pickReferer(targetUrl.hostname)
     if (referer) headers.set('Referer', referer)
+  const cookie = pickCookie(targetUrl.hostname)
+  if (cookie) headers.set('Cookie', cookie)
     // 接受编码透传：上游返回 gzip/br 时 Cloudflare 会正确解压再按客户端支持重压
     const accept = request.headers.get('Accept')
     if (accept) headers.set('Accept', accept)
@@ -103,6 +105,13 @@ function pickUA(host) {
   }
   // 其它未知站点给个常见桌面 UA，避免被默认策略拦截
   return 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.0.0 Safari/537.36'
+}
+
+/* 网易云 player/url 系列接口现已要求携带 Cookie，否则返回 url:null(404)。
+   appver/os 两个匿名值即可（无需登录），开源方案普遍使用。 */
+function pickCookie(host) {
+  if (/(^|\.)163\.com$/.test(host) || /(^|\.)163cn\.tv$/.test(host)) return 'os=pc;appver=8.9.70'
+  return ''
 }
 
 function pickReferer(host) {
