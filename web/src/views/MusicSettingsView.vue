@@ -249,7 +249,9 @@ async function importPlaylist() {
     if (skipCount) parts.push(`跳过 ${skipCount} 首重复`)
     if (failLines.length) parts.push(`失败 ${failLines.length} 条`)
     const notes = []
-    if (vipCount) notes.push(`${vipCount} 首为版权歌曲，暂不可播放`)
+    if (vipCount) {
+      notes.push(`${vipCount} 首无音源（会员付费 / 版权受限），可在音乐页右上角「移除会员付费歌曲」一键清理`)
+    }
     if (failLines.length) {
       notes.push(`失败：${failLines.slice(0, 2).map((l) => (l.length > 24 ? l.slice(0, 24) + '…' : l)).join(' / ')}${failLines.length > 2 ? ' 等' : ''}`)
     }
