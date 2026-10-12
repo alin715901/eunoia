@@ -134,8 +134,13 @@ async function neResolveSong(id) {
   const song = d && d.songs && d.songs[0];
   if (!song) throw new Error('没找到这首歌（链接可能无效）');
   const meta = neSongFromDetail(song);
-  /* 优先用 Meting（自动续签、不过期），拿不到再退回网易云官方接口 */
-  meta.audio = (await neAudioBest(id)) || (meta.vip ? '' : await neGetSongUrl(id).catch(() => ''));
+  /* 尊重版权：官方判定为付费/VIP 的歌不取音源。
+     免费的歌优先用 Meting（自动续签、不过期），拿不到再退回网易云官方接口。 */
+  if (meta.vip) {
+    meta.audio = '';
+    return meta;
+  }
+  meta.audio = (await neAudioBest(id)) || (await neGetSongUrl(id).catch(() => ''));
   return meta;
 }
 
@@ -392,11 +397,11 @@ async function resolveStreamUrl(song) {
 /* 播放地址过期重解析：与 resolveStreamUrl 的区别是失败时返回空（让调用方区分「没拿到」和「用旧的」） */
 async function refreshAudioUrl(song) {
   if (!song) return '';
-  if (song.source === 'netease' && song.source_id) {
-    /* 老歌直链过期时优先走 Meting 续签（VIP 歌它也可能给得出来） */
+  if (song.source === 'netease' && song.source_id && !song.vip) {
+    /* 老歌直链过期时优先走 Meting 续签（仅免费歌曲，付费歌不取音源） */
     const viaMeting = await neAudioBest(song.source_id);
     if (viaMeting) return viaMeting;
-    return song.vip ? '' : await neGetSongUrl(song.source_id).catch(() => '');
+    return await neGetSongUrl(song.source_id).catch(() => '');
   }
   if (song.source === 'kugou' && song.source_id) {
     const r = await kugouGetPlayUrl(song.source_id).catch(() => null);
