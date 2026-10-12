@@ -17,6 +17,21 @@
 > 每次推送 `main` 都会自动重新构建部署；也可在 Actions 页手动
 > “Run workflow” 触发。版本更新机制（`version.json`）会让已打开的页面自动刷新到新版本。
 
+### 推送方式（二选一）
+
+**A. 在自己机器上推送**：本地克隆后 `git push origin main` 即可。
+如果本地没有克隆，可用交付包 `eunoia-deploy.bundle`：
+
+```bash
+git clone eunoia-deploy.bundle eunoia && cd eunoia
+git remote set-url origin https://github.com/alin715901/eunoia.git
+git push origin main
+```
+
+**B. 部署密钥（deploy key）**：在仓库 Settings → Deploy keys → Add deploy key
+添加一把 SSH 公钥并勾选 **Allow write access**，持有对应私钥的一方即可通过
+`git@github.com:<用户>/<仓库>.git` 推送（CI/沙箱环境常用，可随时吊销）。
+
 ### 自定义域名（可选）
 
 Settings → Pages → Custom domain 填你的域名，并在域名 DNS 加一条 CNAME 到
