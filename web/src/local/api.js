@@ -3,7 +3,7 @@
  * fail(res, msg) 换成 throw new Error(msg)（与原来 http 拦截器 reject 的行为一致）。
  * 上层 web/src/api/*.js 只做薄封装再导出，stores 零改动。
  */
-import db from './db'
+import db, { resetDb } from './db'
 import * as chatRepo from './repositories/chat.repo'
 import * as chatService from './services/chat.service'
 import * as contactsRepo from './repositories/contacts.repo'
@@ -20,6 +20,8 @@ import * as musicCache from './services/musicCache'
 import * as mochiService from './services/mochi.service'
 import * as backupService from './services/backup.service'
 import * as notification from './services/notification.service'
+
+export { resetDb }
 
 const fail = (msg) => {
   throw new Error(msg)

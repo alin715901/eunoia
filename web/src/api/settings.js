@@ -4,6 +4,7 @@ export {
   saveSettings,
   getBadges,
   getStorageStats,
+  resetDb,
   uploadFile,
   getBackupOverview,
   buildBackup,
