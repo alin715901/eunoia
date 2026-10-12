@@ -1010,9 +1010,22 @@ export async function getBadges() {
   return settingsRepo.getBadges()
 }
 
-// 内存数据：各数据表条数 + 数据库占用（本地版图片音频都在库里，无独立上传目录）
+// 内存数据：各数据表条数 + 估算字节 + 数据库占用（本地版图片音频都在库里，无独立上传目录）
 export async function getStorageStats() {
   const count = (t) => db.prepare(`SELECT COUNT(*) c FROM ${t}`).get().c
+  // 按表估算字节：所有列 CAST 成 TEXT 后 LENGTH 求和（BLOB 即字节数，dataURL 为 ASCII 文本亦准确）
+  const bytesOf = (t) => {
+    try {
+      const row = db.prepare(`SELECT * FROM "${t}" LIMIT 1`).get()
+      const cols = row ? Object.keys(row) : []
+      if (!cols.length) return 0
+      const expr = cols.map((n) => `COALESCE(LENGTH(CAST("${n}" AS TEXT)),0)`).join('+')
+      const s = db.prepare(`SELECT COALESCE(SUM(${expr}),0) AS b FROM "${t}"`).get()
+      return s ? Number(s.b) || 0 : 0
+    } catch (e) {
+      return 0
+    }
+  }
   const tables = [
     { key: 'contacts', label: '联系人' },
     { key: 'chat_messages', label: '聊天消息' },
@@ -1024,8 +1037,23 @@ export async function getStorageStats() {
     { key: 'anniversaries', label: '纪念日' },
     { key: 'app_items', label: '模块记录' },
     { key: 'divinations', label: '占卜' },
-  ].map((t) => ({ ...t, count: count(t.key) }))
-  return { tables, dbSize: db.size || 0, uploadsSize: 0 }
+  ].map((t) => ({ ...t, count: count(t.key), bytes: bytesOf(t.key) }))
+  const sumBytes = (keys) => keys.reduce((s, k) => s + bytesOf(k), 0)
+  const sumCount = (keys) => keys.reduce((s, k) => s + count(k), 0)
+  const CONTENT = ['songs', 'song_favs', 'cards', 'card_groups', 'letters', 'moments', 'moment_interactions',
+    'favorites', 'wallets', 'anniversaries', 'divinations', 'app_items', 'companion_invites', 'listen_together']
+  const SETTINGS = ['contacts', 'contact_members', 'contact_settings', 'contact_desktop',
+    'global_settings', 'proactive_jobs', 'group_member_settings']
+  return {
+    tables,
+    dbSize: db.size || 0,
+    uploadsSize: 0,
+    groups: {
+      chat: { bytes: bytesOf('chat_messages'), count: count('chat_messages') },
+      content: { bytes: sumBytes(CONTENT), count: sumCount(CONTENT) },
+      settings: { bytes: sumBytes(SETTINGS), count: sumCount(SETTINGS) },
+    },
+  }
 }
 
 /* ─────────── 一起听 ─────────── */

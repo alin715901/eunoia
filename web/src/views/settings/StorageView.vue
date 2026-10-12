@@ -2,17 +2,48 @@
   <div class="sp-view">
     <AppHeader title="内存数据" back />
     <div class="sp-body">
-      <!-- 占用空间 -->
+      <!-- 存储用量 -->
       <div class="panel sec">
-        <div class="sec-title">占用空间</div>
-        <div class="stat-row">
-          <span class="stat-label">数据库</span>
-          <span class="stat-value">{{ fmtSize(stats.dbSize) }}</span>
+        <div class="usage-top">
+          <span class="usage-title">
+            <svg class="usage-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <ellipse cx="12" cy="5" rx="8" ry="3" />
+              <path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5" />
+              <path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6" />
+            </svg>
+            存储用量
+          </span>
+          <span class="usage-meta">{{ fmtSize(stats.dbSize) }} / {{ fmtSize(CAP) }} ({{ pct }}%)</span>
         </div>
-        <div class="stat-row total">
-          <span class="stat-label">合计</span>
-          <span class="stat-value">{{ fmtSize((stats.dbSize || 0) + (stats.uploadsSize || 0)) }}</span>
+        <div class="usage-tiles">
+          <div class="tile">
+            <svg class="tile-ic ic-tan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+            </svg>
+            <b class="tile-val">{{ fmtSize(groups.chat.bytes) }}</b>
+            <span class="tile-lab">聊天记录</span>
+          </div>
+          <div class="tile">
+            <svg class="tile-ic ic-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <polygon points="12 2 2 7 12 12 22 7 12 2" />
+              <polyline points="2 17 12 22 22 17" />
+              <polyline points="2 12 12 17 22 12" />
+            </svg>
+            <b class="tile-val">{{ fmtSize(groups.content.bytes) }}</b>
+            <span class="tile-lab">内容数据</span>
+          </div>
+          <div class="tile">
+            <svg class="tile-ic ic-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <line x1="4" y1="21" x2="4" y2="14" /><line x1="4" y1="10" x2="4" y2="3" />
+              <line x1="12" y1="21" x2="12" y2="12" /><line x1="12" y1="8" x2="12" y2="3" />
+              <line x1="20" y1="21" x2="20" y2="16" /><line x1="20" y1="12" x2="20" y2="3" />
+              <line x1="1" y1="14" x2="7" y2="14" /><line x1="9" y1="8" x2="15" y2="8" /><line x1="17" y1="16" x2="23" y2="16" />
+            </svg>
+            <b class="tile-val">{{ fmtSize(groups.settings.bytes) }}</b>
+            <span class="tile-lab">联系人设置</span>
+          </div>
         </div>
+        <div class="usage-bar"><i :style="{ width: pct + '%' }"></i></div>
       </div>
 
       <!-- 数据备份 -->
@@ -140,8 +171,14 @@ import { useNotificationsStore } from '@/stores/notifications'
 
 const toast = useNotificationsStore()
 
-/* ─────────── 占用空间 ─────────── */
-const stats = ref({ tables: [], dbSize: 0, uploadsSize: 0 })
+/* ─────────── 存储用量 ─────────── */
+const CAP = 512 * 1024 * 1024 // 展示用容量上限
+const stats = ref({ tables: [], dbSize: 0, groups: { chat: {}, content: {}, settings: {} } })
+const groups = computed(() => stats.value.groups || { chat: {}, content: {}, settings: {} })
+const pct = computed(() => {
+  const v = Number(stats.value.dbSize) || 0
+  return Math.min(100, Math.round((v / CAP) * 1000) / 10)
+})
 
 function fmtSize(n) {
   const v = Number(n) || 0
@@ -153,7 +190,7 @@ function fmtSize(n) {
 async function load() {
   try {
     const d = await getStorageStats()
-    stats.value = d || { tables: [], dbSize: 0, uploadsSize: 0 }
+    stats.value = d || { tables: [], dbSize: 0, groups: { chat: {}, content: {}, settings: {} } }
   } catch (e) {
     /* 忽略，保留上次数据 */
   }
@@ -357,6 +394,8 @@ onMounted(load)
 }
 .mini-btn:disabled { opacity: 0.6; }
 .mini-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.bk-btns .mini-btn,
+.mini-btn.danger { padding: 12px; font-size: 14px; border-radius: var(--radius); }
 .mini-btn.danger { border-color: #c0576b; color: #c0576b; width: 100%; }
 .mini-btn.danger:active { background: rgba(192, 87, 107, 0.08); }
 .stat-row {
@@ -375,6 +414,26 @@ onMounted(load)
 .bk-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .bk-btns .mini-btn { width: 100%; }
 .bk-file { display: none; }
+
+/* 存储用量 */
+.usage-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.usage-title { display: inline-flex; align-items: center; gap: 7px; font-size: 15px; font-weight: 700; }
+.usage-ic { width: 18px; height: 18px; color: #9aa3ad; }
+.usage-meta { font-size: 13px; font-weight: 600; color: #c0956a; }
+.usage-tiles { display: flex; gap: 10px; margin: 14px 0; }
+.tile {
+  flex: 1; background: var(--bg-soft); border-radius: var(--radius);
+  padding: 14px 6px; text-align: center;
+  display: flex; flex-direction: column; align-items: center; gap: 6px;
+}
+.tile-ic { width: 22px; height: 22px; }
+.ic-tan { color: #c0956a; }
+.ic-purple { color: #9b6cff; }
+.ic-green { color: #35b57c; }
+.tile-val { font-size: 16px; font-weight: 700; color: var(--text); }
+.tile-lab { font-size: 12px; color: var(--text-soft); }
+.usage-bar { height: 6px; border-radius: 999px; background: var(--bg-soft); overflow: hidden; }
+.usage-bar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #c0956a, #d9b285); transition: width .3s ease; }
 
 /* 导出弹窗 */
 .seg { display: flex; background: var(--bg-soft); border-radius: 999px; padding: 3px; margin-bottom: 12px; }
