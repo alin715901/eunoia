@@ -2,7 +2,9 @@ import { defineStore } from 'pinia'
 import {
   getMusicSongs, favMusicSong, deleteMusicSong, batchDeleteMusicSongs,
   clearUnplayableSongs, getMusicSettings, saveMusicSettings, streamUrl,
-  importMusic, addMusicManual, updateMusicSong, uploadMusicFile, getMusicLyric
+  importMusic, addMusicManual, updateMusicSong, uploadMusicFile, getMusicLyric,
+  refreshSongAudio, enqueueMusicCache, backfillMusicCache, getMusicCacheStats,
+  setMusicCacheUpdateListener
 } from '@/api/music'
 import {
   sendListenInvite, respondListenInvite, cancelListenInvite, endListen, getListenInvites,
@@ -24,6 +26,16 @@ function cachedListenMinutes() {
 function saveListenMinutesCache(v) {
   try { localStorage.setItem(LS_MIN, String(Math.max(0, Number(v) || 0))) } catch (e) { /* ignore */ }
 }
+
+/* 缓存队列抓完封面/歌词写库后，同步回内存里的歌曲行（UI 即时用上本地数据） */
+setMusicCacheUpdateListener((songId, patch) => {
+  const store = useMusicStore()
+  const row = store.songs.find((s) => s.id === songId)
+  if (row) Object.assign(row, patch)
+  if (store.current && store.current.id === songId) {
+    store.current = { ...store.current, ...patch }
+  }
+})
 
 export const useMusicStore = defineStore('music', {
   state: () => ({
@@ -98,6 +110,8 @@ export const useMusicStore = defineStore('music', {
         ])
         this.songs = lib.songs || []
         this.favIds = lib.favIds || []
+        /* 封面懒缓存：远程封面链接的歌入后台队列，抓到就地换成本地 dataURL */
+        for (const s of this.songs) enqueueMusicCache(s)
         if (settings) {
           this.mode = settings.play_mode || 'list'
           this.vinyl = settings.vinyl || ''
@@ -246,15 +260,56 @@ export const useMusicStore = defineStore('music', {
       try { localStorage.setItem(LS_KEY, JSON.stringify(this.current.id)) } catch (e) { /* ignore */ }
       this.currentTime = 0
       this.lyricSongId = null // 切歌后歌词失效，下次打开歌词页重新抓取
+      this._recoverTried = null // 新的一首：允许一次「重解析地址」恢复
       audio.src = streamUrl(this.current.id)
       notifyMediaState(this.current, true)
       audio.play().catch(() => {
+        /* play() 被拒且 src 本身加载失败（audio.error 非空）→ 直链很可能过期了，重解析再试 */
+        if (audio.error && !this.current?.vip) {
+          this._recoverAudio()
+          return
+        }
         const toast = useNotificationsStore()
         toast.pushToast({ title: '播放失败', text: this.current?.vip ? '版权歌曲暂无音频链接，可在设置里补链接' : '音频加载失败' })
         this.playing = false
         notifyMediaState(this.current, false)
       })
       this.playing = true
+    },
+    /* 播放失败恢复：网易云/酷狗直链有时效，过期后重新解析地址再播一次（每首只试一次）。
+       注意：error 事件和 play() 被拒可能先后触发两次恢复，_recoverRunning 保证并发安全——
+       第二次调用静默等结果，只有「已试过且失败了」才报错放弃。 */
+    async _recoverAudio() {
+      const song = this.current
+      if (!song || song.vip) return
+      const giveUp = (text) => {
+        const toast = useNotificationsStore()
+        toast.pushToast({ title: '播放失败', text })
+        this.playing = false
+        notifyMediaState(song, false)
+      }
+      if (this._recoverRunning) return // 正在恢复中，等上一条的结果
+      if (this._recoverTried === song.id) {
+        giveUp('音频链接已失效，可在设置里重新导入')
+        return
+      }
+      this._recoverRunning = true
+      this._recoverTried = song.id
+      try {
+        const r = await refreshSongAudio(song.id)
+        if (!r.audio || r.audio === song.audio) {
+          giveUp('音频链接已失效，可在设置里重新导入')
+          return
+        }
+        song.audio = r.audio
+        audio.src = r.audio
+        audio.play().catch(() => giveUp('音频加载失败'))
+        this.playing = true
+      } catch (e) {
+        giveUp('重试失败：' + (e.message || '未知错误'))
+      } finally {
+        this._recoverRunning = false
+      }
     },
 
     /* ─── 收藏 / 删除 / 导入 ─── */
@@ -300,6 +355,9 @@ export const useMusicStore = defineStore('music', {
       const lib = await getMusicSongs(this.contactId)
       this.songs = lib.songs || []
       this.favIds = lib.favIds || []
+      /* 封面懒缓存：init 之外，导入/收藏等操作后的 reload 也补入队
+         （幂等，已缓存的会跳过）——会话内新导入的歌不必等刷新页面 */
+      for (const s of this.songs) enqueueMusicCache(s)
       if (this.current) {
         this.current = this.songs.find((s) => s.id === this.current.id) || this.current
       }
@@ -330,7 +388,7 @@ export const useMusicStore = defineStore('music', {
       audio.currentTime = t
       this.currentTime = t
     },
-    /* 抓取当前歌曲歌词（网易云源自动识别，其他源返回空） */
+    /* 当前歌歌词：优先读本地缓存，没有才按源抓取并入库（网易云/酷狗之外的数据源返回空） */
     async fetchLyric(force = false) {
       const id = this.current?.id
       if (!id) { this.lyric = ''; this.lyricSongId = null; return }
@@ -563,6 +621,10 @@ export function bindAudioEvents() {
     if (store.playing) {
       store.playing = false
       setMediaPlaybackState(false)
+    }
+    /* src 加载失败（直链过期/为空）：非 VIP 歌尝试重解析地址恢复，每首只试一次 */
+    if (store.current && !store.current.vip && store._recoverTried !== store.current.id) {
+      store._recoverAudio()
     }
   })
   audio.addEventListener('play', () => setMediaPlaybackState(true))

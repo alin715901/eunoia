@@ -14,4 +14,9 @@ export {
   streamUrl,
   getFavIds,
   getMusicLyric,
+  refreshSongAudio,
+  enqueueMusicCache,
+  backfillMusicCache,
+  getMusicCacheStats,
+  setMusicCacheUpdateListener,
 } from '../local/api'

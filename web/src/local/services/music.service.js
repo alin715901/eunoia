@@ -345,6 +345,39 @@ async function resolveStreamUrl(song) {
   return song.audio || '';
 }
 
+/* 播放地址过期重解析：与 resolveStreamUrl 的区别是失败时返回空（让调用方区分「没拿到」和「用旧的」） */
+async function refreshAudioUrl(song) {
+  if (!song) return '';
+  if (song.source === 'netease' && song.source_id && !song.vip) {
+    return neGetSongUrl(song.source_id).catch(() => '');
+  }
+  if (song.source === 'kugou' && song.source_id) {
+    const r = await kugouGetPlayUrl(song.source_id).catch(() => null);
+    return (r && r.url) || '';
+  }
+  return '';
+}
+
+/* 封面图抓取 → dataURL（入库后离线可用）。
+   网易云封面 CDN 带 CORS 头可直接抓；酷狗不带，统一走 worker 中转（worker 会补 CORS 头）。
+   大于 2MB 的图拒绝（保护 IndexedDB 体积）。 */
+const COVER_MAX_BYTES = 2 * 1024 * 1024;
+async function fetchCoverDataUrl(url) {
+  const u = String(url || '').trim();
+  if (!u || u.startsWith('data:')) return '';
+  const res = await fetch(withProxy(u));
+  if (!res.ok) throw new Error(`封面抓取失败 ${res.status}`);
+  const blob = await res.blob();
+  if (!blob.type.startsWith('image/')) throw new Error('封面返回的不是图片');
+  if (blob.size > COVER_MAX_BYTES) throw new Error('封面太大，跳过缓存');
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader();
+    fr.onload = () => resolve(String(fr.result || ''));
+    fr.onerror = () => reject(new Error('封面读取失败'));
+    fr.readAsDataURL(blob);
+  });
+}
+
 /* ═══ 联系人（对方）自己收藏歌曲：cron 每分钟小概率触发，广播弹窗提示 ═══ */
 function contactFavTick() {
   try {
@@ -383,4 +416,4 @@ function contactFavTick() {
   }
 }
 
-export { parseLink, resolveImport, resolveStreamUrl, neGetSongUrl, neGetLyric, kugouGetLyric, contactFavTick }
+export { parseLink, resolveImport, resolveStreamUrl, refreshAudioUrl, fetchCoverDataUrl, neGetSongUrl, neGetLyric, kugouGetLyric, contactFavTick }

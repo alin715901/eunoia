@@ -16,6 +16,7 @@ import * as momentService from './services/moment.service'
 import * as companionService from './services/companion.service'
 import * as listenService from './services/listen.service'
 import * as musicService from './services/music.service'
+import * as musicCache from './services/musicCache'
 import * as mochiService from './services/mochi.service'
 import * as notification from './services/notification.service'
 
@@ -714,11 +715,11 @@ const musicNow = () => Math.floor(Date.now() / 1000)
 function insertSong(m) {
   const r = db
     .prepare(
-      `INSERT INTO songs (title, artist, cover, duration, source, source_id, audio, plist, vip, note, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+      `INSERT INTO songs (title, artist, cover, lyric, duration, source, source_id, audio, plist, vip, note, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`
     )
     .run(
-      m.title || '未知歌曲', m.artist || '', m.cover || '', m.duration || 0,
+      m.title || '未知歌曲', m.artist || '', m.cover || '', m.lyric || '', m.duration || 0,
       m.source || 'local', m.source_id || '', m.audio || '', m.plist || '',
       m.vip ? 1 : 0, m.note || '', musicNow()
     )
@@ -762,12 +763,16 @@ export async function importMusic(url, note = '') {
   const ids = []
   let skipped = 0
   let unplayable = 0
+  const fresh = []
   for (const m of songs) {
     if (note) m.note = note
     if (songExists(m.source, m.source_id)) { skipped++; continue }
     ids.push(insertSong(m))
+    fresh.push({ id: ids[ids.length - 1], ...m })
     if (!m.audio) unplayable++
   }
+  /* 歌词后台缓存：不阻塞导入结果返回（并发受限的队列里慢慢抓） */
+  for (const s of fresh) musicCache.enqueueLyric(s)
   return { imported: ids.length, skipped, playlist: result.name || '', unplayable, ids }
 }
 
@@ -847,17 +852,53 @@ export async function favMusicSong(id, contactId) {
   return { fav: true }
 }
 
-// 歌词：按歌曲源自动抓取
+// 歌词：优先读本地缓存；没有才按歌曲源抓取，并顺手入库（下次离线也能看）
 export async function getMusicLyric(id) {
   const song = db.prepare('SELECT * FROM songs WHERE id = ?').get(Number(id))
   if (!song) fail('歌曲不存在')
+  if (song.lyric && song.lyric.trim()) return { lyric: song.lyric }
   let lyric = ''
   if (song.source === 'netease' && song.source_id) {
     lyric = await musicService.neGetLyric(song.source_id).catch(() => '')
   } else if (song.source === 'kugou' && song.source_id) {
     lyric = await musicService.kugouGetLyric(song.source_id).catch(() => '')
   }
+  if (lyric && lyric.trim()) {
+    db.prepare('UPDATE songs SET lyric = ? WHERE id = ?').run(lyric, Number(id))
+  }
   return { lyric }
+}
+
+// 播放地址过期重解析：拿到新地址则更新库存并返回（调用方用返回的地址重播）
+export async function refreshSongAudio(id) {
+  const s = db.prepare('SELECT * FROM songs WHERE id = ?').get(Number(id))
+  if (!s) fail('歌曲不存在')
+  const url = await musicService.refreshAudioUrl(s)
+  if (!url) return { audio: s.audio || '' }
+  db.prepare('UPDATE songs SET audio = ? WHERE id = ?').run(url, Number(id))
+  return { audio: url }
+}
+
+/* ─── 音乐缓存队列（封面/歌词本地化） ─── */
+
+// 把一首歌的封面/歌词缓存任务入队（幂等，已缓存的自动跳过）
+export function enqueueMusicCache(song) {
+  return musicCache.enqueueSong(song)
+}
+
+// 全量补抓（设置页「一键缓存」用）：返回入队的歌曲数
+export function backfillMusicCache() {
+  return musicCache.backfillAll()
+}
+
+// 队列快照（设置页展示「缓存中 x 首」）
+export function getMusicCacheStats() {
+  return musicCache.cacheStats()
+}
+
+// 缓存完成回调（封面/歌词入库后同步内存行，供 store 注册）
+export function setMusicCacheUpdateListener(fn) {
+  musicCache.setCacheUpdateListener(fn)
 }
 
 // 播放地址：本地版数据库在内存里，直接同步取（audio 为导入时解析到的直链/dataURL）

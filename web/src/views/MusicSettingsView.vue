@@ -43,6 +43,18 @@
         <button class="ms-primary soft" :disabled="plLoading" @click="importPlaylist">{{ plLoading ? (importProgress || '抓取中…') : '导入' }}</button>
       </div>
 
+      <!-- ═══ 本地缓存（封面/歌词抓到本地，断网也能看） ═══ -->
+      <div class="ms-card">
+        <div class="ms-title"><AppIcon name="download" :size="15" color="var(--accent)" /> 本地缓存</div>
+        <div class="ms-hint-row">
+          <AppIcon name="music" :size="13" color="var(--accent)" />
+          <span>把曲库里歌曲的封面图和歌词抓到本地存好，之后断网也能显示；新导入的歌会在后台自动缓存</span>
+        </div>
+        <button class="ms-primary soft" :disabled="cacheBtnLoading" @click="backfillCache">
+          {{ cacheBtnLoading ? (cacheProgress || '缓存中…') : '一键缓存封面和歌词' }}
+        </button>
+      </div>
+
       <!-- ═══ 自定义唱片 ═══ -->
       <div class="ms-card">
         <div class="ms-title"><AppIcon name="music" :size="15" color="var(--accent)" /> 自定义唱片</div>
@@ -72,7 +84,7 @@
 </template>
 
 <script setup>
-import { reactive, ref, onMounted } from 'vue'
+import { reactive, ref, onMounted, onUnmounted } from 'vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import ImageCropper from '@/components/common/ImageCropper.vue'
@@ -80,6 +92,7 @@ import { useMusicStore } from '@/stores/music'
 import { useDesktopStore } from '@/stores/desktop'
 import { useNotificationsStore } from '@/stores/notifications'
 import { uploadFile } from '@/api/settings'
+import { backfillMusicCache, getMusicCacheStats } from '@/api/music'
 
 const store = useMusicStore()
 const desktop = useDesktopStore()
@@ -92,6 +105,10 @@ const plLoading = ref(false)
 const importProgress = ref('')
 const audioEl = ref(null)
 const vinylEl = ref(null)
+/* 一键缓存封面/歌词 */
+const cacheBtnLoading = ref(false)
+const cacheProgress = ref('')
+let cachePollTimer = null
 /* 唱片图片圆形裁剪 */
 const cropSrc = ref('')
 const showCrop = ref(false)
@@ -183,6 +200,33 @@ async function importPlaylist() {
     plLoading.value = false
   }
 }
+
+/* 一键缓存：把未本地化的封面/歌词全部入队，轮询队列进度 */
+function backfillCache() {
+  const r = backfillMusicCache()
+  if (!r.tasks) {
+    toast.pushToast({ title: '都已缓存', text: '封面和歌词都已在本地，无需再抓' })
+    return
+  }
+  cacheBtnLoading.value = true
+  cacheProgress.value = `缓存中 0/${r.tasks}`
+  if (cachePollTimer) clearInterval(cachePollTimer)
+  cachePollTimer = setInterval(() => {
+    const st = getMusicCacheStats()
+    const done = Math.min(st.done, r.tasks)
+    cacheProgress.value = `缓存中 ${done}/${r.tasks}`
+    if (st.queued <= 0 && done >= r.tasks) {
+      clearInterval(cachePollTimer)
+      cachePollTimer = null
+      cacheBtnLoading.value = false
+      cacheProgress.value = ''
+      toast.pushToast({ title: '缓存完成', text: `已处理 ${r.songs} 首歌曲的封面和歌词` })
+    }
+  }, 500)
+}
+onUnmounted(() => {
+  if (cachePollTimer) clearInterval(cachePollTimer)
+})
 
 /* 自定义唱片：选图 → 圆形裁剪 → 上传并直接应用到音乐卡胶片 */
 function pickVinyl() {

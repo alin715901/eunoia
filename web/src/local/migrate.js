@@ -99,6 +99,7 @@ export function migrate() {
     title TEXT NOT NULL,
     artist TEXT DEFAULT '',
     cover TEXT DEFAULT '',
+    lyric TEXT DEFAULT '',
     duration INTEGER DEFAULT 0,
     source TEXT DEFAULT 'local',
     source_id TEXT DEFAULT '',
@@ -108,6 +109,8 @@ export function migrate() {
     note TEXT DEFAULT '',
     created_at INTEGER
   )`)
+  // 歌词本地缓存（导入/首次打开歌词页时抓取入库，之后离线可用）
+  addCol('songs', 'lyric', "TEXT DEFAULT ''")
   db.exec(`CREATE TABLE IF NOT EXISTS song_favs (
     song_id INTEGER NOT NULL,
     contact_id INTEGER NOT NULL,
