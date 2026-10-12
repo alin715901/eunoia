@@ -357,7 +357,7 @@ onMounted(load)
 }
 .mini-btn:disabled { opacity: 0.6; }
 .mini-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
-.mini-btn.danger { border-color: #c0576b; color: #c0576b; }
+.mini-btn.danger { border-color: #c0576b; color: #c0576b; width: 100%; }
 .mini-btn.danger:active { background: rgba(192, 87, 107, 0.08); }
 .stat-row {
   display: flex; align-items: center; justify-content: space-between;
@@ -372,7 +372,8 @@ onMounted(load)
 
 /* 数据备份 */
 .bk-hint { font-size: 12px; color: var(--text-soft); line-height: 1.7; margin: 0 0 10px; }
-.bk-btns { display: flex; flex-wrap: wrap; gap: 10px; }
+.bk-btns { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.bk-btns .mini-btn { width: 100%; }
 .bk-file { display: none; }
 
 /* 导出弹窗 */
