@@ -4,8 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <title>Eunoia</title>
-    <!-- PWA：可「添加到主屏幕」，独立窗口中后台播放音乐更稳定 -->
-    <link rel="manifest" href="/manifest.webmanifest" />
+    <!-- PWA：可「添加到主屏幕」，独立窗口中后台播放音乐更稳定。
+         相对路径：GitHub Pages /<仓库名>/ 子路径部署同样有效 -->
+    <link rel="manifest" href="./manifest.webmanifest" />
     <meta name="theme-color" content="#c5a47e" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Eunoia" />
@@ -21,6 +22,9 @@
         } catch (e) {}
       })();
     </script>
+    <!-- 运行时配置（public/config.js）：用相对路径，GitHub Pages 子路径部署同样有效。
+         module 脚本是延迟执行的，本标签先于它跑完，main.js 里即可同步读 window.__EUNOIA_CONFIG__ -->
+    <script src="./config.js"></script>
   </head>
   <body>
     <div id="app"></div>

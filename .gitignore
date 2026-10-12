@@ -30,3 +30,7 @@ shots/
 .playwright
 .playwright/
 .cloudstudio
+eunoia-source.tar.gz
+
+# wrangler 本地开发状态
+workers/.wrangler/

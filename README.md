@@ -1,10 +1,12 @@
 # Eunoia
 
-> 属于两个人的小世界 —— 一个自托管的伴侣陪伴 Web 应用。
+> 属于两个人的小世界 —— 纯前端、本地优先（local-first）的伴侣陪伴 Web 应用。
 
 Eunoia 把日常陪伴装进一个私密空间：灵魂链接桌面、微信式聊天、朋友圈、字卡抽取、信件信箱、
-纪念日、占卜塔罗、陪伴邀请，以及带歌词和一起听的音乐播放器。数据全部存在自己的服务器，
-只属于你们两个人。
+纪念日、占卜塔罗、陪伴邀请，以及带歌词和一起听的音乐播放器。
+
+**每个人打开都是全新空白的数据**：没有服务器、没有账号，所有数据只存在你自己的浏览器里
+（IndexedDB），清缓存即重置。
 
 ## 功能一览
 
@@ -17,53 +19,43 @@ Eunoia 把日常陪伴装进一个私密空间：灵魂链接桌面、微信式�
 | 信件 | 信箱枢纽 + 各人独立信箱 |
 | 纪念日 | 类型化管理、桌面倒数 |
 | 占卜 | 全套 78 张塔罗 + 记录（单删/清空） |
-| 陪伴邀请 | SSE 实时邀请、接受/拒绝/取消、时长累计 |
+| 陪伴邀请 | 实时邀请、接受/拒绝/取消、时长累计 |
+| 主动陪伴 | 对方按间隔主动发字卡/寄信/发朋友圈/来电/发红包（到点即触发，关页期间到期的事件重开页面立即补发） |
 | 音乐 | 网易云/酷狗链接导入（批量）、歌词、进度拖动、一起听、后台保活 |
 
 ## 技术栈
 
-- **前端**：Vue 3 + Vite + Pinia + Vue Router
-- **后端**：Node 22 + Express + `node:sqlite`（零原生依赖，免编译）
-- **部署**：Docker 多阶段构建 / Render Blueprint（免费套餐即可）
-- **隐私**：单进程部署，数据落盘在服务器本地，无任何第三方服务
+- **前端**：Vue 3 + Vite + Pinia + Vue Router（hash 路由）
+- **数据库**：sql.js（WASM SQLite 完整跑在浏览器里），快照持久化到 IndexedDB
+- **部署**：GitHub Pages（纯静态，零服务端成本）
+- **音乐解析中转**：Cloudflare Worker（免费 10 万请求/天，见 `workers/`）
+
+### 目录结构
+
+```
+web/                  纯前端应用（本地版全部逻辑都在这里）
+  src/local/          db.js（sql.js+IndexedDB 门面）、api.js（路由整体移植）、
+                      services/ repositories/（从 server 原样搬入）、ticks.js（前端调度器）、seed.js、migrate.js
+  public/config.js    运行时配置（音乐中转地址，改完即生效无需重新构建）
+workers/              音乐解析 Cloudflare Worker（music-proxy.js + wrangler.toml）
+.github/workflows/    GitHub Pages 自动部署
+server/               旧的自托管服务端版本（已不再维护，仅作历史保留）
+```
 
 ## 本地运行
 
 ```bash
-# 1. 后端（默认端口 3001）
-cd server && npm install && npm start
-
-# 2. 前端（另开终端，开发热更新）
 cd web && npm install && npm run dev
 ```
 
-生产模式：`cd web && npm run build` 后，后端会自动托管 `web/dist`，单进程即可运行。
-
 ## 部署
 
-完整一键部署指南见 [README-deploy.md](./README-deploy.md)：
+推送到 GitHub `main` 分支即自动构建并部署到 GitHub Pages，详见
+[README-deploy.md](README-deploy.md)（含音乐导入中转的可选配置）。
 
-- **Render**（推荐）：推送本仓库到 GitHub → Render New → Blueprint，自动获得固定域名，免费套餐含 1GB 持久磁盘
-- **任意 Docker 平台**：`docker build -t eunoia . && docker run -p 3000:3000 -v eunoia-data:/data eunoia`
+## 说明
 
-> ⚠️ 部署务必挂载持久磁盘（`DATA_DIR`），否则容器重建会清空数据库。
-
-## 目录结构
-
-```
-server/    Express 后端（API + SSE + 定时任务 + 静态托管）
-web/       Vue3 前端源码
-web/public/ PWA 资源（manifest + 图标）
-Dockerfile     多阶段构建（先 build 前端再跑后端）
-render.yaml    Render Blueprint 配置
-README-deploy.md 详细部署指南
-```
-
-## 隐私说明
-
-`server/data/`（SQLite 数据库与上传文件）已被 `.gitignore` 排除，**不会**进入仓库。
-如需备份，直接拷贝该目录即可。
-
-## License
-
-私人项目，未授权任何人使用。
+- 联系人均为代码生成的虚构角色，主动消息/来信/来电等全部由本地定时器按概率与时间戳驱动。
+- 音乐链接导入需要配置 Cloudflare Worker 中转（网易云/酷狗接口有 CORS 限制）；
+  不配置也不影响其它任何功能。
+- `server/` 目录是早期的自托管版本，本仓库主线已迁移为纯静态架构，不再随部署流程运行。

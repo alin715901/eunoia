@@ -1,0 +1,73 @@
+name: Deploy Eunoia to GitHub Pages
+
+# 推送 main 分支（或手动触发）→ 构建纯静态站 → 部署到 GitHub Pages
+# 站点地址：https://<用户>.github.io/eunoia/
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# 允许 Actions 部署 Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同一时间只跑一个部署，新的触发会取消排队中的旧任务
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: 计算 base 路径
+        run: |
+          # <用户>.github.io 仓库用根路径；普通仓库用 /<仓库名>/
+          if [ "${{ github.event.repository.name }}" = "${{ github.event.repository.owner }}.github.io" ]; then
+            echo "BASE_PATH=/" >> "$GITHUB_ENV"
+          else
+            echo "BASE_PATH=/${{ github.event.repository.name }}/" >> "$GITHUB_ENV"
+          fi
+          echo "base = $(grep BASE_PATH "$GITHUB_ENV" | cut -d= -f2)"
+
+      - name: 安装 Node 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: 安装依赖
+        working-directory: web
+        run: npm ci
+
+      - name: 构建
+        working-directory: web
+        env:
+          BASE_PATH: ${{ env.BASE_PATH }}
+          # 音乐解析中转（Cloudflare Worker 地址）。
+          # 在仓库 Settings → Secrets and variables → Actions → Variables 里配置；
+          # 未配置时为空，网站改读 config.js 里的 musicProxy。
+          VITE_MUSIC_PROXY: ${{ vars.VITE_MUSIC_PROXY }}
+        run: npm run build
+
+      - name: 上传构建产物
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: web/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: 部署到 GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

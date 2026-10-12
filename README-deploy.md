@@ -1,72 +1,65 @@
-# Eunoia · 一键部署（固定域名）
+# Eunoia · 部署指南（GitHub Pages，纯静态）
 
-本项目是**前后端一体**的单进程 Node 应用：后端（Express）同时托管前端构建产物和 API，无需额外 Nginx。
-
-数据库默认用 Node 22 内置的 `node:sqlite`，**无需编译任何原生模块**，部署极简单。
-
----
-
-## 方案 A：Render（推荐，免费，拿固定域名）
-
-1. 把整个项目（含 `server/`、`web/`、`Dockerfile`、`render.yaml`）推到你的 GitHub 仓库。
-2. 打开 [render.com](https://render.com) → 注册/登录 → **New → Blueprint**，授权 GitHub 并选该仓库。
-3. Render 会读取 `render.yaml` 自动创建 Web 服务（免费套餐）+ 1GB 持久磁盘 `/data`（存数据库和上传文件）。
-4. 部署完成后，Render 给你一个**固定域名**，例如 `https://eunoia-app.onrender.com`，永久可用。
-
-> 免费套餐实例空闲后会休眠，首次访问需冷启动（约 10–30 秒），之后正常。
-
-### 环境变量（已内置于 render.yaml，无需手配）
-- `PORT`：Render 自动注入（默认 3000）
-- `DATA_DIR=/data`：数据库与上传目录，指向持久磁盘
-- `NODE_ENV=production`
+本地化改造后，Eunoia 是一个**纯静态网站**：没有服务端、没有数据库文件，所有数据存在
+每个访客自己的浏览器里（IndexedDB）。部署只需把 `web/dist` 挂到任意静态托管上。
 
 ---
 
-## 方案 B：任意支持 Docker 的平台（Railway / Fly.io / 自己的服务器）
+## 一、自动部署（GitHub Actions，推荐）
 
-只要能跑 Docker 即可：
+仓库已带 `.github/workflows/deploy.yml`：**推送到 `main` 分支即自动构建并部署**。
+
+1. 把本仓库推到 GitHub（仓库名决定访问路径，如 `alin715901/eunoia` →
+   网址为 `https://alin715901.github.io/eunoia/`）。
+2. 仓库页面 → **Settings → Pages → Source 选 “GitHub Actions”**（只需第一次）。
+3. 推送后到仓库 **Actions** 标签页查看进度，完成后访问上面的网址即可。
+
+> 每次推送 `main` 都会自动重新构建部署；也可在 Actions 页手动
+> “Run workflow” 触发。版本更新机制（`version.json`）会让已打开的页面自动刷新到新版本。
+
+### 自定义域名（可选）
+
+Settings → Pages → Custom domain 填你的域名，并在域名 DNS 加一条 CNAME 到
+`<用户名>.github.io`。若用了自定义域名，把 workflow 里「计算 base 路径」一步
+改为输出 `BASE_PATH=/`（根路径），否则资源会按 `/eunoia/` 前缀加载。
+
+---
+
+## 二、音乐链接导入（可选，需要 Cloudflare Worker）
+
+网易云/酷狗的元数据接口不允许浏览器直连（CORS），链接导入需要一个中转。
+Cloudflare Worker 免费额度 **10 万请求/天**，个人自用远够。部署方法：
 
 ```bash
-# 1. 构建镜像
-docker build -t zika-app .
-
-# 2. 运行（数据挂到宿主机目录，避免重启丢失）
-docker run -d \
-  -p 3000:3000 \
-  -e PORT=3000 \
-  -e DATA_DIR=/data \
-  -v $(pwd)/zika-data:/data \
-  --name zika-app \
-  zika-app
+npm install -g wrangler
+wrangler login
+npx wrangler deploy -c workers/wrangler.toml
 ```
 
-然后在浏览器打开 `http://你的服务器:3000`。
+得到 `https://eunoia-music.<你的子域>.workers.dev` 后，二选一接入：
+
+**A. 构建变量（推荐）**：仓库 Settings → Secrets and variables → Actions →
+Variables → 新建 `VITE_MUSIC_PROXY` = worker 地址。下次推送自动生效。
+
+**B. 运行时配置**：编辑网站上的 `config.js`（源码在 `web/public/config.js`），
+把 `musicProxy` 改成 worker 地址，重新推送。B 优先于 A。
+
+不配置中转时，除音乐链接导入外的所有功能（聊天/信件/朋友圈/陪伴/本地音乐文件等）均正常。
 
 ---
 
-## 本地运行（开发/演示）
+## 三、本地预览生产构建
 
 ```bash
-# 后端（默认端口 3001）
-cd server && npm install && npm start
-
-# 前端（另开终端，开发热更新）
-cd web && npm install && npm run dev
+cd web
+BASE_PATH=/eunoia/ npm run build   # 本地预览用 / 即可：npm run build
+BASE_PATH=/eunoia/ npx vite preview --port 4173
+# 打开 http://localhost:4173/eunoia/
 ```
-
-前端 `npm run build` 的产物 `web/dist` 会被后端自动托管，因此生产环境只需启动后端即可。
 
 ---
 
-## 目录结构
-```
-server/      后端（Express + node:sqlite），同时托管 web/dist
-web/         Vue3 前端，build 后产物在 web/dist
-Dockerfile   多阶段构建：先 build 前端，再跑后端
-render.yaml  Render Blueprint 配置
-```
+## 四、关于 server/ 目录
 
-## 常见问题
-- **数据库/上传文件丢了吗？** 部署时务必挂载持久磁盘（方案 A 的 `disk` 已配置，方案 B 的 `-v` 已配置）。否则容器重建会重置数据。
-- **页面空白 / API 报错？** 确认 `web/dist` 已构建（`web/dist/index.html` 存在），后端才能托管前端。
-- **node:sqlite 报错？** 需要 Node ≥ 22.5。`Dockerfile` 已用 `node:22` 并在 `CMD` 加了 `--experimental-sqlite`。
+`server/` 是早期的自托管版本（Express + node:sqlite + SSE），主线已迁移为纯静态架构，
+部署流程不再需要它，代码保留仅供查阅。

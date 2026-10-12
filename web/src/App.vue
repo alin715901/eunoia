@@ -8,9 +8,11 @@
           :style="isHome ? homeBgStyle : null"
         >
           <router-view v-slot="{ Component }">
+            <!-- 带 :id 的联系人内页用完整 path 作 key，
+                 避免从 A 联系人切到 B 联系人时复用同一实例（onMounted 不再执行）。
+                 注释必须放在 keep-alive 外：dev 模式下编译器会把 keep-alive 内的
+                 注释节点也计为子节点，报 “expects exactly one child component” -->
             <keep-alive>
-              <!-- 带 :id 的联系人内页用完整 path 作 key，
-                   避免从 A 联系人切到 B 联系人时复用同一实例（onMounted 不再执行） -->
               <component :is="Component" :key="viewKey" />
             </keep-alive>
           </router-view>

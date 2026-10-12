@@ -53,13 +53,38 @@ function isPageFocused() {
   return typeof document === 'undefined' ? true : document.hasFocus()
 }
 
+/* 本地版：没有服务端 SSE，改用 window 自定义事件总线（notification.service 广播）。
+ * 垫片暴露与 EventSource 相同的 addEventListener/close 接口，
+ * 处理器里继续用 JSON.parse(e.data) 即可，业务代码零改动。 */
+function createLocalBus() {
+  const listeners = []
+  return {
+    addEventListener(event, handler) {
+      const wrapped = (e) => {
+        try {
+          handler({ data: JSON.stringify(e.detail ?? {}) })
+        } catch (err) { /* ignore */ }
+      }
+      listeners.push([event, wrapped])
+      window.addEventListener(`eunoia:${event}`, wrapped)
+    },
+    close() {
+      for (const [event, wrapped] of listeners) {
+        window.removeEventListener(`eunoia:${event}`, wrapped)
+      }
+      listeners.length = 0
+    },
+  }
+}
+
 export function connect() {
   if (source) return source
-  source = new EventSource('/api/stream')
+  source = createLocalBus()
 
-  source.addEventListener('connected', () => {
-    // 连接建立
-  })
+  // 本地总线立即触发一次 connected（原 SSE 首条事件）
+  setTimeout(() => {
+    try { window.dispatchEvent(new CustomEvent('eunoia:connected', { detail: {} })) } catch (e) { /* ignore */ }
+  }, 0)
 
   source.addEventListener('typing', (e) => {
     try {
@@ -314,7 +339,7 @@ export function connect() {
   }
 
   source.onerror = () => {
-    // EventSource 会自动重连；此处可记录
+    // 本地总线无重连概念；此处保留以防调用方检查
   }
 
   return source

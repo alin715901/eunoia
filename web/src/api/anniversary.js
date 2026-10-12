@@ -1,19 +1,7 @@
-import http from './http'
-
-// ---------- 纪念日 ----------
-export function getAnniversaries(params = {}) {
-  const q = params.contactId != null ? `?contactId=${params.contactId}` : ''
-  return http.get(`/anniversaries${q}`)
-}
-
-export function createAnniversary(payload) {
-  return http.post('/anniversaries', payload)
-}
-
-export function updateAnniversary(id, payload) {
-  return http.patch(`/anniversaries/${id}`, payload)
-}
-
-export function deleteAnniversary(id) {
-  return http.delete(`/anniversaries/${id}`)
-}
+/* 本地版：直接调用浏览器内服务，无网络请求 */
+export {
+  getAnniversaries,
+  createAnniversary,
+  updateAnniversary,
+  deleteAnniversary,
+} from '../local/api'
