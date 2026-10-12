@@ -18,7 +18,8 @@ const props = defineProps({
 
 const isImage = computed(() =>
   !!props.avatar &&
-  (props.avatar.startsWith('/assets') ||
+  (props.avatar.startsWith('data:') ||
+    props.avatar.startsWith('/assets') ||
     props.avatar.startsWith('http') ||
     props.avatar.startsWith('blob:'))
 )

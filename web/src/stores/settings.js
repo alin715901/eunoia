@@ -198,13 +198,21 @@ export const useSettingsStore = defineStore('settings', {
     async load() {
       try {
         const data = await api.getSettings()
+        /* 外观：库中可能残留旧值（如早期的 system），而用户最近一次显式选择会同步写入
+           localStorage（见 applyAppearance）。这里让显式选择优先，避免「已设浅色却被旧的
+           system 覆盖、在深色系统上整页发黑」的问题；首次使用（localStorage 为空）仍按库值/默认。 */
+        let appearance = data.appearance === 'dark' || data.appearance === 'system' ? data.appearance : 'light'
+        try {
+          const ls = window.localStorage && window.localStorage.getItem('zika.appearance')
+          if (ls === 'light' || ls === 'dark' || ls === 'system') appearance = ls
+        } catch (e) {}
         this.global = {
           theme: { ...DEFAULT.theme, ...(data.theme || {}), icons: { ...(data.theme?.icons || {}) } },
           themePresets: Array.isArray(data.themePresets) ? data.themePresets : [],
           notifications: { ...DEFAULT.notifications, ...(data.notifications || {}) },
           startup: { ...DEFAULT.startup, ...(data.startup || {}) },
           moments: { ...DEFAULT.moments, ...(data.moments || {}) },
-          appearance: data.appearance === 'dark' || data.appearance === 'system' ? data.appearance : 'light'
+          appearance
         }
       } catch (e) {
         this.global = JSON.parse(JSON.stringify(DEFAULT))
