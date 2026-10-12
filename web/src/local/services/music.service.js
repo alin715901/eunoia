@@ -97,12 +97,45 @@ async function neGetSongUrl(id) {
   return item && item.url ? String(item.url) : '';
 }
 
+/* ── 备用音源：公开 Meting 服务（带 CORS，浏览器可直连，无需中转）─────────
+   网易云的播放直链接口对境外 IP 一律返回 url:null，而且拿到的地址带临时令牌会过期。
+   Meting 每次请求会 302/直返一份**新签名**的音频流，因此：
+     ① 不依赖我们自己的中转出口 IP；
+     ② 把这个接口地址本身存为音源，每次播放都自动换一份有效地址，永不过期。
+   为降低对单一第三方依赖，配置了多个镜像依次尝试。 */
+const METING_HOSTS = ['https://api.injahow.cn', 'https://api.qijieya.cn'];
+
+/* 探测某个 Meting 镜像能否给出音频：拿到响应头看 content-type 就立刻中断下载 */
+async function metingAudio(host, id) {
+  const url = `${host}/meting/?server=netease&type=url&id=${id}`;
+  try {
+    const ctrl = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const res = await fetch(url, ctrl ? { signal: ctrl.signal } : undefined);
+    const ct = String(res.headers.get('content-type') || '').toLowerCase();
+    if (ctrl) ctrl.abort();
+    const good = res.ok && (/audio|mpeg|octet-stream/.test(ct) || ct === '');
+    return good ? url : '';
+  } catch (e) {
+    return '';
+  }
+}
+
+/* 依次尝试各镜像，返回可用的音源地址（都不可用则返回空串） */
+async function neAudioBest(id) {
+  for (const host of METING_HOSTS) {
+    const u = await metingAudio(host, id);
+    if (u) return u;
+  }
+  return '';
+}
+
 async function neResolveSong(id) {
   const d = await fetchJson(`https://music.163.com/api/song/detail?id=${id}&ids=[${id}]`);
   const song = d && d.songs && d.songs[0];
   if (!song) throw new Error('没找到这首歌（链接可能无效）');
   const meta = neSongFromDetail(song);
-  meta.audio = meta.vip ? '' : await neGetSongUrl(id).catch(() => '');
+  /* 优先用 Meting（自动续签、不过期），拿不到再退回网易云官方接口 */
+  meta.audio = (await neAudioBest(id)) || (meta.vip ? '' : await neGetSongUrl(id).catch(() => ''));
   return meta;
 }
 
@@ -129,6 +162,12 @@ async function neResolvePlaylist(id) {
       const map = new Map((d2.data || []).map((x) => [String(x.id), x.url || '']));
       batch.forEach((s) => { s.audio = map.get(s.source_id) || ''; });
     } catch (e) { /* 忽略，audio 留空 */ }
+  }
+  /* 官方接口没给直链的，用 Meting 备用音源补齐（最多 30 首，避免请求过密） */
+  const missing = songs.filter((s) => !s.audio).slice(0, 30);
+  for (const s of missing) {
+    const u = await neAudioBest(s.source_id).catch(() => '');
+    if (u) s.audio = u;
   }
   return { name, songs };
 }
@@ -353,8 +392,11 @@ async function resolveStreamUrl(song) {
 /* 播放地址过期重解析：与 resolveStreamUrl 的区别是失败时返回空（让调用方区分「没拿到」和「用旧的」） */
 async function refreshAudioUrl(song) {
   if (!song) return '';
-  if (song.source === 'netease' && song.source_id && !song.vip) {
-    return neGetSongUrl(song.source_id).catch(() => '');
+  if (song.source === 'netease' && song.source_id) {
+    /* 老歌直链过期时优先走 Meting 续签（VIP 歌它也可能给得出来） */
+    const viaMeting = await neAudioBest(song.source_id);
+    if (viaMeting) return viaMeting;
+    return song.vip ? '' : await neGetSongUrl(song.source_id).catch(() => '');
   }
   if (song.source === 'kugou' && song.source_id) {
     const r = await kugouGetPlayUrl(song.source_id).catch(() => null);
