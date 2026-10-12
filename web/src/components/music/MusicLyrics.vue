@@ -43,8 +43,13 @@
         <button class="ml-cancel" @click="store.cancelListen()">取消</button>
       </div>
 
-      <!-- 中部：滚动歌词 -->
-      <div ref="scrollEl" class="ml-lyric">
+      <!-- 中部：歌词 / 黑胶胶片（点击互相切换） -->
+      <div
+        v-if="!discView"
+        ref="scrollEl"
+        class="ml-lyric"
+        @click="discView = true"
+      >
         <p v-if="!lines.length" class="ml-empty">暂无歌词<br /><span>仅网易云导入的歌曲支持自动识别歌词</span></p>
         <template v-else>
           <p
@@ -55,6 +60,19 @@
             :class="{ on: i === active }"
           >{{ l.text }}</p>
         </template>
+      </div>
+
+      <!-- 黑胶唱片：播放时旋转，暂停停摆；点一下回到歌词 -->
+      <div v-else class="ml-stage" @click="discView = false">
+        <div class="ml-disc" :class="{ spinning: store.playing }">
+          <div class="ml-disc-face"></div>
+          <div class="ml-disc-label">
+            <img v-if="coverImg" :src="coverImg" :alt="store.current.title" />
+            <span v-else class="ml-disc-ph">{{ (store.current.title || '·').charAt(0) }}</span>
+          </div>
+          <div class="ml-disc-hole"></div>
+        </div>
+        <p class="ml-stage-tip">轻触唱片返回歌词</p>
       </div>
 
       <!-- 底部：进度 + 控制 -->
@@ -143,6 +161,12 @@ const lineEls = ref([])
 const showPicker = ref(false)
 const showEnd = ref(false)
 const busy = ref(false)
+/* 歌词 ⇄ 黑胶唱片 视图切换 */
+const discView = ref(false)
+const coverImg = computed(() => {
+  const c = store.current?.cover
+  return c && (c.startsWith('data:') || c.startsWith('http') || c.startsWith('blob:')) ? c : ''
+})
 
 const contactList = computed(() => (contacts.list || []).filter((c) => c.kind !== 'group'))
 /* 头像以联系人设置/聊天里实际显示的为准（人物卡头像开启同步到联系人时用人物卡头像） */
@@ -320,6 +344,44 @@ onMounted(() => {
   color: #fff; font-size: 18px; font-weight: 700;
   transform: scale(1.04); text-shadow: 0 2px 12px rgba(0,0,0,0.4);
 }
+/* 黑胶唱片：旋转 + 沟纹 + 中心专辑封面（点击切回歌词） */
+.ml-stage {
+  position: relative; z-index: 1; flex: 1; min-height: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px;
+}
+.ml-disc {
+  position: relative; width: 74vw; max-width: 300px; aspect-ratio: 1 / 1;
+  border-radius: 50%; overflow: hidden;
+  background: radial-gradient(circle at 50% 50%, #23232a 0 30%, #17171c 60%, #101014 100%);
+  box-shadow: 0 18px 46px rgba(0, 0, 0, 0.55), inset 0 0 0 1px rgba(255, 255, 255, 0.09);
+  display: flex; align-items: center; justify-content: center;
+  animation: mlSpin 22s linear infinite;
+  animation-play-state: paused;
+}
+.ml-disc.spinning { animation-play-state: running; }
+/* 沟纹 + 一圈唱片光泽，转起来有明暗流动感 */
+.ml-disc-face {
+  position: absolute; inset: 0; border-radius: 50%; pointer-events: none;
+  background:
+    repeating-radial-gradient(circle at 50% 50%, rgba(255,255,255,0.055) 0 1.5px, rgba(255,255,255,0) 1.5px 4px),
+    conic-gradient(from 0deg, rgba(255,255,255,0.14), rgba(255,255,255,0) 22%, rgba(255,255,255,0.10) 48%, rgba(255,255,255,0) 74%, rgba(255,255,255,0.14));
+}
+.ml-disc-label {
+  position: relative; z-index: 2; width: 58%; aspect-ratio: 1 / 1; border-radius: 50%;
+  overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.1);
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.45);
+}
+.ml-disc-label img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.ml-disc-ph { font-size: 34px; font-weight: 700; color: rgba(255, 255, 255, 0.75); }
+.ml-disc-hole {
+  position: absolute; z-index: 3; width: 14px; height: 14px; border-radius: 50%;
+  background: #0b0b0e; box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.12);
+}
+@keyframes mlSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+.ml-stage-tip { margin: 0; font-size: 11px; color: rgba(255, 255, 255, 0.45); letter-spacing: 0.5px; }
+
 .ml-empty {
   text-align: center; font-size: 15px; color: rgba(255,255,255,0.6); margin-top: 30vh;
 }
