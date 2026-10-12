@@ -71,23 +71,9 @@
       </div>
     </div>
 
-    <!-- 导出弹窗 -->
-    <Modal :show="exportOpen" title="导出数据" width="360px" @close="exportOpen = false">
-      <div class="seg">
-        <button
-          v-for="s in SCOPES"
-          :key="s.k"
-          class="seg-btn"
-          :class="{ on: expScope === s.k }"
-          @click="expScope = s.k"
-        >{{ s.n }}</button>
-      </div>
-
-      <div v-if="expScope === 'full'" class="exp-pane">
-        <p class="exp-desc">导出当前全部数据（共 {{ overview.total }} 条），包含联系人、聊天、音乐、字卡、信件等所有内容。</p>
-      </div>
-
-      <div v-else-if="expScope === 'feature'" class="exp-pane">
+    <!-- 按板块导出弹窗 -->
+    <Modal :show="featureOpen" title="按板块导出" width="360px" @close="featureOpen = false">
+      <div class="exp-pane">
         <p class="exp-desc">勾选要导出的桌面功能板块；关联到的联系人、字卡、歌曲等会自动一起带上。</p>
         <label v-for="f in overview.features" :key="f.key" class="ck-row">
           <input type="checkbox" :value="f.key" v-model="picked.features" />
@@ -97,7 +83,15 @@
         <p v-if="!overview.features.length" class="exp-empty">暂无板块数据</p>
       </div>
 
-      <div v-else class="exp-pane">
+      <template #footer>
+        <button class="mini-btn" @click="featureOpen = false">取消</button>
+        <button class="mini-btn primary" :disabled="picked.features.length === 0" @click="doExport('feature')">导出</button>
+      </template>
+    </Modal>
+
+    <!-- 按联系人导出弹窗 -->
+    <Modal :show="contactsOpen" title="按联系人导出" width="360px" @close="contactsOpen = false">
+      <div class="exp-pane">
         <p class="exp-desc">勾选联系人，与该联系人相关的全部数据（聊天、红包、设置、桌面、纪念日、字卡等）都会导出。</p>
         <label class="ck-row ck-all">
           <input type="checkbox" :checked="allContactsPicked" @change="toggleAllContacts" />
@@ -117,8 +111,8 @@
       </div>
 
       <template #footer>
-        <button class="mini-btn" @click="exportOpen = false">取消</button>
-        <button class="mini-btn primary" :disabled="!canExport" @click="doExport">导出</button>
+        <button class="mini-btn" @click="contactsOpen = false">取消</button>
+        <button class="mini-btn primary" :disabled="picked.contacts.length === 0" @click="doExport('contacts')">导出</button>
       </template>
     </Modal>
 
@@ -197,21 +191,11 @@ async function load() {
 }
 
 /* ─────────── 导出 ─────────── */
-const SCOPES = [
-  { k: 'full', n: '全部' },
-  { k: 'feature', n: '按板块' },
-  { k: 'contacts', n: '按联系人' }
-]
-const exportOpen = ref(false)
-const expScope = ref('full')
-const overview = ref({ features: [], contacts: [], total: 0 })
+const featureOpen = ref(false)
+const contactsOpen = ref(false)
+const overview = ref({ features: [], contacts: [] })
 const picked = ref({ features: [], contacts: [] })
 
-const canExport = computed(() => {
-  if (expScope.value === 'full') return overview.value.total > 0
-  if (expScope.value === 'feature') return picked.value.features.length > 0
-  return picked.value.contacts.length > 0
-})
 const allContactsPicked = computed(() =>
   overview.value.contacts.length > 0 && picked.value.contacts.length === overview.value.contacts.length)
 
@@ -220,14 +204,15 @@ function isImg(a) {
 }
 
 async function openExport(scope) {
-  expScope.value = scope || 'full'
   picked.value = { features: [], contacts: [] }
-  exportOpen.value = true
   try {
     overview.value = await getBackupOverview()
   } catch (e) {
     toast.pushToast({ title: '读取数据失败', text: e.message })
+    return
   }
+  if (scope === 'feature') featureOpen.value = true
+  else contactsOpen.value = true
 }
 
 function toggleAllContacts(e) {
@@ -258,15 +243,16 @@ function exportAll() {
   }
 }
 
-function doExport() {
+function doExport(scope) {
   try {
-    const data = buildBackup({
-      type: expScope.value,
-      features: picked.value.features,
-      contacts: picked.value.contacts
-    })
+    const data = buildBackup(
+      scope === 'feature'
+        ? { type: 'feature', features: picked.value.features }
+        : { type: 'contacts', contacts: picked.value.contacts }
+    )
     downloadBackup(data)
-    exportOpen.value = false
+    if (scope === 'feature') featureOpen.value = false
+    else contactsOpen.value = false
     toast.pushToast({ title: '已导出备份文件' })
   } catch (e) {
     toast.pushToast({ title: '导出失败', text: e.message })
@@ -450,12 +436,6 @@ onMounted(load)
 .usage-bar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #c0956a, #d9b285); transition: width .3s ease; }
 
 /* 导出弹窗 */
-.seg { display: flex; background: var(--bg-soft); border-radius: 999px; padding: 3px; margin-bottom: 12px; }
-.seg-btn {
-  flex: 1; border: none; background: transparent; border-radius: 999px;
-  padding: 7px 0; font-size: 13px; color: var(--text-soft);
-}
-.seg-btn.on { background: var(--bg-screen); color: var(--text); font-weight: 600; box-shadow: var(--shadow); }
 .exp-desc { font-size: 12px; color: var(--text-soft); line-height: 1.6; margin: 0 0 8px; }
 .exp-empty { font-size: 12px; color: var(--text-soft); text-align: center; padding: 18px 0; margin: 0; }
 .ck-row {
