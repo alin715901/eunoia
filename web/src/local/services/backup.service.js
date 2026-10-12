@@ -28,8 +28,9 @@ const EXPORT_TABLES = [
   'listen_together', 'app_items'
 ]
 
-/* 大板块 → 数据表 */
+/* 大板块 → 数据表（对齐桌面功能；感知 / 心迹为即时功能不落库，无需导出） */
 export const BACKUP_FEATURES = [
+  { key: 'chat', label: '聊天', tables: ['chat_messages'] },
   { key: 'music', label: '音乐', tables: ['songs', 'song_favs'] },
   { key: 'cards', label: '字卡', tables: ['card_groups', 'cards'] },
   { key: 'letters', label: '信件', tables: ['letters'] },
@@ -38,10 +39,10 @@ export const BACKUP_FEATURES = [
   { key: 'wallets', label: '钱包', tables: ['wallets'] },
   { key: 'anniversaries', label: '纪念日', tables: ['anniversaries'] },
   { key: 'divinations', label: '占卜', tables: ['divinations'] },
-  { key: 'modules', label: '模块记录', tables: ['app_items'] },
   { key: 'companion', label: '陪伴邀请', tables: ['companion_invites'] },
   { key: 'listen', label: '一起听', tables: ['listen_together'] },
-  { key: 'settings', label: '全局设置', tables: ['global_settings'] }
+  { key: 'modules', label: '模块记录', tables: ['app_items'] },
+  { key: 'beautify', label: '桌面美化', tables: ['global_settings'] }
 ]
 
 /* 表 → 自增主键列（合并时重映射；无自增 id 的表不在此列） */

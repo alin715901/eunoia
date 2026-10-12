@@ -1,62 +1,43 @@
 <template>
   <div class="sp-view">
-    <AppHeader title="数据管理" back />
+    <AppHeader title="内存数据" back />
     <div class="sp-body">
-      <!-- 存储用量 -->
-      <section class="card usage">
-        <div class="usage-top">
-          <span class="usage-title">🗄 存储用量</span>
-          <span class="usage-meta">已用 {{ fmtSize(stats.dbSize) }} / {{ fmtSize(CAP) }} · {{ pct }}%</span>
+      <!-- 占用空间 -->
+      <div class="panel sec">
+        <div class="sec-title">占用空间</div>
+        <div class="stat-row">
+          <span class="stat-label">数据库</span>
+          <span class="stat-value">{{ fmtSize(stats.dbSize) }}</span>
         </div>
-        <div class="usage-bar"><i :style="{ width: pct + '%' }"></i></div>
-        <div class="usage-tiles">
-          <div class="tile">
-            <span class="tile-val">{{ chatCount }}</span>
-            <span class="tile-lab">聊天记录</span>
-          </div>
-          <div class="tile">
-            <span class="tile-val">{{ contentCount }}</span>
-            <span class="tile-lab">内容收藏</span>
-          </div>
-          <div class="tile">
-            <span class="tile-val">{{ contactCount }}</span>
-            <span class="tile-lab">联系人</span>
-          </div>
+        <div class="stat-row total">
+          <span class="stat-label">合计</span>
+          <span class="stat-value">{{ fmtSize((stats.dbSize || 0) + (stats.uploadsSize || 0)) }}</span>
         </div>
-      </section>
+      </div>
 
-      <!-- 备份与恢复 -->
-      <div class="sec-title">备份与恢复</div>
-      <section class="grid">
-        <button class="card action" @click="openExport('full')">
-          <span class="act-ic ic-blue">💾</span>
-          <span class="act-txt"><b>全量备份</b><small>导出全部数据</small></span>
-          <span class="act-arrow">›</span>
-        </button>
-        <button class="card action" @click="openExport('feature')">
-          <span class="act-ic ic-purple">🗂️</span>
-          <span class="act-txt"><b>按板块备份</b><small>勾选要导出的板块</small></span>
-          <span class="act-arrow">›</span>
-        </button>
-        <button class="card action" @click="openExport('contacts')">
-          <span class="act-ic ic-green">👤</span>
-          <span class="act-txt"><b>按联系人备份</b><small>连同关联数据导出</small></span>
-          <span class="act-arrow">›</span>
-        </button>
-        <button class="card action" @click="pickFile">
-          <span class="act-ic ic-orange">📥</span>
-          <span class="act-txt"><b>导入备份</b><small>从 JSON 文件恢复</small></span>
-          <span class="act-arrow">›</span>
-        </button>
-      </section>
+      <!-- 数据备份 -->
+      <div class="panel sec">
+        <div class="sec-title">数据备份</div>
+        <p class="bk-hint">
+          导出为 JSON 文件保存，换设备 / 换浏览器时导入即可恢复。图片、语音等附件都存在数据库里，会一起打包进备份。
+        </p>
+        <div class="bk-btns">
+          <button class="mini-btn" @click="openExport('full')">全部导出</button>
+          <button class="mini-btn" @click="openExport('feature')">按板块导出</button>
+          <button class="mini-btn" @click="openExport('contacts')">按联系人导出</button>
+          <button class="mini-btn" :disabled="importing" @click="pickFile">{{ importing ? '导入中…' : '导入数据' }}</button>
+        </div>
+        <input ref="fileEl" type="file" accept=".json,application/json" class="bk-file" @change="onFilePicked" />
+      </div>
 
-      <!-- 重置 -->
-      <button class="reset-btn" :disabled="resetting" @click="askReset">
-        🗑 {{ resetting ? '重置中…' : '重置数据' }}
-      </button>
-      <p class="reset-hint">清空本设备上的全部本地数据并恢复初始状态，不可恢复。</p>
-
-      <input ref="fileEl" type="file" accept=".json,application/json" class="bk-file" @change="onFilePicked" />
+      <!-- 重置数据 -->
+      <div class="panel sec">
+        <div class="sec-title">重置数据</div>
+        <p class="bk-hint">清空本设备上的全部本地数据（联系人、聊天、音乐、字卡等），并恢复初始状态，不可恢复。</p>
+        <button class="mini-btn danger" :disabled="resetting" @click="askReset">
+          {{ resetting ? '重置中…' : '重置数据' }}
+        </button>
+      </div>
     </div>
 
     <!-- 导出弹窗 -->
@@ -76,7 +57,7 @@
       </div>
 
       <div v-else-if="expScope === 'feature'" class="exp-pane">
-        <p class="exp-desc">勾选要导出的板块；关联到的联系人、字卡、歌曲等会自动一起带上。</p>
+        <p class="exp-desc">勾选要导出的桌面功能板块；关联到的联系人、字卡、歌曲等会自动一起带上。</p>
         <label v-for="f in overview.features" :key="f.key" class="ck-row">
           <input type="checkbox" :value="f.key" v-model="picked.features" />
           <span class="ck-name">{{ f.label }}</span>
@@ -159,23 +140,8 @@ import { useNotificationsStore } from '@/stores/notifications'
 
 const toast = useNotificationsStore()
 
-/* ─────────── 存储用量 ─────────── */
-const CAP = 512 * 1024 * 1024 // 展示用容量上限
-const stats = ref({ tables: [], dbSize: 0 })
-
-const byKey = (k) => {
-  const t = stats.value.tables.find((x) => x.key === k)
-  return t ? Number(t.count) || 0 : 0
-}
-const chatCount = computed(() => byKey('chat_messages'))
-const contactCount = computed(() => byKey('contacts'))
-const contentCount = computed(() =>
-  ['letters', 'moments', 'cards', 'favorites', 'wallets', 'anniversaries', 'app_items', 'divinations']
-    .reduce((s, k) => s + byKey(k), 0))
-const pct = computed(() => {
-  const v = Number(stats.value.dbSize) || 0
-  return Math.min(100, Math.round((v / CAP) * 100))
-})
+/* ─────────── 占用空间 ─────────── */
+const stats = ref({ tables: [], dbSize: 0, uploadsSize: 0 })
 
 function fmtSize(n) {
   const v = Number(n) || 0
@@ -187,7 +153,7 @@ function fmtSize(n) {
 async function load() {
   try {
     const d = await getStorageStats()
-    stats.value = d || { tables: [], dbSize: 0 }
+    stats.value = d || { tables: [], dbSize: 0, uploadsSize: 0 }
   } catch (e) {
     /* 忽略，保留上次数据 */
   }
@@ -381,57 +347,32 @@ onMounted(load)
 
 <style scoped>
 .sp-view { flex: 1; display: flex; flex-direction: column; min-height: 0; }
-.sp-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 14px; }
-
-/* 通用卡片 */
-.card { background: var(--bg-screen); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
-
-/* 存储用量 */
-.usage { padding: 16px; }
-.usage-top { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
-.usage-title { font-size: 15px; font-weight: 700; }
-.usage-meta { font-size: 12px; color: var(--text-soft); }
-.usage-bar { height: 8px; border-radius: 999px; background: var(--bg-soft); overflow: hidden; margin: 12px 0; }
-.usage-bar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #6c8cff, #8a6cff); transition: width .3s ease; }
-.usage-tiles { display: flex; gap: 8px; }
-.tile {
-  flex: 1; background: var(--bg-soft); border-radius: var(--radius);
-  padding: 10px 6px; text-align: center; display: flex; flex-direction: column; gap: 3px;
+.sp-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+.panel { background: var(--bg-screen); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
+.sec { padding: 14px; }
+.sec-title { font-size: 14px; font-weight: 700; margin-bottom: 8px; }
+.mini-btn {
+  border: 1px solid var(--border); background: var(--bg-soft);
+  border-radius: 999px; padding: 5px 12px; font-size: 12px; color: var(--text);
 }
-.tile-val { font-size: 18px; font-weight: 700; }
-.tile-lab { font-size: 11px; color: var(--text-soft); }
-
-/* 分组标题 */
-.sec-title { font-size: 13px; font-weight: 700; color: var(--text-soft); padding: 2px 2px 0; }
-
-/* 备份与恢复 2×2 网格 */
-.grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
-.action {
-  display: flex; align-items: center; gap: 11px; padding: 14px 12px;
-  text-align: left; cursor: pointer;
+.mini-btn:disabled { opacity: 0.6; }
+.mini-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.mini-btn.danger { border-color: #c0576b; color: #c0576b; }
+.mini-btn.danger:active { background: rgba(192, 87, 107, 0.08); }
+.stat-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 2px; font-size: 14px; color: var(--text);
+  border-bottom: 1px solid var(--border);
 }
-.action:active { transform: scale(0.985); }
-.act-ic {
-  width: 40px; height: 40px; border-radius: 12px; flex: 0 0 auto;
-  display: inline-flex; align-items: center; justify-content: center; font-size: 19px; color: #fff;
-}
-.ic-blue { background: linear-gradient(135deg, #5b8cff, #6c6cff); }
-.ic-purple { background: linear-gradient(135deg, #9b6cff, #c06cff); }
-.ic-green { background: linear-gradient(135deg, #2fbf71, #25a55a); }
-.ic-orange { background: linear-gradient(135deg, #ff9a3c, #ff6b6b); }
-.act-txt { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
-.act-txt b { font-size: 14px; font-weight: 600; }
-.act-txt small { font-size: 11px; color: var(--text-soft); }
-.act-arrow { font-size: 22px; color: var(--text-soft); flex: 0 0 auto; line-height: 1; }
+.stat-row:last-child { border-bottom: none; }
+.stat-label { color: var(--text); }
+.stat-value { color: var(--text-soft); font-size: 13px; }
+.stat-row.total .stat-label { font-weight: 600; }
+.stat-row.total .stat-value { color: var(--text); font-weight: 600; }
 
-/* 重置 */
-.reset-btn {
-  margin-top: 4px; width: 100%; border: 1px solid #c0576b; background: transparent; color: #c0576b;
-  border-radius: var(--radius); padding: 13px; font-size: 14px; font-weight: 600;
-}
-.reset-btn:active { background: rgba(192, 87, 107, 0.08); }
-.reset-btn:disabled { opacity: 0.6; }
-.reset-hint { text-align: center; font-size: 11px; color: var(--text-soft); margin: 0; }
+/* 数据备份 */
+.bk-hint { font-size: 12px; color: var(--text-soft); line-height: 1.7; margin: 0 0 10px; }
+.bk-btns { display: flex; flex-wrap: wrap; gap: 10px; }
 .bk-file { display: none; }
 
 /* 导出弹窗 */
@@ -477,9 +418,4 @@ onMounted(load)
 .imp-btn.danger { border-color: #c0576b; }
 .imp-btn.danger b { color: #c0576b; }
 .imp-btn:disabled { opacity: 0.6; }
-.mini-btn {
-  border: 1px solid var(--border); background: var(--bg-soft);
-  border-radius: 999px; padding: 5px 12px; font-size: 12px; color: var(--text);
-}
-.mini-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 </style>
