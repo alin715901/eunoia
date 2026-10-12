@@ -359,13 +359,12 @@ async function refreshAudioUrl(song) {
 }
 
 /* 封面图抓取 → dataURL（入库后离线可用）。
-   网易云封面 CDN 带 CORS 头可直接抓；酷狗不带，统一走 worker 中转（worker 会补 CORS 头）。
+   网易云封面 CDN 自带 CORS 头，可直连抓取（不依赖中转）；
+   酷狗 CDN 不带 CORS，必须走中转补 CORS 头。
+   策略：先直连，失败再回落到中转——这样即便没配中转，网易云封面仍可缓存。
    大于 2MB 的图拒绝（保护 IndexedDB 体积）。 */
 const COVER_MAX_BYTES = 2 * 1024 * 1024;
-async function fetchCoverDataUrl(url) {
-  const u = String(url || '').trim();
-  if (!u || u.startsWith('data:')) return '';
-  const res = await fetch(withProxy(u));
+async function readCoverBlob(res) {
   if (!res.ok) throw new Error(`封面抓取失败 ${res.status}`);
   const blob = await res.blob();
   if (!blob.type.startsWith('image/')) throw new Error('封面返回的不是图片');
@@ -376,6 +375,20 @@ async function fetchCoverDataUrl(url) {
     fr.onerror = () => reject(new Error('封面读取失败'));
     fr.readAsDataURL(blob);
   });
+}
+async function fetchCoverDataUrl(url) {
+  const u = String(url || '').trim();
+  if (!u || u.startsWith('data:')) return '';
+  let firstErr = null;
+  try {
+    return await readCoverBlob(await fetch(u));
+  } catch (e) {
+    firstErr = e;
+  }
+  /* 直连失败（通常是缺 CORS 头）→ 回落到中转 */
+  const proxied = withProxy(u);
+  if (!proxied || proxied === u) throw firstErr || new Error('封面抓取失败');
+  return readCoverBlob(await fetch(proxied));
 }
 
 /* ═══ 联系人（对方）自己收藏歌曲：cron 每分钟小概率触发，广播弹窗提示 ═══ */
