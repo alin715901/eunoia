@@ -1,0 +1,160 @@
+:root {
+  /* 简约中性色系 + 文艺衬线（对标 mochi / chat 的精致伴侣风） */
+  --bg-body: #f6f6f8;
+  --bg-screen: #ffffff;
+  --bg-soft: #f1f1f4;
+  --text: #1c1c1e;
+  --text-soft: #8e8e93;
+
+  --border: #ececef;
+  --divider: #d7d7de;         /* 分割线：比边框深一档，浅色下也看得清 */
+  --accent: #c5a47e;          /* 默认强调色：奶茶驼（莫兰迪） */
+  --accent-soft: rgba(197, 164, 126, 0.12);
+  --icon-bg: #efeff2;         /* 桌面图标底，跟随卡片透明度 */
+  --icon-fg: var(--accent);   /* 桌面图标图案色 */
+  --icon-label: var(--text);  /* 桌面图标文字色 */
+  /* 主页卡片底：由「卡片透明度」控制，默认等同原色 */
+  --card-bg-soft: var(--bg-soft);
+  --card-bg-screen: var(--bg-screen);
+  /* 底部导航栏底色：跟随卡片透明度一起变透（毛玻璃） */
+  --tab-bg: var(--bg-screen);
+  --avatar-bg: #e3e3e8;       /* 头像底 */
+  --avatar-fg: #1c1c1e;
+
+  --bubble-me: var(--accent); /* 我的消息：强调色底白字 */
+  --bubble-me-fg: #ffffff;
+  --bubble-contact: #f1f1f4;  /* 对方消息：浅灰底深字 */
+
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.04), 0 8px 24px rgba(0, 0, 0, 0.05);
+  --shadow-strong: 0 12px 36px rgba(0, 0, 0, 0.12);
+  --radius: 18px;
+  --radius-sm: 14px;
+  --radius-lg: 26px;
+  --transition: 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+  /* 字体变量只定义在 :root：若同时写在 html, body 上，
+     body 自己的定义会遮蔽从 html 继承来的主题字体，导致切换字体不生效 */
+  --font-sans: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', 'Segoe UI', Roboto, sans-serif;
+  --font-serif: 'Songti SC', 'STSong', 'Noto Serif CJK SC', 'Noto Serif SC', 'SimSun', serif;
+  --scroll-thumb: #cfcfd4;
+  color-scheme: light;
+}
+
+/* 深色模式：由 <html data-theme="dark"> 切换（设置页：浅色 / 深色 / 跟随系统） */
+html[data-theme='dark'] {
+  --bg-body: #101012;
+  --bg-screen: #1c1c1f;
+  --bg-soft: #26262b;
+  --text: #f2f2f7;
+  --text-soft: #9b9ba3;
+
+  --border: #35353d;
+  --divider: #3d3d46;
+  --icon-bg: #1d1d21;         /* 深色模式：图标底为近黑（参考 mochi），主页壁纸上清晰醒目 */
+  --icon-fg: #f2f2f7;
+  --icon-label: #4c4c52;      /* 壁纸保持用户自选（多为浅色），文字用深色才看得清 */
+  --avatar-bg: #35353d;
+  --avatar-fg: #f2f2f7;
+
+  --bubble-contact: #2c2c32;
+
+  --shadow: 0 2px 8px rgba(0, 0, 0, 0.28), 0 8px 24px rgba(0, 0, 0, 0.34);
+  --shadow-strong: 0 12px 36px rgba(0, 0, 0, 0.5);
+  --scroll-thumb: #45454d;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+
+/* 去除移动端点按时的系统高亮（灰色半透明块）与长按弹出菜单；
+   点击态不再显示浏览器默认 focus 轮廓，但保留键盘 Tab 导航的轮廓（无障碍） */
+* {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+}
+*:focus { outline: none; }
+*:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  /* 系统无衬线作为正文；衬线字体栈用于标题/品牌/字卡，营造文艺温柔感 */
+  font-family: var(--font-sans);
+  color: var(--text);
+  background: var(--bg-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+#app { height: 100%; }
+
+button { font-family: inherit; cursor: pointer; }
+input, textarea, select { font-family: inherit; color: var(--text); }
+
+/* 通用按钮 */
+.btn {
+  border: none;
+  border-radius: 999px;
+  padding: 10px 18px;
+  font-size: 14px;
+  font-weight: 600;
+  background: var(--bg-soft);
+  color: var(--text);
+  transition: transform 0.15s ease, box-shadow 0.2s ease, background 0.2s ease;
+  box-shadow: var(--shadow);
+}
+.btn:active { transform: scale(0.96); }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-ghost { background: transparent; box-shadow: none; border: 1px solid var(--border); }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* 通用卡片/面板 */
+.panel {
+  background: var(--bg-screen);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  border: 1px solid var(--border);
+}
+
+/* 通用输入框 */
+.field {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 12px;
+  font-size: 14px;
+  background: var(--bg-soft);
+  outline: none;
+  transition: border 0.2s ease, box-shadow 0.2s ease;
+}
+.field:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
+
+/* 聊天气泡 */
+.bubble {
+  max-width: 72%;
+  padding: 10px 14px;
+  border-radius: 18px;
+  font-size: 15px;
+  line-height: 1.45;
+  word-break: break-word;
+  box-shadow: var(--shadow);
+}
+.bubble-me { background: var(--bubble-me); color: var(--bubble-me-fg); border-bottom-right-radius: 6px; }
+.bubble-contact { background: var(--bubble-contact); color: var(--text); border-bottom-left-radius: 6px; }
+
+/* 顶部页面标题 */
+.page-title {
+  font-size: 20px;
+  font-weight: 700;
+  margin: 0;
+}
+
+/* 滚动条隐藏：保留滚动能力，去掉上下滑动时右边缘的滑动块 */
+::-webkit-scrollbar { width: 0; height: 0; display: none; }
+::-webkit-scrollbar-thumb { background: transparent; }
+::-webkit-scrollbar-track { background: transparent; }
+html, body { scrollbar-width: none; -ms-overflow-style: none; }
+
+/* 通用 flex 工具 */
+.row { display: flex; align-items: center; }
+.col { display: flex; flex-direction: column; }
+.spacer { flex: 1 1 auto; }

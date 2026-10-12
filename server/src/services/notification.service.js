@@ -1,0 +1,28 @@
+// SSE 客户端集合与广播
+const clients = new Set();
+
+function addClient(res) {
+  clients.add(res);
+}
+
+function removeClient(res) {
+  clients.delete(res);
+}
+
+function broadcast(event, data) {
+  const payload = `event: ${event}\n` + `data: ${JSON.stringify(data)}\n\n`;
+  for (const res of clients) {
+    try {
+      res.write(payload);
+    } catch (e) {
+      clients.delete(res);
+    }
+  }
+}
+
+module.exports = {
+  clients,
+  addClient,
+  removeClient,
+  broadcast,
+};

@@ -1,0 +1,22 @@
+# Render.com 部署配置（免费套餐）
+# 用法：把整个项目推到 GitHub，在 Render 选择 "New" → "Blueprint" 指向本仓库即可。
+services:
+  - type: web
+    name: eunoia-app
+    runtime: docker
+    plan: free
+    region: oregon          # 可选：singapore / frankfurt 等
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    envVars:
+      - key: PORT
+        value: 3000
+      - key: NODE_ENV
+        value: production
+      - key: DATA_DIR
+        value: /data
+    # 持久磁盘：保存 SQLite 数据库与上传的图片/语音（否则重启数据清空）
+    disk:
+      name: eunoia-data
+      mountPath: /data
+      sizeGB: 1
