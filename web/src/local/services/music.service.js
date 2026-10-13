@@ -52,10 +52,9 @@ function parseLink(raw) {
   if (/^https?:\/\//i.test(url) && /\.(mp3|m4a|aac|wav|flac|ogg)(\?|$)/i.test(url)) {
     return { type: 'audio', url };
   }
-  // 网易云歌单
-  let m = url.match(/music\.163\.com[^#]*#*\/?playlist\?id=(\d+)/i) || url.match(/163cn\.tv[^]*playlist[^]*(\d{5,})/i);
+  // 网易云歌单：兼容 id 在路径（/playlist/123）或 query（?id=123）两种格式
   if (/music\.163\.com/i.test(url) && /playlist/i.test(url)) {
-    const id = (url.match(/id=(\d+)/) || [])[1];
+    const id = (url.match(/playlist\/(\d+)/) || url.match(/[?&]id=(\d+)/) || [])[1];
     if (id) return { type: 'netease_playlist', id };
   }
   // 网易云歌曲
