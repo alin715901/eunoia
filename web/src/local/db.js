@@ -9,6 +9,7 @@
 
 import initSqlJs from 'sql.js'
 import wasmUrl from 'sql.js/dist/sql-wasm.wasm?url'
+import wasmDataUrl from 'sql.js/dist/sql-wasm.wasm?inline'
 import schemaSql from './schema.sql?raw'
 import { migrate } from './migrate'
 import runSeed from './seed.js'
@@ -190,13 +191,27 @@ const db = {
 
 /* ── 初始化 / 重置 ── */
 
-/* 加载 sql.js 的 WASM：不用 WebAssembly.instantiateStreaming——
-   GitHub Pages CDN 对该文件的流式响应会挂起（instantiateStreaming 的 promise 永远
-   pending，且 sql.js 的回退只捕获 reject、不捕获 hang，导致整个应用卡死无法启动）。
-   改为 fetch 成 ArrayBuffer 后以 wasmBinary 传入（同步编译路径）。
-   CDN 边缘节点偶尔会让响应体流卡住（不报错、不结束），因此每次尝试独立超时，
-   并带缓存穿透参数重试（迫使 CDN 开新连接，绕开卡住的流）。 */
+/* 加载 sql.js 的 WASM。
+   主路径：构建期用 `?inline` 把 wasm 以 base64 data URL 内联进 JS bundle，
+   运行时零网络请求。这是因为 GitHub Pages CDN 对该 .wasm 的响应体在部分
+   网络路径下会稳定卡流（不报错、不结束）：WebAssembly.instantiateStreaming
+   的 promise 永远 pending，sql.js 的回退只捕获 reject 不捕获 hang；fetch +
+   wasmBinary 同样间歇性 hang，且缓存穿透重试也救不回来（新连接照样卡）。
+   兜底路径：万一内联数据不可用，再按旧方式 fetch + 缓存穿透重试。 */
 async function loadSqlJs() {
+  try {
+    const b64 = wasmDataUrl.slice(wasmDataUrl.indexOf(',') + 1)
+    const bin = atob(b64)
+    const bytes = new Uint8Array(bin.length)
+    for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+    if (bytes.byteLength > 1024) {
+      const SQL = await initSqlJs({ wasmBinary: bytes })
+      console.log('[db] wasm 内联加载成功', bytes.byteLength, 'bytes')
+      return SQL
+    }
+  } catch (e) {
+    console.warn('[db] 内联 wasm 解码失败，回退网络加载', e)
+  }
   let lastErr = null
   for (let attempt = 1; attempt <= 4; attempt++) {
     try {
