@@ -139,37 +139,95 @@ async function neResolveSong(id) {
   return meta;
 }
 
-async function neResolvePlaylist(id) {
-  const d = await fetchJson(`https://music.163.com/api/playlist/detail?id=${id}`);
-  const pl = d && d.result;
-  if (!pl || !Array.isArray(pl.tracks)) throw new Error('歌单不存在或为空');
-  const name = pl.name || '网易云歌单';
-  const songs = pl.tracks.slice(0, 100).map((s) => {
-    const meta = neSongFromDetail(s);
-    meta.plist = name;
-    return meta;
-  });
-  /* 批量补直链（免费歌才有）：分 20 个一组 */
-  const free = songs.filter((s) => !s.vip);
-  for (let i = 0; i < free.length; i += 20) {
-    const batch = free.slice(i, i + 20);
-    const ids = batch.map((s) => s.source_id).join(',');
+/* 取 Meting 歌单曲目（公开/私密都能取，带 CORS，浏览器直连不需中转）。
+   逐个镜像尝试，返回第一个非空数组；都失败返回 null。 */
+async function metingPlaylist(id) {
+  for (const host of METING_HOSTS) {
     try {
-      const d2 = await fetchJson(
-        `https://music.163.com/api/song/enhance/player/url?ids=[${ids}]&br=320000`,
-        { Referer: 'https://music.163.com/' }
-      );
-      const map = new Map((d2.data || []).map((x) => [String(x.id), x.url || '']));
-      batch.forEach((s) => { s.audio = map.get(s.source_id) || ''; });
-    } catch (e) { /* 忽略，audio 留空 */ }
+      const res = await fetch(`${host}/meting/?server=netease&type=playlist&id=${id}`);
+      if (!res.ok) continue;
+      const arr = await res.json();
+      if (Array.isArray(arr) && arr.length) return arr;
+    } catch (e) {
+      /* 换镜像重试 */
+    }
   }
-  /* 官方接口没给直链的，用 Meting 备用音源补齐（最多 30 首，避免请求过密） */
-  const missing = songs.filter((s) => !s.audio).slice(0, 30);
-  for (const s of missing) {
-    const u = await neAudioBest(s.source_id).catch(() => '');
-    if (u) s.audio = u;
+  return null;
+}
+
+/* Meting 兜底：私密/登录态歌单（"我喜欢的音乐"等）官方接口返回 20001，
+   匿名拿不到；Meting 走 weapi+cookie 能取到完整曲目列表。 */
+async function neResolvePlaylistMeting(id) {
+  /* 歌单名：移动端分享页 og:title（页面无需登录即可拿到标题） */
+  let name = '网易云歌单';
+  try {
+    const html = await fetchText(`https://music.163.com/m/playlist?id=${id}`);
+    const m =
+      html.match(/og:title"\s+content="([^"]+)"/) || html.match(/<title>([^<]*?)<\/title>/);
+    if (m) name = (m[1] || '').replace(/\s*-\s*歌单\s*-\s*网易云音乐/i, '').trim() || name;
+  } catch (e) {
+    /* 拿不到名称就用默认 */
   }
+  const list = await metingPlaylist(id);
+  if (!Array.isArray(list) || !list.length) {
+    throw new Error('歌单为空或解析失败，可能已失效');
+  }
+  const songs = list.slice(0, 500).map((t) => {
+    const sid = (String(t.url || '').match(/type=url&id=(\d+)/) || [])[1] || '';
+    return {
+      title: t.name || '未知歌曲',
+      artist: t.artist || '',
+      cover: t.pic || '',
+      duration: 0,
+      source: 'netease',
+      source_id: String(sid),
+      audio: t.url || '', // Meting 音源端点，播放时自动续签、永不过期
+      vip: 0,
+      plist: name
+    };
+  });
   return { name, songs };
+}
+
+async function neResolvePlaylist(id) {
+  // 1) 官方接口（公开歌单，元数据最全、封面/时长齐全）
+  try {
+    const d = await fetchJson(`https://music.163.com/api/playlist/detail?id=${id}`);
+    const pl = d && d.result;
+    if (pl && Array.isArray(pl.tracks) && pl.tracks.length) {
+      const name = pl.name || '网易云歌单';
+      const songs = pl.tracks.slice(0, 100).map((s) => {
+        const meta = neSongFromDetail(s);
+        meta.plist = name;
+        return meta;
+      });
+      /* 批量补直链（免费歌才有）：分 20 个一组 */
+      const free = songs.filter((s) => !s.vip);
+      for (let i = 0; i < free.length; i += 20) {
+        const batch = free.slice(i, i + 20);
+        const ids = batch.map((s) => s.source_id).join(',');
+        try {
+          const d2 = await fetchJson(
+            `https://music.163.com/api/song/enhance/player/url?ids=[${ids}]&br=320000`,
+            { Referer: 'https://music.163.com/' }
+          );
+          const map = new Map((d2.data || []).map((x) => [String(x.id), x.url || '']));
+          batch.forEach((s) => { s.audio = map.get(s.source_id) || ''; });
+        } catch (e) { /* 忽略，audio 留空 */ }
+      }
+      /* 官方接口没给直链的，用 Meting 备用音源补齐（最多 30 首，避免请求过密） */
+      const missing = songs.filter((s) => !s.audio).slice(0, 30);
+      for (const s of missing) {
+        const u = await neAudioBest(s.source_id).catch(() => '');
+        if (u) s.audio = u;
+      }
+      return { name, songs };
+    }
+  } catch (e) {
+    /* 官方接口异常（网络/限流）→ 落到 Meting 兜底 */
+  }
+  // 2) Meting 兜底（私密/登录态歌单：官方接口返回 20001，需要登录才能看）
+  return neResolvePlaylistMeting(id);
 }
 
 async function neExpandShort(url) {
@@ -431,6 +489,9 @@ async function neGetLyric(id) {
 async function resolveStreamUrl(song) {
   if (!song) return '';
   if (song.audio && song.audio.startsWith('/assets/')) return song.audio; // 本地上传
+  /* 音源已经是 Meting 端点（自刷新、永不过期，私密歌单/官方缺直链都走它）→ 直接用作播放地址，
+     省去一次注定失败的官方 neGetSongUrl 请求 */
+  if (song.audio && /\/meting\//.test(song.audio)) return song.audio;
   if (song.source === 'netease' && song.source_id && !song.vip) {
     return neGetSongUrl(song.source_id).catch(() => song.audio || '');
   }
