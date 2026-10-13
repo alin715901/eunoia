@@ -190,8 +190,35 @@ const db = {
 
 /* ── 初始化 / 重置 ── */
 
+/* 加载 sql.js 的 WASM：不用 WebAssembly.instantiateStreaming——
+   GitHub Pages CDN 对该文件的流式响应会挂起（instantiateStreaming 的 promise 永远
+   pending，且 sql.js 的回退只捕获 reject、不捕获 hang，导致整个应用卡死无法启动）。
+   改为 fetch 成 ArrayBuffer 后以 wasmBinary 传入（同步编译路径），并带超时重试。 */
+async function loadSqlJs() {
+  const deadline = Date.now() + 30000
+  let lastErr = null
+  while (Date.now() < deadline) {
+    try {
+      const left = deadline - Date.now()
+      const buf = await Promise.race([
+        fetch(wasmUrl).then((r) => {
+          if (!r.ok) throw new Error('wasm HTTP ' + r.status)
+          return r.arrayBuffer()
+        }),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('wasm 加载超时')), left))
+      ])
+      return await initSqlJs({ wasmBinary: buf })
+    } catch (e) {
+      lastErr = e
+      /* 等 800ms 重试（CDN 边缘节点抖动，换个连接往往就好） */
+      await new Promise((r) => setTimeout(r, 800))
+    }
+  }
+  throw lastErr || new Error('wasm 加载失败')
+}
+
 export async function initDb() {
-  const SQL = await initSqlJs({ locateFile: () => wasmUrl })
+  const SQL = await loadSqlJs()
   const saved = await idbGet(IDB_KEY)
   const fresh = !saved || !saved.byteLength
   state.raw = fresh ? new SQL.Database() : new SQL.Database(new Uint8Array(saved))
