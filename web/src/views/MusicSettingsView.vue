@@ -406,7 +406,7 @@ onMounted(() => {
 /* 自定义唱片 */
 .ms-vinyl-row { display: flex; gap: 12px; margin-bottom: 14px; }
 .ms-vinyl {
-  width: 76px; height: 76px; border-radius: 16px; overflow: hidden;
+  width: 76px; height: 76px; border-radius: 16px; overflow: hidden; padding: 0;
   border: 1.5px solid var(--accent); background: #b9b4ae;
   display: flex; align-items: center; justify-content: center;
 }
