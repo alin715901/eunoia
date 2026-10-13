@@ -366,8 +366,13 @@ onMounted(() => {
 .ms-file-name { font-size: 11px; color: var(--accent); margin: 8px 0 0; word-break: break-all; }
 .ms-proxy-row { display: flex; gap: 10px; margin-top: 2px; }
 .ms-proxy-row .grow { flex: 1; min-width: 0; }
-/* 保存按钮与「测试连接」等高 */
-.ms-proxy-row .ms-ghost { padding: 13px 16px; font-size: 14px; font-weight: 700; }
+/* 保存按钮与「测试连接」等高且对齐 */
+.ms-proxy-row .ms-ghost,
+.ms-proxy-row .ms-primary {
+  height: 46px; margin-top: 0; padding: 0 16px;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 700; line-height: 1;
+}
 .ms-primary {
   width: 100%; margin-top: 14px; padding: 13px 0; border: none; border-radius: 999px;
   background: var(--accent); color: #fff; font-size: 14px; font-weight: 700;
