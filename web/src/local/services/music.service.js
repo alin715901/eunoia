@@ -316,18 +316,48 @@ async function kugouLyricSearch(hash) {
   };
 }
 
-/* 歌词：search 拿候选 id/accesskey，download 返回 base64 的 LRC */
+/* 酷狗歌词兜底：Meting 直连（带 CORS，不依赖中转）。
+   注意：injahow 的酷狗歌词会返回错误的「纯音乐」占位，故优先 qijieya，
+   并对返回内容做校验（必须含时间轴、且不是占位文案）。 */
+async function kgGetLyricMeting(hash) {
+  const hosts = ['https://api.qijieya.cn', 'https://api.injahow.cn'];
+  for (const host of hosts) {
+    try {
+      const res = await fetch(`${host}/meting/?server=kugou&type=lrc&id=${String(hash).toLowerCase()}`);
+      if (!res.ok) continue;
+      const text = (await res.text()).trim();
+      if (!text) continue;
+      if (/纯音乐|请尽情欣赏|instrumental/i.test(text)) continue;
+      if (!/\[\d{1,2}:\d{2}(\.\d{1,3})?\]/.test(text)) continue;
+      return text;
+    } catch (e) {
+      /* 换镜像重试 */
+    }
+  }
+  return '';
+}
+
+/* 歌词：search 拿候选 id/accesskey，download 返回 base64 的 LRC（走中转）。
+   中转不可用时回落 Meting 直连兜底，尽量保证酷狗歌词可获取。 */
 async function kugouGetLyric(hash) {
-  const c = await kugouLyricSearch(hash);
-  if (!c || !c.accesskey) return '';
-  const d = await fetchJson(
-    `https://lyrics.kugou.com/download?ver=1&man=yes&client=pc&hash=${String(hash).toLowerCase()}&id=${c.id}&accesskey=${encodeURIComponent(c.accesskey)}&fmt=lrc&decode=true`
-  );
-  const content = d && d.content;
-  if (!content) return '';
-  // base64 → utf8 文本（浏览器无 Buffer，用 atob + TextDecoder）
-  const bytes = Uint8Array.from(atob(content), (c) => c.charCodeAt(0));
-  return new TextDecoder().decode(bytes);
+  try {
+    const c = await kugouLyricSearch(hash);
+    if (c && c.accesskey) {
+      const d = await fetchJson(
+        `https://lyrics.kugou.com/download?ver=1&man=yes&client=pc&hash=${String(hash).toLowerCase()}&id=${c.id}&accesskey=${encodeURIComponent(c.accesskey)}&fmt=lrc&decode=true`
+      );
+      const content = d && d.content;
+      if (content) {
+        // base64 → utf8 文本（浏览器无 Buffer，用 atob + TextDecoder）
+        const bytes = Uint8Array.from(atob(content), (c) => c.charCodeAt(0));
+        const lrc = new TextDecoder().decode(bytes);
+        if (lrc && lrc.trim()) return lrc;
+      }
+    }
+  } catch (e) {
+    /* 中转不可用，走 Meting 兜底 */
+  }
+  return kgGetLyricMeting(hash);
 }
 
 /* 用户上传文件的乱码命名：纯 hex 串 或 hex数字.mp3 形式 */
