@@ -198,10 +198,10 @@ export const useSettingsStore = defineStore('settings', {
     async load() {
       try {
         const data = await api.getSettings()
-        /* 外观：库中可能残留旧值（如早期的 system），而用户最近一次显式选择会同步写入
-           localStorage（见 applyAppearance）。这里让显式选择优先，避免「已设浅色却被旧的
-           system 覆盖、在深色系统上整页发黑」的问题；首次使用（localStorage 为空）仍按库值/默认。 */
-        let appearance = data.appearance === 'dark' || data.appearance === 'system' ? data.appearance : 'light'
+        /* 外观以 localStorage 的「显式选择」为准（applyAppearance 每次都会写入）。
+           没有显式选择时一律用「浅色」安全默认——早期版本曾把默认写成 system/dark 并落库，
+           若不拦截，在深色系统上首屏即整页发黑。库里的 appearance 仅作兜底，不再覆盖用户选择。 */
+        let appearance = 'light'
         try {
           const ls = window.localStorage && window.localStorage.getItem('zika.appearance')
           if (ls === 'light' || ls === 'dark' || ls === 'system') appearance = ls

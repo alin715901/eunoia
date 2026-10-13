@@ -362,14 +362,38 @@ async function resolveImport(rawUrl) {
   }
 }
 
+/* 网易云歌词：优先 Meting 直连（带 CORS，浏览器可直连、不依赖中转），
+   失败再回落官方 lyric 接口（走中转）。官方接口不返回 CORS 头，浏览器无法直连。 */
+async function neGetLyricMeting(id) {
+  for (const host of METING_HOSTS) {
+    try {
+      const res = await fetch(`${host}/meting/?server=netease&type=lrc&id=${id}`);
+      if (res.ok) {
+        const text = await res.text();
+        if (text && text.trim()) return text;
+      }
+    } catch (e) {
+      /* 换镜像重试 */
+    }
+  }
+  return '';
+}
+
 /* 歌词：网易云 LRC（进程内缓存，避免重复抓取） */
 const lyricCache = new Map();
 async function neGetLyric(id) {
   if (lyricCache.has(String(id))) return lyricCache.get(String(id));
-  const d = await fetchJson(`https://music.163.com/api/song/lyric?id=${id}&lv=-1&tv=-1`, {
-    Referer: 'https://music.163.com/'
-  });
-  const lrc = (d && d.lrc && d.lrc.lyric) || '';
+  let lrc = await neGetLyricMeting(id);
+  if (!lrc) {
+    try {
+      const d = await fetchJson(`https://music.163.com/api/song/lyric?id=${id}&lv=-1&tv=-1`, {
+        Referer: 'https://music.163.com/'
+      });
+      lrc = (d && d.lrc && d.lrc.lyric) || '';
+    } catch (e) {
+      lrc = '';
+    }
+  }
   if (lrc) lyricCache.set(String(id), lrc);
   return lrc;
 }
