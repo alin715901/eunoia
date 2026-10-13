@@ -8,18 +8,33 @@
           <button class="rp-close" @click="$emit('close')">✕</button>
         </div>
 
-        <!-- 余额：仅单人联系人展示「我的余额」与「对方余额」（群聊不涉及钱包） -->
+        <!-- 余额：仅单人联系人展示「我的余额」与「对方余额」（群聊不涉及钱包）。
+             「我的余额」可直接编辑自定义；「对方余额」只读，不提供修改 -->
         <div v-if="!isGroup && wallet" class="rp-wallet">
           <div class="rp-bal">
             <span class="rp-bal-label">我的余额</span>
-            <span class="rp-bal-val">¥{{ wallet.my_balance?.toFixed(2) }}</span>
+            <span class="rp-bal-edit">
+              <span class="rp-bal-yen">¥</span>
+              <input
+                v-model="myBalanceDraft"
+                class="rp-bal-input"
+                type="number"
+                inputmode="decimal"
+                min="0"
+                step="0.01"
+                placeholder="0.00"
+                aria-label="我的余额，可自定义"
+                @change="saveMyBalance"
+                @keyup.enter="saveMyBalance"
+              />
+            </span>
           </div>
           <div class="rp-bal">
             <span class="rp-bal-label">对方余额</span>
             <span class="rp-bal-val">¥{{ wallet.contact_balance?.toFixed(2) }}</span>
           </div>
         </div>
-        <p v-if="!isGroup" class="rp-tip">对方会随机给你发红包，领取后计入「我的余额」</p>
+        <p v-if="!isGroup" class="rp-tip">对方会随机给你发红包，领取后计入「我的余额」；「我的余额」也可直接输入自定义</p>
 
         <div class="rp-presets">
           <button
@@ -59,7 +74,8 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
-import { getWallet } from '@/api/chat'
+import { getWallet, setMyBalance } from '@/api/chat'
+import { useNotificationsStore } from '@/stores/notifications'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -67,6 +83,7 @@ const props = defineProps({
   isGroup: { type: Boolean, default: false }
 })
 const emit = defineEmits(['close', 'send'])
+const toast = useNotificationsStore()
 
 /* 预设金额：52.0 / 520 / 1314 */
 const presets = ['52.0', '520', '1314']
@@ -75,6 +92,9 @@ const note = ref('')
 const err = ref('')
 const wallet = ref(null)
 
+/* 「我的余额」编辑草稿：打开面板/钱包加载后用当前值填充 */
+const myBalanceDraft = ref('0.00')
+
 watch(
   () => props.show,
   (v) => {
@@ -82,9 +102,13 @@ watch(
       amount.value = ''
       note.value = ''
       err.value = ''
+      myBalanceDraft.value = '0.00'
       if (!props.isGroup && props.contactId != null) {
         getWallet(props.contactId)
-          .then((w) => { wallet.value = w })
+          .then((w) => {
+            wallet.value = w
+            myBalanceDraft.value = (w.my_balance ?? 0).toFixed(2)
+          })
           .catch(() => { wallet.value = null })
       } else {
         wallet.value = null
@@ -92,6 +116,29 @@ watch(
     }
   }
 )
+
+/* 自定义我的余额：失焦/回车时落库（只改我的余额，对方余额不动） */
+async function saveMyBalance() {
+  if (!wallet.value || props.contactId == null) return
+  const raw = String(myBalanceDraft.value ?? '').trim()
+  const n = Number(raw)
+  if (raw === '' || !Number.isFinite(n) || n < 0) {
+    myBalanceDraft.value = (wallet.value.my_balance ?? 0).toFixed(2)
+    toast.pushToast({ title: '余额没改', text: '请输入大于等于 0 的数字' })
+    return
+  }
+  const val = Math.round(n * 100) / 100
+  if (val === wallet.value.my_balance) return
+  try {
+    const w = await setMyBalance(props.contactId, val)
+    wallet.value = w
+    myBalanceDraft.value = (w.my_balance ?? 0).toFixed(2)
+    toast.pushToast({ title: '我的余额已更新', text: `¥${(w.my_balance ?? 0).toFixed(2)}` })
+  } catch (e) {
+    myBalanceDraft.value = (wallet.value.my_balance ?? 0).toFixed(2)
+    toast.pushToast({ title: '修改失败', text: e?.message || '请稍后再试' })
+  }
+}
 
 const valid = computed(() => {
   const n = Number(amount.value)
@@ -151,6 +198,30 @@ function confirm() {
 .rp-bal { display: flex; align-items: baseline; justify-content: space-between; }
 .rp-bal-label { font-size: 13px; color: #c98d75; }
 .rp-bal-val { font-size: 18px; font-weight: 800; color: #c05e45; }
+/* 我的余额：可直接输入自定义（虚线下划线提示可编辑） */
+.rp-bal-edit {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 1px;
+  border-bottom: 1px dashed rgba(192, 94, 69, 0.45);
+  padding: 0 2px;
+}
+.rp-bal-edit:focus-within { border-bottom-color: #c05e45; }
+.rp-bal-yen { font-size: 14px; font-weight: 800; color: #c05e45; }
+.rp-bal-input {
+  width: 84px;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-size: 18px;
+  font-weight: 800;
+  color: #c05e45;
+  text-align: right;
+  font-family: inherit;
+  -moz-appearance: textfield;
+}
+.rp-bal-input::-webkit-outer-spin-button,
+.rp-bal-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
 .rp-tip { margin: 0 2px 14px; font-size: 11px; color: var(--text-soft); line-height: 1.5; }
 .rp-close {
   position: absolute;

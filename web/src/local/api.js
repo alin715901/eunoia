@@ -272,6 +272,11 @@ export async function getWallet(contactId) {
   return walletRepo.getWallet(Number(contactId))
 }
 
+// 自定义「我的余额」（只改我的，对方余额不受影响）
+export async function setMyBalance(contactId, value) {
+  return walletRepo.setMyBalance(Number(contactId), value)
+}
+
 // 桌面配置
 export async function getDesktop(id) {
   return desktopRepo.getDesktop(Number(id))
@@ -838,8 +843,11 @@ export async function batchDeleteMusicSongs(ids) {
 // 清理会员/无法播放的歌曲
 // mode: 'unplayable'（默认，删无音源的云端歌）| 'vip'（删会员付费云端歌，哪怕能试听30秒）
 export async function clearUnplayableSongs(mode = 'unplayable') {
+  /* 与歌曲行 chip 对齐且两类互斥：
+     会员 = vip 且有音频（可试听）；不可播 = 无音频（含无音源的会员歌）。
+     local/link 是用户自己的文件/直链，一律不删 */
   const where = mode === 'vip'
-    ? "vip = 1 AND source NOT IN ('local','link')"
+    ? "vip = 1 AND audio <> '' AND source NOT IN ('local','link')"
     : "audio = '' AND source NOT IN ('local','link')"
   const r = db.prepare(`DELETE FROM songs WHERE ${where}`).run()
   return { deleted: r.changes }

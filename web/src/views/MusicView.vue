@@ -344,8 +344,10 @@ const showRemoval = ref(false)
 const removalVip = ref(0)
 const removalUnplay = ref(0)
 function openRemoval() {
-  const vip = store.songs.filter((s) => s.vip).length
-  const unplay = store.songs.filter((s) => !s.audio && !s.vip).length
+  /* 与歌曲行标识保持一致：有音频的会员歌 → 会员（可试听 30 秒）；
+     无音频 → 不可播（含没有音源的会员歌）。两类互斥，计数即实际删除数 */
+  const vip = store.songs.filter((s) => s.vip && s.audio).length
+  const unplay = store.songs.filter((s) => !s.audio).length
   if (!vip && !unplay) {
     toast.pushToast({ title: '没有需要移除的歌曲', text: '当前没有会员付费或不可播放的歌曲' })
     return

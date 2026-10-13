@@ -63,11 +63,24 @@ function addToMyBalance(contactId, amount) {
   return getWallet(contactId);
 }
 
+/* 自定义「我的余额」：直接设为指定值（保留两位小数，不小于 0）。
+   只改 my_balance——对方余额与领取/发送逻辑都不动 */
+function setMyBalance(contactId, value) {
+  ensure(contactId);
+  let v = Math.round(Number(value) * 100) / 100;
+  if (!Number.isFinite(v) || v < 0) v = 0;
+  db.prepare(
+    'UPDATE wallets SET my_balance = ?, updated_at = ? WHERE contact_id = ?'
+  ).run(v, Math.floor(Date.now() / 1000), contactId);
+  return getWallet(contactId);
+}
+
 export {
   getWallet,
   addToContactBalance,
   creditMyBalance,
   debitMyBalance,
   addToMyBalance,
+  setMyBalance,
   ensure,
 };

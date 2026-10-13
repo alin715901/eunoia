@@ -77,13 +77,13 @@
           </div>
         </div>
 
-        <label class="fld">
+        <div class="fld">
           <span class="fld-label">归属</span>
-          <select class="field" v-model="form.contactId">
-            <option value="">我的（通用）</option>
-            <option v-for="c in personList" :key="c.id" :value="String(c.id)">{{ c.name }}</option>
-          </select>
-        </label>
+          <button type="button" class="field fld-pick" @click="showContactPicker = true">
+            <span>{{ contactLabel }}</span>
+            <AppIcon name="chevron-down" :size="14" color="var(--text-soft)" />
+          </button>
+        </div>
 
         <p v-if="formErr" class="ap-err">{{ formErr }}</p>
 
@@ -91,6 +91,27 @@
           <button class="ap-btn ghost" @click="closeModal">取消</button>
           <button class="ap-btn primary" :disabled="saving" @click="save">{{ saving ? '保存中…' : '保存' }}</button>
         </div>
+      </div>
+    </div>
+
+    <!-- 归属选择：应用内弹窗（不用系统 select，避免弹出系统选项列表） -->
+    <div v-if="showContactPicker" class="ap-mask ap-pick-mask" @click.self="showContactPicker = false">
+      <div class="ap-pick">
+        <p class="ap-pick-title">选择归属</p>
+        <div class="ap-pick-list">
+          <button
+            v-for="opt in contactOptions"
+            :key="opt.value"
+            type="button"
+            class="ap-pick-item"
+            :class="{ on: form.contactId === opt.value }"
+            @click="pickContact(opt.value)"
+          >
+            <span class="ap-pick-name">{{ opt.name }}</span>
+            <span class="ap-pick-radio" :class="{ on: form.contactId === opt.value }"><i /></span>
+          </button>
+        </div>
+        <button class="ap-pick-cancel" type="button" @click="showContactPicker = false">取消</button>
       </div>
     </div>
   </div>
@@ -127,6 +148,18 @@ const datePreview = computed(() => {
 })
 
 const personList = computed(() => (contactsStore.list || []).filter((c) => c.kind !== 'group'))
+
+/* 归属选择：应用内弹窗选项（我的 + 各联系人） */
+const showContactPicker = ref(false)
+const contactOptions = computed(() => [
+  { value: '', name: '我的（通用）' },
+  ...personList.value.map((c) => ({ value: String(c.id), name: c.name }))
+])
+const contactLabel = computed(() => contactOptions.value.find((o) => o.value === form.contactId)?.name || '我的（通用）')
+function pickContact(v) {
+  form.contactId = v
+  showContactPicker.value = false
+}
 
 /* 板块按钮：固定的「我的」+ 每个联系人各一个 */
 const tabs = computed(() => [
@@ -381,7 +414,79 @@ onMounted(async () => {
   box-sizing: border-box;
 }
 .field:focus { border-color: var(--accent); outline: none; }
-select.field { appearance: none; background-image: linear-gradient(45deg, transparent 50%, var(--text-soft) 50%), linear-gradient(135deg, var(--text-soft) 50%, transparent 50%); background-position: calc(100% - 16px) 50%, calc(100% - 11px) 50%; background-size: 5px 5px, 5px 5px; background-repeat: no-repeat; }
+/* 归属字段：外观同输入框，点击弹应用内选择列表 */
+.fld-pick {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+  cursor: pointer;
+}
+.fld-pick span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 归属选择弹窗：叠在表单弹窗之上 */
+.ap-pick-mask { z-index: 200; }
+.ap-pick {
+  width: 100%;
+  max-width: 300px;
+  background: var(--bg-screen);
+  border-radius: var(--radius-lg);
+  padding: 16px 14px 12px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.28);
+}
+.ap-pick-title { margin: 0 0 10px; font-size: 15px; font-weight: 700; font-family: var(--font-serif); text-align: center; }
+.ap-pick-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+.ap-pick-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border: none;
+  background: transparent;
+  border-radius: var(--radius-sm);
+  padding: 11px 10px;
+  font-size: 14px;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+.ap-pick-item:active { background: var(--bg-soft); }
+.ap-pick-item.on { color: var(--accent); font-weight: 600; }
+.ap-pick-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ap-pick-radio {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.ap-pick-radio.on { border-color: var(--accent); }
+.ap-pick-radio.on i {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.ap-pick-cancel {
+  width: 100%;
+  margin-top: 10px;
+  border: none;
+  background: var(--bg-soft);
+  color: var(--text-soft);
+  border-radius: 999px;
+  padding: 10px 0;
+  font-size: 13px;
+  font-weight: 600;
+}
 .ap-err { color: #c0576b; font-size: 12px; margin: 0 0 8px; }
 .ap-actions { display: flex; gap: 10px; margin-top: 4px; }
 .ap-btn {

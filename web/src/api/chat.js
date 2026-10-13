@@ -20,4 +20,4 @@ export {
   sendQuestion,
 } from '../local/api'
 
-export { getWallet } from '../local/api'
+export { getWallet, setMyBalance } from '../local/api'
