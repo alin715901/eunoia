@@ -9,6 +9,8 @@ import db from '../db'
 
 const FORMAT = 'eunoia-backup'
 const VERSION = 1
+/* 供 UI 层做「即将下载的数据是否合法」的最终校验（拦 Promise / 空对象） */
+export const BACKUP_FORMAT = FORMAT
 
 const fail = (msg) => {
   throw new Error(msg)

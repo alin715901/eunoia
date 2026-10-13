@@ -1081,7 +1081,10 @@ export async function getBackupOverview() {
 }
 
 // 生成备份对象（JSON 可序列化）；scope 见 backup.service.buildBackup
-export async function buildBackup(scope) {
+// 注意：底层是同步纯函数，此处必须同步返回——若包成 async，调用方
+// （StorageView 的 downloadBackup）会把 Promise 当数据 JSON.stringify，
+// 序列化出空对象 {}，导出文件不可用。
+export function buildBackup(scope) {
   return backupService.buildBackup(scope)
 }
 

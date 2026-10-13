@@ -160,6 +160,7 @@ import {
   BACKUP_FEATURES,
   BACKUP_TABLE_LABELS
 } from '@/api/settings'
+import { BACKUP_FORMAT } from '@/local/services/backup.service'
 import { confirmDialog } from '@/utils/dialog'
 import { useNotificationsStore } from '@/stores/notifications'
 
@@ -220,6 +221,11 @@ function toggleAllContacts(e) {
 }
 
 function downloadBackup(data) {
+  /* 最终防线：历史上 buildBackup 曾被包成 async，Promise 被 JSON.stringify
+     成 {}，导出 2 字节空文件且无任何报错。这里校验格式，非法直接抛错。 */
+  if (!data || typeof data !== 'object' || data.format !== BACKUP_FORMAT || !data.tables) {
+    throw new Error('备份数据生成失败，请重试')
+  }
   const blob = new Blob([JSON.stringify(data)], { type: 'application/json' })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -234,18 +240,20 @@ function downloadBackup(data) {
 }
 
 /* 全部导出：无需选择，直接下载 */
-function exportAll() {
+async function exportAll() {
   try {
-    downloadBackup(buildBackup({ type: 'full' }))
+    /* buildBackup 同步返回；await 防御底层若改成 async 时 Promise 被
+       JSON.stringify 成 {} 的历史 bug（导出空文件不可用） */
+    downloadBackup(await buildBackup({ type: 'full' }))
     toast.pushToast({ title: '已导出备份文件' })
   } catch (e) {
     toast.pushToast({ title: '导出失败', text: e.message })
   }
 }
 
-function doExport(scope) {
+async function doExport(scope) {
   try {
-    const data = buildBackup(
+    const data = await buildBackup(
       scope === 'feature'
         ? { type: 'feature', features: picked.value.features }
         : { type: 'contacts', contacts: picked.value.contacts }
