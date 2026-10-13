@@ -4,7 +4,7 @@ import {
   clearUnplayableSongs, getMusicSettings, saveMusicSettings, streamUrl,
   importMusic, addMusicManual, updateMusicSong, uploadMusicFile, getMusicLyric,
   refreshSongAudio, updateSongDuration, enqueueMusicCache, backfillMusicCache, getMusicCacheStats,
-  setMusicCacheUpdateListener
+  setMusicCacheUpdateListener, getFavIds
 } from '@/api/music'
 import {
   sendListenInvite, respondListenInvite, cancelListenInvite, endListen, getListenInvites,
@@ -40,7 +40,8 @@ setMusicCacheUpdateListener((songId, patch) => {
 export const useMusicStore = defineStore('music', {
   state: () => ({
     songs: [],
-    favIds: [],
+    favIds: [],        // 当前联系人的收藏（「TA的收藏」tab 用）
+    myFavIds: [],      // 我自己的收藏（心形按钮 + 「我的收藏」tab 用；contact_id = 0）
     contactId: null,
     /* 播放状态 */
     current: null,
@@ -76,6 +77,9 @@ export const useMusicStore = defineStore('music', {
   getters: {
     favSet: (s) => new Set(s.favIds),
     favSongs: (s) => s.songs.filter((x) => s.favIds.includes(x.id)),
+    /* 我的收藏：与各联系人的收藏完全隔离（联系人自动收藏的歌只进 TA 的收藏） */
+    myFavSet: (s) => new Set(s.myFavIds),
+    myFavSongs: (s) => s.songs.filter((x) => s.myFavIds.includes(x.id)),
     playlistSongs: (s) => s.queue,
     ungroupedSongs: (s) => s.songs.filter((x) => !x.plist),
     /* 解析 LRC 为按时间排序的歌词行 [{t, text}] */
@@ -106,12 +110,14 @@ export const useMusicStore = defineStore('music', {
       this.contactId = Number(contactId)
       this.loading = true
       try {
-        const [lib, settings] = await Promise.all([
+        const [lib, settings, myFav] = await Promise.all([
           getMusicSongs(this.contactId),
-          getMusicSettings(this.contactId).catch(() => null)
+          getMusicSettings(this.contactId).catch(() => null),
+          getFavIds(0).catch(() => null)
         ])
         this.songs = lib.songs || []
         this.favIds = lib.favIds || []
+        this.myFavIds = (myFav && myFav.favIds) || []
         /* 封面懒缓存：远程封面链接的歌入后台队列，抓到就地换成本地 dataURL */
         for (const s of this.songs) enqueueMusicCache(s)
         if (settings) {
@@ -324,12 +330,13 @@ export const useMusicStore = defineStore('music', {
     },
 
     /* ─── 收藏 / 删除 / 导入 ─── */
+    /* 心形收藏 = 我自己的收藏（contact_id 0）；联系人各自的收藏互不占用 */
     async toggleFav(song) {
-      const r = await favMusicSong(song.id, this.contactId)
+      const r = await favMusicSong(song.id, 0)
       if (r.fav) {
-        if (!this.favIds.includes(song.id)) this.favIds.push(song.id)
+        if (!this.myFavIds.includes(song.id)) this.myFavIds.push(song.id)
       } else {
-        this.favIds = this.favIds.filter((id) => id !== song.id)
+        this.myFavIds = this.myFavIds.filter((id) => id !== song.id)
       }
       return r.fav
     },
@@ -337,6 +344,7 @@ export const useMusicStore = defineStore('music', {
       await deleteMusicSong(id)
       this.songs = this.songs.filter((s) => s.id !== id)
       this.favIds = this.favIds.filter((x) => x !== id)
+      this.myFavIds = this.myFavIds.filter((x) => x !== id)
       this.queue = this.queue.filter((s) => s.id !== id)
       if (this.current?.id === id) {
         audio.pause()
@@ -349,6 +357,7 @@ export const useMusicStore = defineStore('music', {
       const set = new Set(ids)
       this.songs = this.songs.filter((s) => !set.has(s.id))
       this.favIds = this.favIds.filter((x) => !set.has(x))
+      this.myFavIds = this.myFavIds.filter((x) => !set.has(x))
       this.queue = this.queue.filter((s) => !set.has(s.id))
       if (this.current && set.has(this.current.id)) {
         audio.pause()
@@ -368,9 +377,13 @@ export const useMusicStore = defineStore('music', {
     },
     async reload() {
       if (!this.contactId) return
-      const lib = await getMusicSongs(this.contactId)
+      const [lib, myFav] = await Promise.all([
+        getMusicSongs(this.contactId),
+        getFavIds(0).catch(() => null)
+      ])
       this.songs = lib.songs || []
       this.favIds = lib.favIds || []
+      this.myFavIds = (myFav && myFav.favIds) || []
       /* 封面懒缓存：init 之外，导入/收藏等操作后的 reload 也补入队
          （幂等，已缓存的会跳过）——会话内新导入的歌不必等刷新页面 */
       for (const s of this.songs) enqueueMusicCache(s)

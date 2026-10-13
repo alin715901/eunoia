@@ -750,10 +750,10 @@ export async function getMusicSongs(contactId = 0) {
   }
 }
 
-// 某个联系人的收藏 id 列表
-export async function getFavIds(contactId = 0) {
-  const cid = Number(contactId || 0)
-  if (!cid) fail('缺少联系人')
+// 某个联系人的收藏 id 列表（contactId = 0 表示「我」自己的收藏）
+export async function getFavIds(contactId) {
+  const cid = Number(contactId)
+  if (!Number.isInteger(cid) || cid < 0) fail('缺少联系人')
   const favIds = db.prepare('SELECT song_id FROM song_favs WHERE contact_id = ?').all(cid).map((r) => r.song_id)
   return { contactId: cid, favIds }
 }
@@ -903,8 +903,10 @@ export async function backfillSongDurations(onProgress) {
 
 // 收藏（按联系人切换）
 export async function favMusicSong(id, contactId) {
-  const cid = Number(contactId || 0)
-  if (!cid) fail('缺少联系人')
+  /* contact_id = 0 是「我」自己的收藏（联系人 id 自增从 1 开始，0 不会冲突）；
+     各联系人的收藏（含 TA 自动收藏的）只归各自，互不串门 */
+  const cid = Number(contactId)
+  if (!Number.isInteger(cid) || cid < 0) fail('缺少联系人')
   const songId = Number(id)
   const exists = db.prepare('SELECT 1 FROM song_favs WHERE song_id = ? AND contact_id = ?').get(songId, cid)
   if (exists) {

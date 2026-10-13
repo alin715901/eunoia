@@ -3,6 +3,9 @@
     <AppHeader title="设置" back />
 
     <div class="md-body ms-body">
+      <!-- 页面级提示：长按操作说明 -->
+      <div class="ms-top-tip">长按歌曲/歌单可选择操作</div>
+
       <!-- ═══ 悬浮窗 ═══ -->
       <div class="ms-card">
         <div class="ms-row">
@@ -51,7 +54,7 @@
         <div class="ms-title"><AppIcon name="download" :size="15" color="var(--accent)" /> 链接导入</div>
         <textarea v-model="plUrl" class="ms-textarea" placeholder="每行一个链接，支持网易云歌曲/歌单、酷狗歌曲分享链接、mp3/m4a 直链（因QQ音乐限制，暂不支持解析导入）" />
         <div class="ms-hint-row">
-          <span>一行一个链接，点「导入」后一次性并发抓取全部；歌单会自动展开抓取全部曲目（因QQ音乐限制，暂不支持解析导入）</span>
+          <span>一行一个链接，点「导入」后一次性并发抓取全部；歌单会自动展开抓取全部曲目（因QQ音乐限制，暂不支持解析导入）导入需要时间，不是卡顿。</span>
         </div>
         <button class="ms-primary soft" :disabled="plLoading" @click="importPlaylist">{{ plLoading ? (importProgress || '抓取中…') : '导入' }}</button>
       </div>
@@ -380,6 +383,12 @@ onMounted(() => {
 
 <style scoped>
 .ms-body { padding-bottom: 40px; }
+/* 页面顶部提示条 */
+.ms-top-tip {
+  margin-bottom: 14px; padding: 9px 12px; border-radius: 12px;
+  background: var(--bg-soft); font-size: 11px; color: var(--text-soft);
+  line-height: 1.6; text-align: center;
+}
 .ms-card {
   background: var(--bg-screen); border: 1px solid var(--border);
   border-radius: 18px; padding: 16px; margin-bottom: 16px;

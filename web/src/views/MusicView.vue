@@ -12,7 +12,7 @@
       <div class="mu-tabs">
         <button class="mu-tab" :class="{ on: tab === 'lib' }" @click="tab = 'lib'">音乐库<span class="mu-tab-n">{{ store.songs.length }}</span></button>
         <button class="mu-tab" :class="{ on: tab === 'plist' }" @click="tab = 'plist'">歌单<span class="mu-tab-n">{{ plList.length }}</span></button>
-        <button class="mu-tab" :class="{ on: tab === 'fav' }" @click="tab = 'fav'">我的收藏<span class="mu-tab-n">{{ store.favIds.length }}</span></button>
+        <button class="mu-tab" :class="{ on: tab === 'fav' }" @click="tab = 'fav'">我的收藏<span class="mu-tab-n">{{ store.myFavIds.length }}</span></button>
         <!-- 每个单人联系人各有一份自己的收藏，和音乐库/歌单在同一行 -->
         <button
           v-for="c in favContacts"
@@ -82,8 +82,8 @@
               </span>
             </span>
             <template v-if="!selectMode">
-              <button class="mu-act" :class="{ on: store.favSet.has(s.id) }" @click.stop="toggleFavRow(s)" :aria-label="store.favSet.has(s.id) ? '取消收藏' : '收藏'">
-                <AppIcon :name="store.favSet.has(s.id) ? 'heart-solid' : 'heart'" :size="17" :filled="store.favSet.has(s.id)" :color="store.favSet.has(s.id) ? 'var(--accent)' : 'var(--text-soft)'" />
+              <button class="mu-act" :class="{ on: store.myFavSet.has(s.id) }" @click.stop="toggleFavRow(s)" :aria-label="store.myFavSet.has(s.id) ? '取消收藏' : '收藏'">
+                <AppIcon :name="store.myFavSet.has(s.id) ? 'heart-solid' : 'heart'" :size="17" :filled="store.myFavSet.has(s.id)" :color="store.myFavSet.has(s.id) ? 'var(--accent)' : 'var(--text-soft)'" />
               </button>
               <button class="mu-act" @click.stop="store.playNext(s)" aria-label="下一首播放"><AppIcon name="playNext" :size="17" color="var(--text-soft)" /></button>
             </template>
@@ -105,11 +105,11 @@
             <div
               class="mu-pl-head"
               @click="plRowTap(g)"
-              @touchstart.passive="plLpStart(g)"
+              @touchstart.passive="plLpStart($event, g)"
               @touchend.passive="plLpCancel"
               @touchmove.passive="plLpCancel"
               @touchcancel.passive="plLpCancel"
-              @contextmenu.prevent="enterPlSelect(g.name)"
+              @contextmenu.prevent="enterPlSelect($event, g.name)"
             >
               <span v-if="plSelectMode" class="mu-check" :class="{ on: selPls.has(g.name) }">
                 <AppIcon v-if="selPls.has(g.name)" name="check" :size="13" color="#fff" />
@@ -151,8 +151,8 @@
                   <span class="mu-sub"><span class="mu-artist">{{ s.artist || '未知歌手' }}</span><span v-if="s.vip && s.audio" class="mu-chip vip">会员</span><span v-else-if="!s.audio" class="mu-chip warn">不可播</span></span>
                 </span>
                 <template v-if="!selectMode">
-                  <button class="mu-act" :class="{ on: store.favSet.has(s.id) }" @click.stop="toggleFavRow(s)" :aria-label="store.favSet.has(s.id) ? '取消收藏' : '收藏'">
-                    <AppIcon :name="store.favSet.has(s.id) ? 'heart-solid' : 'heart'" :size="17" :filled="store.favSet.has(s.id)" :color="store.favSet.has(s.id) ? 'var(--accent)' : 'var(--text-soft)'" />
+                  <button class="mu-act" :class="{ on: store.myFavSet.has(s.id) }" @click.stop="toggleFavRow(s)" :aria-label="store.myFavSet.has(s.id) ? '取消收藏' : '收藏'">
+                    <AppIcon :name="store.myFavSet.has(s.id) ? 'heart-solid' : 'heart'" :size="17" :filled="store.myFavSet.has(s.id)" :color="store.myFavSet.has(s.id) ? 'var(--accent)' : 'var(--text-soft)'" />
                   </button>
                   <button class="mu-act" @click.stop="store.playNext(s)" aria-label="下一首播放"><AppIcon name="playNext" :size="17" color="var(--text-soft)" /></button>
                 </template>
@@ -191,8 +191,8 @@
               <span class="mu-sub"><span class="mu-artist">{{ s.artist || '未知歌手' }}</span></span>
             </span>
             <template v-if="!selectMode">
-              <button class="mu-act" :class="{ on: store.favSet.has(s.id) }" @click.stop="toggleFavRow(s)" :aria-label="store.favSet.has(s.id) ? '取消收藏' : '收藏'">
-                <AppIcon :name="store.favSet.has(s.id) ? 'heart-solid' : 'heart'" :size="17" :filled="store.favSet.has(s.id)" :color="store.favSet.has(s.id) ? 'var(--accent)' : 'var(--text-soft)'" />
+              <button class="mu-act" :class="{ on: store.myFavSet.has(s.id) }" @click.stop="toggleFavRow(s)" :aria-label="store.myFavSet.has(s.id) ? '取消收藏' : '收藏'">
+                <AppIcon :name="store.myFavSet.has(s.id) ? 'heart-solid' : 'heart'" :size="17" :filled="store.myFavSet.has(s.id)" :color="store.myFavSet.has(s.id) ? 'var(--accent)' : 'var(--text-soft)'" />
               </button>
               <button class="mu-act" @click.stop="store.playNext(s)" aria-label="下一首播放"><AppIcon name="playNext" :size="17" color="var(--text-soft)" /></button>
             </template>
@@ -369,9 +369,10 @@ const mateName = computed(() => desktop.contact?.name || 'TA')
 /* ═══ 收藏：我的收藏 + 每个单人联系人各一份（与「音乐库」同行） ═══ */
 const favContacts = computed(() => (contacts.list || []).filter((c) => c.kind !== 'group'))
 const favIdsMap = ref({})
-/* tab = 'fav' 时看自己的收藏；'fav:<id>' 时看对应联系人的 */
+/* tab = 'fav' 时看「我的收藏」（contact_id = 0，与联系人收藏隔离）；
+   'fav:<id>' 时看对应联系人的收藏 */
 const favTabId = computed(() => {
-  if (tab.value === 'fav') return Number(store.contactId) || 0
+  if (tab.value === 'fav') return 0
   return String(tab.value).startsWith('fav:') ? Number(tab.value.slice(4)) : 0
 })
 const favIsMine = computed(() => tab.value === 'fav')
@@ -380,10 +381,14 @@ const favTabName = computed(() => {
   return favContacts.value.find((c) => c.id === favTabId.value)?.name || mateName.value
 })
 const favList = computed(() => {
+  /* 我的收藏与各联系人的收藏互不互通：我的走 myFavSongs；
+     联系人的（含 TA 自动收藏的）按各自 contact_id 查，只出现在各自的 tab */
+  if (favIsMine.value) return store.myFavSongs
   const cid = favTabId.value
   if (!cid) return []
-  const ids = new Set(cid === Number(store.contactId) ? store.favIds : (favIdsMap.value[cid] || []))
-  return store.songs.filter((s) => ids.has(s.id))
+  const ids = cid === Number(store.contactId) ? store.favIds : (favIdsMap.value[cid] || [])
+  const set = new Set(ids)
+  return store.songs.filter((s) => set.has(s.id))
 })
 async function loadFavTabs() {
   if (!contacts.list?.length) await contacts.load().catch(() => {})
@@ -393,13 +398,6 @@ async function loadFavTabs() {
       favIdsMap.value = { ...favIdsMap.value, [c.id]: r?.favIds || [] }
     } catch (e) { /* ignore */ }
   }
-}
-async function refreshFavIds(cid) {
-  if (!cid) return
-  try {
-    const r = await getFavIds(cid)
-    favIdsMap.value = { ...favIdsMap.value, [cid]: r?.favIds || [] }
-  } catch (e) { /* ignore */ }
 }
 /* 歌单：曲库里带歌单名的分组 + 自定义新建的（可为空） */
 const plList = computed(() => {
@@ -451,19 +449,25 @@ const selPls = ref(new Set())
 let plLpTimer = null
 let plLpFired = false
 const allPlSelected = computed(() => !!plList.value.length && plList.value.every((g) => selPls.value.has(g.name)))
-function plLpStart(g) {
+function plLpStart(e, g) {
+  /* 歌单内的歌曲行有自己的长按语义（多选歌曲）：起点落在歌曲行上一律忽略。
+     DOM 上歌曲行是歌单头的兄弟节点、正常不会冒泡过来，这里再加一道保险，
+     保证只有长按歌单本体才弹歌单操作 */
+  if (e && e.target && e.target.closest && e.target.closest('.mu-row')) return
   plLpFired = false
   plLpCancel()
   plLpTimer = setTimeout(() => {
     plLpFired = true
-    enterPlSelect(g.name)
+    enterPlSelect(null, g.name)
     if (navigator.vibrate) navigator.vibrate(15)
   }, 450)
 }
 function plLpCancel() {
   if (plLpTimer) { clearTimeout(plLpTimer); plLpTimer = null }
 }
-function enterPlSelect(name) {
+function enterPlSelect(e, name) {
+  if (e && e.target && e.target.closest && e.target.closest('.mu-row')) return
+  exitSelect() /* 退出歌曲多选：避免「已选 N 首」和「已选 N 个歌单」两条操作条同时出现 */
   plSelectMode.value = true
   selPls.value = new Set([name])
 }
@@ -484,6 +488,8 @@ function plRowTap(g) {
     selPls.value = next
     return
   }
+  /* 歌曲多选进行中：点歌单头不收起歌单（选到一半歌单关了很难受） */
+  if (selectMode.value) return
   togglePl(g.name)
 }
 
@@ -574,6 +580,7 @@ function lpCancel() {
   if (lpTimer) { clearTimeout(lpTimer); lpTimer = null }
 }
 function enterSelect(s) {
+  exitPlSelect() /* 退出歌单多选：同上，两种多选永远只有一个在场 */
   selectMode.value = true
   selIds.value = new Set([s.id])
 }
@@ -581,7 +588,7 @@ function exitSelect() {
   selectMode.value = false
   selIds.value = new Set()
 }
-watch(tab, () => exitSelect())
+watch(tab, () => { exitSelect(); exitPlSelect() })
 
 function rowTap(s, list, label) {
   if (lpFired) { lpFired = false; return }
@@ -598,7 +605,7 @@ function rowTap(s, list, label) {
 const selSongs = computed(() => {
   const pool = new Map()
   for (const s of store.songs) pool.set(s.id, s)
-  for (const s of store.favSongs) if (!pool.has(s.id)) pool.set(s.id, s)
+  for (const s of store.myFavSongs) if (!pool.has(s.id)) pool.set(s.id, s)
   return [...selIds.value].map((id) => pool.get(id)).filter(Boolean)
 })
 
@@ -620,7 +627,7 @@ function jumpToCurrent() {
   const cur = store.current
   if (!cur) return
   const inList = (list) => !!list.find((s) => s.id === cur.id)
-  if (!inList(curRows.value)) tab.value = inList(store.favSongs) ? 'fav' : 'lib'
+  if (!inList(curRows.value)) tab.value = inList(store.myFavSongs) ? 'fav' : 'lib'
   nextTick(() => {
     setTimeout(() => {
       const el = document.querySelector(`.mu-row[data-sid="${cur.id}"]`)
@@ -636,14 +643,13 @@ function jumpToCurrent() {
 async function doSelFav() {
   const items = selSongs.value
   if (!items.length) return
-  const add = items.some((s) => !store.favSet.has(s.id))
+  const add = items.some((s) => !store.myFavSet.has(s.id))
   try {
     for (const s of items) {
-      const f = store.favSet.has(s.id)
+      const f = store.myFavSet.has(s.id)
       if ((add && !f) || (!add && f)) await store.toggleFav(s)
     }
     toast.pushToast({ title: add ? `已收藏 ${items.length} 首` : `已取消收藏 ${items.length} 首` })
-    refreshFavIds(store.contactId)
     exitSelect()
   } catch (e) {
     toast.pushToast({ title: '失败', text: e.message })
@@ -687,9 +693,10 @@ async function doJoinPlaylist(name) {
 }
 
 function toggleFavRow(s) {
+  /* 心形 = 我的收藏（contact_id 0）：store 内部已同步 myFavIds，
+     不刷新联系人收藏列表——两者互不影响 */
   store.toggleFav(s).then((fav) => {
     toast.pushToast({ title: fav ? '已收藏' : '已取消收藏' })
-    refreshFavIds(store.contactId)
   }).catch((e) => toast.pushToast({ title: '失败', text: e.message }))
 }
 

@@ -160,7 +160,7 @@ onMounted(() => {
        不再限定边缘起手：部分浏览器（vivo/QQ 等）全屏任意位置横滑都会触发跳页 */
     if (Math.abs(dx) > 8) e.preventDefault()
   }
-  const onTe = () => { active = false; edge = false }
+  const onTe = () => { active = false }
   document.addEventListener('touchstart', onTs, { passive: true })
   document.addEventListener('touchmove', onTm, { passive: false })
   document.addEventListener('touchend', onTe)

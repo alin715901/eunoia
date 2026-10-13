@@ -242,8 +242,8 @@
               <span class="ms-name">{{ s.title }}</span>
               <span class="ms-artist">{{ s.artist || '未知歌手' }}</span>
             </span>
-            <button class="ms-act" :class="{ on: music.favSet.has(s.id) }" @click.stop="music.toggleFav(s)" :aria-label="music.favSet.has(s.id) ? '取消收藏' : '收藏'">
-              <AppIcon :name="music.favSet.has(s.id) ? 'heart-solid' : 'heart'" :size="15" :filled="music.favSet.has(s.id)" :color="music.favSet.has(s.id) ? 'var(--accent)' : 'var(--text-soft)'" />
+            <button class="ms-act" :class="{ on: music.myFavSet.has(s.id) }" @click.stop="music.toggleFav(s)" :aria-label="music.myFavSet.has(s.id) ? '取消收藏' : '收藏'">
+              <AppIcon :name="music.myFavSet.has(s.id) ? 'heart-solid' : 'heart'" :size="15" :filled="music.myFavSet.has(s.id)" :color="music.myFavSet.has(s.id) ? 'var(--accent)' : 'var(--text-soft)'" />
             </button>
             <button class="ms-act" @click.stop="music.playNext(s)" aria-label="下一首播放"><AppIcon name="playNext" :size="16" color="var(--text-soft)" /></button>
             <span v-if="music.current?.id === s.id && music.playing" class="ms-playing"><AppIcon name="music" :size="13" color="var(--accent)" /></span>
