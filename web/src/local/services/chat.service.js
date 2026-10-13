@@ -1049,20 +1049,71 @@ function getGroupRedPacketDetail(dbRef, messageId) {
   };
 }
 
-/* 对方（单人）主动发红包：每分钟每位联系人单一概率发一个（期望约 5 次/天） */
-const RED_PACKET_PROB = 0.0035;
-/* 对方（单人）主动发红包的金额范围：0.01 ~ 1000 万（不超过对方余额） */
+/* 对方（单人）主动发红包的金额范围：0.01 ~ 1000 万（不超过对方余额），范围不变 */
 const PEER_RP_MAX_AMOUNT = 10000000;
 /* 自动增资上限：余额达到 1 亿停止增资 */
 const TOPUP_CAP = 100000000;
 
+/* 主动发红包：一天最多 8 个（自然日 0 点重置） */
+const PEER_RP_DAILY_MAX = 8;
+/* 主动发红包的不定时间隔：1.5 ~ 4.5 小时（均值 3 小时 → 约 8 次/天，
+   与上限一致；随机区间避免整齐划一，也不至于过密或过疏） */
+const RP_GAP_MIN = 1.5 * 3600 * 1000;
+const RP_GAP_MAX = 4.5 * 3600 * 1000;
+/* 增资的不定时间隔：1.5 ~ 4.5 小时（均值 3 小时，与原「每 3 小时」总量相当） */
+const TOPUP_GAP_MIN = 1.5 * 3600 * 1000;
+const TOPUP_GAP_MAX = 4.5 * 3600 * 1000;
+
+/* 金额分档：让「元 / 千 / 万 / 十万 / 百万 / 千万」各档出现次数尽量平均。
+   范围仍是 0.01 ~ 1000 万：最低档从 0.01 起，最高档封顶 1000 万。 */
+const RP_TIERS = [
+  { min: 0.01, max: 999.99 }, // 元级
+  { min: 1000, max: 9999.99 }, // 千级
+  { min: 10000, max: 99999.99 }, // 万级
+  { min: 100000, max: 999999.99 }, // 十万级
+  { min: 1000000, max: 9999999.99 }, // 百万级
+  { min: 10000000, max: 10000000 }, // 千万级（封顶）
+];
+
+/* 轮转袋：每位联系人一份打乱的档位序号，取完再重新洗牌 —— 保证长期各档次数平均 */
+const rpTierBags = new Map();
+function pickTierAmount(cap, contactId) {
+  let bag = rpTierBags.get(contactId);
+  if (!bag || !bag.length) {
+    bag = RP_TIERS.map((_, i) => i);
+    for (let i = bag.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [bag[i], bag[j]] = [bag[j], bag[i]];
+    }
+    rpTierBags.set(contactId, bag);
+  }
+  /* 从袋首取第一个余额吃得下的档；吃不下就顺延（该档留着下次再用） */
+  for (let k = 0; k < bag.length; k++) {
+    const tier = RP_TIERS[bag[k]];
+    if (tier.min <= cap) {
+      bag.splice(k, 1);
+      const max = Math.min(tier.max, cap);
+      return Math.round((Math.random() * (max - tier.min) + tier.min) * 100) / 100;
+    }
+  }
+  return null; // 余额连最低档都吃不下
+}
+
+/* 不定时调度状态（内存态；页面重启后重新错峰，不会开页即发） */
+const rpNextAt = new Map(); // contactId -> 下次可发红包时间戳
+const topupNextAt = new Map(); // contactId -> 下次增资时间戳
+const rpDailyCount = new Map(); // contactId -> { day: 'YYYY-M-D', n: 已发数量 }
+const randomGap = (min, max) => min + Math.random() * (max - min);
+const dayKey = (ts) => {
+  const d = new Date(ts);
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
+};
+
 /* 红包调度（每分钟触发）：
-   1) 钱包自动增资——每 3 小时随机增一笔（1~5 万元，余额超 1 亿停）；群成员按同一规则增资。
-   2) 红包发送——单人：每位联系人按 RED_PACKET_PROB 发一个（金额 0.01~1000 万，不超其余额）；
-      群聊：每个群按 GROUP_RP_PROB 由某位成员发一个群红包（以成员自己的余额为准）。
+   1) 钱包自动增资——不定时（每人独立随机间隔 1.5~4.5 小时），每笔 1~5 万元，余额超 1 亿停。
+   2) 红包发送——单人：不定时（每人独立随机间隔），一天最多 8 个，金额按档轮转
+      （0.01~1000 万，不超其余额）；群聊：每个群按 GROUP_RP_PROB 由某位成员发一个群红包。
    3) 兜底——超过 5 分钟仍未领完的群红包，退回剩余给发送者。 */
-const TOPUP_GAP = 3 * 3600 * 1000;
-let lastTopup = 0;
 function redpacketTick() {
   try {
     const now = Date.now();
@@ -1075,30 +1126,51 @@ function redpacketTick() {
       )
       .all()
       .map((r) => r.id);
-    // 钱包随机自动增资（每 3 小时随机增一笔，1~5 万元；余额超过 1 亿时停止增资）
-    if (now - lastTopup >= TOPUP_GAP) {
-      lastTopup = now;
-      for (const cid of [...rows.map((r) => r.id), ...memberIds]) {
-        const st = db.prepare('SELECT blocked FROM contact_settings WHERE contact_id = ?').get(cid);
-        if (st && st.blocked) continue;
-        const w = walletRepo.getWallet(cid);
-        if (w.contact_balance < TOPUP_CAP) {
-          const inc = Math.round((Math.random() * 49999 + 1) * 100) / 100;
-          walletRepo.addToContactBalance(cid, inc);
-        }
+    // 钱包随机自动增资：不定时（每人独立随机间隔 1.5~4.5 小时，均值 3 小时）
+    // 每笔仍是 1~5 万元；余额超过 1 亿时停止增资
+    for (const cid of [...rows.map((r) => r.id), ...memberIds]) {
+      const st = db.prepare('SELECT blocked FROM contact_settings WHERE contact_id = ?').get(cid);
+      if (st && st.blocked) continue;
+      // 首次运行时错峰安排下次时间，避免所有人同一时刻齐刷刷增资
+      if (!topupNextAt.has(cid)) topupNextAt.set(cid, now + Math.random() * TOPUP_GAP_MAX);
+      if (now < topupNextAt.get(cid)) continue;
+      const w = walletRepo.getWallet(cid);
+      if (w.contact_balance < TOPUP_CAP) {
+        const inc = Math.round((Math.random() * 49999 + 1) * 100) / 100;
+        walletRepo.addToContactBalance(cid, inc);
       }
+      topupNextAt.set(cid, now + randomGap(TOPUP_GAP_MIN, TOPUP_GAP_MAX));
     }
-    // 红包：每分钟每位联系人单一概率发一个（0.01 ~ 1000 万，不超过余额）
+    // 红包：不定时发（每人独立随机间隔），一天最多 8 个，金额按档轮转（0.01~1000 万，不超余额）
+    const today = dayKey(now);
     for (const c of rows) {
       const cid = c.id;
       const st = db.prepare('SELECT blocked FROM contact_settings WHERE contact_id = ?').get(cid);
       if (st && st.blocked) continue;
+      // 当天已发数量（跨日自动重置）
+      let cnt = rpDailyCount.get(cid);
+      if (!cnt || cnt.day !== today) {
+        // 以库为准统计今日已发，避免页面重启后计数归零而超发
+        const sent = db
+          .prepare(
+            `SELECT COUNT(*) AS n FROM chat_messages
+             WHERE contact_id = ? AND sender = 'contact' AND content_type = 'redpacket' AND created_at >= ?`
+          )
+          .get(cid, Math.floor(new Date(new Date(now).setHours(0, 0, 0, 0)).getTime() / 1000));
+        cnt = { day: today, n: sent ? sent.n : 0 };
+        rpDailyCount.set(cid, cnt);
+      }
+      if (cnt.n >= PEER_RP_DAILY_MAX) continue; // 今日额度用尽
+      if (!rpNextAt.has(cid)) rpNextAt.set(cid, now + Math.random() * RP_GAP_MAX);
+      if (now < rpNextAt.get(cid)) continue;
       const w = walletRepo.getWallet(cid);
       const cap = Math.min(PEER_RP_MAX_AMOUNT, w.contact_balance);
-      if (cap >= 0.01 && Math.random() < RED_PACKET_PROB) {
-        const amt = Math.round((Math.random() * (cap - 0.01) + 0.01) * 100) / 100;
+      const amt = cap >= 0.01 ? pickTierAmount(cap, cid) : null;
+      if (amt != null) {
         autoSendRedPacket(db, cid, amt, randomBlessing());
+        cnt.n += 1;
       }
+      rpNextAt.set(cid, now + randomGap(RP_GAP_MIN, RP_GAP_MAX));
     }
     // 群聊：每分钟每个群按单一概率由某位成员发一个群红包
     const groups = db.prepare("SELECT id FROM contacts WHERE kind = 'group'").all();
