@@ -10,9 +10,9 @@
     <div class="md-body">
       <!-- 顶部 tab -->
       <div class="mu-tabs">
-        <button class="mu-tab" :class="{ on: tab === 'lib' }" @click="tab = 'lib'">音乐库</button>
-        <button class="mu-tab" :class="{ on: tab === 'plist' }" @click="tab = 'plist'">歌单</button>
-        <button class="mu-tab" :class="{ on: tab === 'fav' }" @click="tab = 'fav'">我的收藏</button>
+        <button class="mu-tab" :class="{ on: tab === 'lib' }" @click="tab = 'lib'">音乐库<span class="mu-tab-n">{{ store.songs.length }}</span></button>
+        <button class="mu-tab" :class="{ on: tab === 'plist' }" @click="tab = 'plist'">歌单<span class="mu-tab-n">{{ plList.length }}</span></button>
+        <button class="mu-tab" :class="{ on: tab === 'fav' }" @click="tab = 'fav'">我的收藏<span class="mu-tab-n">{{ store.favIds.length }}</span></button>
         <!-- 每个单人联系人各有一份自己的收藏，和音乐库/歌单在同一行 -->
         <button
           v-for="c in favContacts"
@@ -20,7 +20,7 @@
           class="mu-tab"
           :class="{ on: tab === 'fav:' + c.id }"
           @click="tab = 'fav:' + c.id"
-        >{{ c.name }}的收藏</button>
+        >{{ c.name }}的收藏<span class="mu-tab-n">{{ (favIdsMap[c.id] || []).length }}</span></button>
       </div>
 
       <!-- 歌单多选操作条：长按歌单进入，修改名称/删除/取消 -->
@@ -742,6 +742,12 @@ onMounted(() => {
   background: var(--bg-screen); font-size: 13px; color: var(--text); white-space: nowrap;
 }
 .mu-tab.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+/* tab 内的歌数小角标：更小更淡，不抢标题视觉 */
+.mu-tab-n {
+  margin-left: 5px; font-size: 11px; font-weight: 600; opacity: 0.55;
+  font-variant-numeric: tabular-nums; vertical-align: baseline;
+}
+.mu-tab.on .mu-tab-n { opacity: 0.9; }
 
 /* 多选操作条（在音乐库等 tab 按钮下方弹出） */
 .mu-selbar {
