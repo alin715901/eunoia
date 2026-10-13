@@ -364,7 +364,7 @@ onMounted(() => {
   background: var(--bg-soft); display: flex; align-items: center; justify-content: center;
 }
 .ms-file-name { font-size: 11px; color: var(--accent); margin: 8px 0 0; word-break: break-all; }
-.ms-proxy-row { display: flex; gap: 10px; margin-top: 2px; }
+.ms-proxy-row { display: flex; gap: 10px; margin-top: 14px; }
 .ms-proxy-row .grow { flex: 1; min-width: 0; }
 /* 保存按钮与「测试连接」等高且对齐 */
 .ms-proxy-row .ms-ghost,
