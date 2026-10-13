@@ -37,7 +37,7 @@
         <div class="ms-title"><AppIcon name="music" :size="15" color="var(--accent)" /> 解析服务</div>
         <input v-model="proxyUrl" class="ms-input" placeholder="留空则用默认云服务，例如 http://127.0.0.1:8787" />
         <div class="ms-hint-row">
-          <span>默认云端解析提取酷狗歌名/封面/歌词/音频，每日免费额度10万次请求，约可解析/播放2-5万首；也可自行填写其他解析服务地址。网易云音源/歌词已浏览器直连，无需中转</span>
+          <span>默认云端解析提取酷狗歌名/封面/歌词/音频，每日免费额度10万次请求，约可解析/播放2-5万首；也可自行填写其他解析服务地址。网易云音源/歌词已直链，无需中转</span>
         </div>
         <div class="ms-proxy-row">
           <button class="ms-ghost grow" @click="saveProxy">保存</button>
@@ -375,9 +375,9 @@ onMounted(() => {
 .ms-primary.soft { background: color-mix(in srgb, var(--accent) 82%, #fff); }
 .ms-primary:disabled { opacity: 0.6; }
 .ms-hint-row {
-  display: inline-flex; align-items: center; gap: 6px; margin-top: 2px;
-  padding: 6px 10px; border-radius: 999px; background: var(--bg-soft);
-  font-size: 11px; color: var(--text-soft);
+  display: flex; align-items: flex-start; gap: 6px; margin-top: 2px;
+  padding: 9px 12px; border-radius: 12px; background: var(--bg-soft);
+  font-size: 11px; color: var(--text-soft); line-height: 1.6;
 }
 
 /* 悬浮窗开关行 */
