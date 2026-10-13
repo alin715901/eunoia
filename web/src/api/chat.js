@@ -12,6 +12,8 @@ export {
   favoriteMessage,
   claimRedPacket,
   returnRedPacket,
+  claimGroupRedPacket,
+  getGroupRedPacketDetail,
   getFavorites,
   clearMessages,
   sendImage,

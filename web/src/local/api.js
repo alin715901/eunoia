@@ -161,9 +161,14 @@ export async function sendImage(contactId, assetPath, contentType = 'image') {
   return chatService.sendImageMessage(db, Number(contactId), assetPath, contentType)
 }
 
-// 发送红包
-export async function sendRedPacket(contactId, amount, note = '') {
-  return chatService.sendRedPacket(db, Number(contactId), amount, note)
+// 发送红包（单聊走原逻辑；群聊走群红包：amount + count 份，成员随机领取）
+export async function sendRedPacket(contactId, amount, note = '', count = 1) {
+  const cid = Number(contactId)
+  const c = db.prepare('SELECT kind FROM contacts WHERE id = ?').get(cid)
+  if (c && c.kind === 'group') {
+    return chatService.sendGroupRedPacket(db, cid, amount, count, note)
+  }
+  return chatService.sendRedPacket(db, cid, amount, note)
 }
 
 // 领取对方发来的红包：返回 { message, wallet }
@@ -177,6 +182,20 @@ export async function claimRedPacket(messageId) {
 export async function returnRedPacket(messageId) {
   const r = chatService.returnRedPacket(db, Number(messageId))
   if (!r) fail('该红包不可退回')
+  return r
+}
+
+// 抢群红包（每人限领一份，金额随机）：返回 { message, wallet, grab }
+export async function claimGroupRedPacket(messageId) {
+  const r = chatService.grabGroupRedPacket(db, Number(messageId))
+  if (!r) fail('该红包不可领取')
+  return r
+}
+
+// 群红包详情：元数据 + 领取流水 + 我的领取情况/剩余/能否领取
+export async function getGroupRedPacketDetail(messageId) {
+  const r = chatService.getGroupRedPacketDetail(db, Number(messageId))
+  if (!r) fail('红包不存在')
   return r
 }
 

@@ -800,45 +800,328 @@ function randomBlessing() {
   return list[Math.floor(Math.random() * list.length)];
 }
 
-/* 对方发红包：单一概率，每分钟判定一次。
-   每位未拉黑联系人每分钟有 RED_PACKET_PROB 概率给我发一个红包（期望约 5 次/天）。
-   已去掉原先「每 3 小时才开一次摇奖窗口」的外层闸门——之前是 3 小时窗口 × 窗口内 50% 两层叠加。 */
+/* ═══ 群红包（拼手气）═══
+   一条群红包消息（content_type='redpacket'，text JSON 带 group:true）：
+   { group:true, sender:'me'|成员id, amount, count, note, status, grabbed, claimed_amount, my_grab?, expired_refund? }
+   领取流水落 red_packet_grabs（grabber: 'me' 或 'm:<成员id>'，每人限领一份，唯一索引保证）。
+   余额闭环：
+   - 我发   → 扣 wallets(群).my_balance；成员/我领取 → 各自余额 += 份额；到期未领完 → 剩余退回我的余额
+   - 成员发 → 扣 wallets(成员).contact_balance（成员自己的钱）；领取 → 各自余额 += 份额；
+              到期未领完 → 剩余退回该成员余额
+   份额随机（经典拼手气）：每次领取在「剩余 − 留给后面每份的 1 分」之间随机取，最后一人拿全部剩余。 */
+const GROUP_RP_EXPIRE_MS = 5 * 60 * 1000; // 群红包 5 分钟未领完，自动退回剩余
+const GROUP_RP_PROB = 0.005;              // 每分钟每个群由成员发一个红包的概率（约 7 次/天）
+const GROUP_RP_MAX_COUNT = 100;           // 单个红包最多份数
+const GROUP_RP_MAX_AMOUNT = 10000000;     // 单个红包金额上限 1000 万
+
+/* 群成员 id 列表（不含群本身） */
+function groupMemberIds(d, groupId) {
+  return d
+    .prepare(
+      `SELECT c.id FROM contacts c JOIN contact_members m ON m.member_id = c.id
+       WHERE m.group_id = ? AND c.kind != 'group' ORDER BY c.id ASC`
+    )
+    .all(groupId)
+    .map((r) => r.id);
+}
+
+/* 拼手气份额：在剩余里随机取一份，给后面每份至少留 1 分；最后一人拿全部剩余 */
+function randomGrabShare(amount, count, grabbedCount, claimedAmount) {
+  const remainC = Math.round((amount - claimedAmount) * 100);
+  const remainN = count - grabbedCount;
+  if (remainN <= 0 || remainC <= 0) return 0;
+  if (remainN === 1) return remainC / 100;
+  const maxC = remainC - (remainN - 1);
+  const v = Math.floor(Math.random() * maxC) + 1;
+  return v / 100;
+}
+
+/* 群红包元数据（非群红包返回 {}） */
+function groupRpMeta(m) {
+  try {
+    const meta = JSON.parse(m.text || '{}');
+    return meta && meta.group ? meta : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+/* 我发群红包：扣我的余额（不足抛错）→ 落库 → 安排成员随机来抢 + 到期兜底退回 */
+function sendGroupRedPacket(dbRef, contactId, amount, count, note) {
+  const d = dbRef || db;
+  const amt = Math.round(Number(amount) * 100) / 100;
+  const n = Math.floor(Number(count));
+  if (!Number.isFinite(amt) || amt <= 0) throw new Error('红包金额无效');
+  if (!Number.isInteger(n) || n < 1 || n > GROUP_RP_MAX_COUNT) throw new Error('红包份数无效');
+  if (amt < n * 0.01) throw new Error('每份至少 0.01 元，请提高金额或减少份数');
+  walletRepo.debitMyBalance(contactId, amt);
+  const meta = {
+    group: true, sender: 'me', amount: amt, count: n,
+    note: note ? String(note) : '', status: 'unclaimed',
+    grabbed: 0, claimed_amount: 0
+  };
+  const seq = getNextSeq(contactId);
+  const info = d
+    .prepare(
+      `INSERT INTO chat_messages(contact_id, sender, content_type, text, read_receipt, read, seq, created_at, author_member_id)
+       VALUES(?, 'me', 'redpacket', ?, 'sent', 1, ?, ?, NULL)`
+    )
+    .run(contactId, JSON.stringify(meta), seq, Math.floor(Date.now() / 1000));
+  const msg = d.prepare('SELECT * FROM chat_messages WHERE id = ?').get(info.lastInsertRowid);
+  scheduleGroupGrabs(d, msg.id, null);
+  return msg;
+}
+
+/* 群成员发群红包：以成员自己的余额为准（contact_balance），不足则换人/放弃 */
+function memberSendGroupRedPacket(dbRef, groupId) {
+  const d = dbRef || db;
+  const members = groupMemberIds(d, groupId);
+  if (!members.length) return null;
+  // 随机打乱成员顺序，挨个试直到有人余额够发
+  for (let i = members.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    ;[members[i], members[j]] = [members[j], members[i]];
+  }
+  for (const mid of members) {
+    try {
+      const w = walletRepo.getWallet(mid);
+      const cap = Math.min(GROUP_RP_MAX_AMOUNT, w.contact_balance);
+      if (cap < 0.01) continue;
+      // 份数 1 ~ min(6, 成员数+1)；金额不低于 份数×0.01
+      const maxCount = Math.min(6, members.length + 1);
+      const n = randInt(1, maxCount);
+      const minAmt = Math.round(n * 0.01 * 100) / 100;
+      if (cap < minAmt) continue;
+      const amt = Math.round((Math.random() * (cap - minAmt) + minAmt) * 100) / 100;
+      walletRepo.debitContactBalance(mid, amt);
+      const meta = {
+        group: true, sender: mid, amount: amt, count: n,
+        note: randomBlessing(), status: 'unclaimed',
+        grabbed: 0, claimed_amount: 0
+      };
+      const seq = getNextSeq(groupId);
+      const info = d
+        .prepare(
+          `INSERT INTO chat_messages(contact_id, sender, content_type, text, read_receipt, read, seq, created_at, author_member_id)
+           VALUES(?, 'contact', 'redpacket', ?, 'delivered', 0, ?, ?, ?)`
+        )
+        .run(groupId, JSON.stringify(meta), seq, Math.floor(Date.now() / 1000), mid);
+      const msg = d.prepare('SELECT * FROM chat_messages WHERE id = ?').get(info.lastInsertRowid);
+      scheduleGroupGrabs(d, msg.id, mid);
+      const g = d.prepare('SELECT name, avatar FROM contacts WHERE id = ?').get(groupId);
+      notification.broadcast('new_messages', {
+        contactId: groupId,
+        messages: [msg],
+        avatar: g?.avatar || '',
+        name: g?.name || ''
+      });
+      notification.broadcast('badge_update', settingsRepo.getBadges());
+      return msg;
+    } catch (e) {
+      continue; // 这个成员余额不足，换下一个
+    }
+  }
+  return null;
+}
+
+/* 安排群成员来抢（错峰随机延迟，均在有效期内）+ 到期兜底退回 */
+function scheduleGroupGrabs(d, messageId, senderMemberId) {
+  const m = d.prepare('SELECT * FROM chat_messages WHERE id = ?').get(messageId);
+  if (!m) return;
+  const meta = groupRpMeta(m);
+  if (!meta.group || meta.status !== 'unclaimed') return;
+  const remainCount = meta.count - (meta.grabbed || 0);
+  if (remainCount <= 0) return;
+  // 候选抢夺者：除发送者外的全部成员（我手动抢，不进定时器）
+  let members = groupMemberIds(d, m.contact_id).filter((id) => id !== senderMemberId);
+  for (let i = members.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    ;[members[i], members[j]] = [members[j], members[i]];
+  }
+  members.slice(0, remainCount).forEach((mid, i) => {
+    const delay = randInt(2000, 12000) + i * randInt(1500, 5000);
+    setTimeout(() => {
+      try { memberGrabGroupRedPacket(d, messageId, mid); } catch (e) { /* ignore */ }
+    }, delay);
+  });
+  // 到点未领完 → 退回剩余（页面关闭导致定时器丢失时，由 tick 里的兜底扫描补齐）
+  setTimeout(() => {
+    try { expireGroupRedPacket(d, messageId); } catch (e) { /* ignore */ }
+  }, GROUP_RP_EXPIRE_MS);
+}
+
+/* 某个成员领取群红包：写流水 + 加成员自己的余额 + 更新消息元数据并广播 */
+function memberGrabGroupRedPacket(d, messageId, memberId) {
+  const m = d.prepare('SELECT * FROM chat_messages WHERE id = ?').get(messageId);
+  if (!m) return null;
+  const meta = groupRpMeta(m);
+  if (!meta.group || meta.status !== 'unclaimed') return null;
+  if ((meta.grabbed || 0) >= meta.count) return null;
+  const key = 'm:' + memberId;
+  const dup = d.prepare('SELECT 1 FROM red_packet_grabs WHERE message_id = ? AND grabber = ?').get(messageId, key);
+  if (dup) return null;
+  const share = randomGrabShare(meta.amount, meta.count, meta.grabbed || 0, meta.claimed_amount || 0);
+  if (share <= 0) return null;
+  d.prepare('INSERT INTO red_packet_grabs(message_id, grabber, amount, created_at) VALUES(?, ?, ?, ?)')
+    .run(messageId, key, share, Math.floor(Date.now() / 1000));
+  walletRepo.addToContactBalance(memberId, share); // 加进成员自己的余额
+  meta.grabbed = (meta.grabbed || 0) + 1;
+  meta.claimed_amount = Math.round(((meta.claimed_amount || 0) + share) * 100) / 100;
+  if (meta.grabbed >= meta.count) meta.status = 'claimed';
+  d.prepare('UPDATE chat_messages SET text = ? WHERE id = ?').run(JSON.stringify(meta), messageId);
+  broadcastMessageUpdate(m.contact_id, messageId);
+  return { share, message: d.prepare('SELECT * FROM chat_messages WHERE id = ?').get(messageId) };
+}
+
+/* 我领取群红包：与成员领取同规则，份额进我的余额（wallets(群).my_balance） */
+function grabGroupRedPacket(dbRef, messageId) {
+  const d = dbRef || db;
+  const m = d.prepare('SELECT * FROM chat_messages WHERE id = ?').get(messageId);
+  if (!m) return null;
+  const meta = groupRpMeta(m);
+  if (!meta.group || meta.status !== 'unclaimed') return { message: m, wallet: null, grab: null };
+  if ((meta.grabbed || 0) >= meta.count) return { message: m, wallet: null, grab: null };
+  const dup = d.prepare("SELECT 1 FROM red_packet_grabs WHERE message_id = ? AND grabber = 'me'").get(messageId);
+  if (dup) return { message: m, wallet: null, grab: null };
+  const share = randomGrabShare(meta.amount, meta.count, meta.grabbed || 0, meta.claimed_amount || 0);
+  if (share <= 0) return { message: m, wallet: null, grab: null };
+  d.prepare("INSERT INTO red_packet_grabs(message_id, grabber, amount, created_at) VALUES(?, 'me', ?, ?)")
+    .run(messageId, share, Math.floor(Date.now() / 1000));
+  const wallet = walletRepo.creditMyBalance(m.contact_id, share); // 加进「我」在这个群的余额
+  meta.grabbed = (meta.grabbed || 0) + 1;
+  meta.claimed_amount = Math.round(((meta.claimed_amount || 0) + share) * 100) / 100;
+  meta.my_grab = share;
+  if (meta.grabbed >= meta.count) meta.status = 'claimed';
+  d.prepare('UPDATE chat_messages SET text = ? WHERE id = ?').run(JSON.stringify(meta), messageId);
+  const updated = d.prepare('SELECT * FROM chat_messages WHERE id = ?').get(messageId);
+  broadcastMessageUpdate(m.contact_id, messageId);
+  return { message: updated, wallet, grab: share };
+}
+
+/* 群红包到期：未领完的剩余退回发送者（我 → 我的余额；成员 → 成员自己的余额） */
+function expireGroupRedPacket(dbRef, messageId) {
+  const d = dbRef || db;
+  const m = d.prepare('SELECT * FROM chat_messages WHERE id = ?').get(messageId);
+  if (!m) return null;
+  const meta = groupRpMeta(m);
+  if (!meta.group || meta.status !== 'unclaimed') return null;
+  const remain = Math.round((meta.amount - (meta.claimed_amount || 0)) * 100) / 100;
+  if (remain > 0) {
+    if (m.sender === 'me') walletRepo.addToMyBalance(m.contact_id, remain);
+    else walletRepo.addToContactBalance(m.author_member_id, remain);
+  }
+  meta.status = 'expired';
+  meta.expired_refund = remain;
+  d.prepare('UPDATE chat_messages SET text = ? WHERE id = ?').run(JSON.stringify(meta), messageId);
+  const updated = d.prepare('SELECT * FROM chat_messages WHERE id = ?').get(messageId);
+  broadcastMessageUpdate(m.contact_id, messageId);
+  return updated;
+}
+
+/* 群红包详情：元数据 + 领取流水（含名字）+ 我的领取情况/剩余/能否领取 */
+function getGroupRedPacketDetail(dbRef, messageId) {
+  const d = dbRef || db;
+  const m = d.prepare('SELECT * FROM chat_messages WHERE id = ?').get(messageId);
+  if (!m) return null;
+  const meta = groupRpMeta(m);
+  if (!meta.group) return null;
+  const rows = d
+    .prepare('SELECT grabber, amount, created_at FROM red_packet_grabs WHERE message_id = ? ORDER BY id ASC')
+    .all(messageId);
+  const grabs = rows.map((r) => {
+    let name = '我';
+    if (r.grabber !== 'me') {
+      const mid = Number(String(r.grabber).slice(2));
+      name = d.prepare('SELECT name FROM contacts WHERE id = ?').get(mid)?.name || '群成员';
+    }
+    return { grabber: r.grabber, name, amount: r.amount, created_at: r.created_at };
+  });
+  const myRow = rows.find((r) => r.grabber === 'me');
+  return {
+    message: m,
+    meta,
+    grabs,
+    myGrab: myRow ? myRow.amount : null,
+    remainingCount: Math.max(0, meta.count - (meta.grabbed || 0)),
+    remainingAmount: Math.round((meta.amount - (meta.claimed_amount || 0)) * 100) / 100,
+    canGrab: meta.status === 'unclaimed' && !myRow && (meta.grabbed || 0) < meta.count,
+    expired: meta.status === 'expired'
+  };
+}
+
+/* 对方（单人）主动发红包：每分钟每位联系人单一概率发一个（期望约 5 次/天） */
 const RED_PACKET_PROB = 0.0035;
+/* 对方（单人）主动发红包的金额范围：0.01 ~ 1000 万（不超过对方余额） */
+const PEER_RP_MAX_AMOUNT = 10000000;
+/* 自动增资上限：余额达到 1 亿停止增资 */
+const TOPUP_CAP = 100000000;
 
 /* 红包调度（每分钟触发）：
-   1) 对方钱包缓慢自动增资——每 3 小时随机增一笔（1~5 万元，余额超 100 万停）；这是充值节奏，不是概率层。
-   2) 红包发送——每分钟每位联系人按单一概率 RED_PACKET_PROB 发一个。 */
+   1) 钱包自动增资——每 3 小时随机增一笔（1~5 万元，余额超 1 亿停）；群成员按同一规则增资。
+   2) 红包发送——单人：每位联系人按 RED_PACKET_PROB 发一个（金额 0.01~1000 万，不超其余额）；
+      群聊：每个群按 GROUP_RP_PROB 由某位成员发一个群红包（以成员自己的余额为准）。
+   3) 兜底——超过 5 分钟仍未领完的群红包，退回剩余给发送者。 */
 const TOPUP_GAP = 3 * 3600 * 1000;
 let lastTopup = 0;
 function redpacketTick() {
   try {
     const now = Date.now();
     const rows = db.prepare("SELECT id FROM contacts WHERE kind != 'group'").all();
-    // 对方钱包随机自动增资（每 3 小时随机增一笔，1~5 万元；余额超过 100 万时停止增资）
+    // 群成员 id（成员自己的余额也在各自 wallets 行里，随群聊一起增资）
+    const memberIds = db
+      .prepare(
+        `SELECT DISTINCT m.member_id AS id FROM contact_members m
+         JOIN contacts c ON c.id = m.member_id WHERE c.kind != 'group'`
+      )
+      .all()
+      .map((r) => r.id);
+    // 钱包随机自动增资（每 3 小时随机增一笔，1~5 万元；余额超过 1 亿时停止增资）
     if (now - lastTopup >= TOPUP_GAP) {
       lastTopup = now;
-      for (const c of rows) {
-        const cid = c.id;
+      for (const cid of [...rows.map((r) => r.id), ...memberIds]) {
         const st = db.prepare('SELECT blocked FROM contact_settings WHERE contact_id = ?').get(cid);
         if (st && st.blocked) continue;
         const w = walletRepo.getWallet(cid);
-        if (w.contact_balance < 1000000) {
+        if (w.contact_balance < TOPUP_CAP) {
           const inc = Math.round((Math.random() * 49999 + 1) * 100) / 100;
           walletRepo.addToContactBalance(cid, inc);
         }
       }
     }
-    // 红包：每分钟每位联系人单一概率发一个
+    // 红包：每分钟每位联系人单一概率发一个（0.01 ~ 1000 万，不超过余额）
     for (const c of rows) {
       const cid = c.id;
       const st = db.prepare('SELECT blocked FROM contact_settings WHERE contact_id = ?').get(cid);
       if (st && st.blocked) continue;
       const w = walletRepo.getWallet(cid);
-      if (w.contact_balance >= 1 && Math.random() < RED_PACKET_PROB) {
-        const maxAmt = Math.max(1, Math.floor(w.contact_balance));
-        const amt = Math.round((Math.random() * (maxAmt - 1) + 1) * 100) / 100;
+      const cap = Math.min(PEER_RP_MAX_AMOUNT, w.contact_balance);
+      if (cap >= 0.01 && Math.random() < RED_PACKET_PROB) {
+        const amt = Math.round((Math.random() * (cap - 0.01) + 0.01) * 100) / 100;
         autoSendRedPacket(db, cid, amt, randomBlessing());
       }
+    }
+    // 群聊：每分钟每个群按单一概率由某位成员发一个群红包
+    const groups = db.prepare("SELECT id FROM contacts WHERE kind = 'group'").all();
+    for (const g of groups) {
+      if (Math.random() < GROUP_RP_PROB) memberSendGroupRedPacket(db, g.id);
+    }
+    // 兜底：超过 5 分钟仍未领完的群红包 → 退回剩余（覆盖页面关闭期间定时器丢失的情况）
+    const stale = db
+      .prepare(
+        `SELECT id, created_at FROM chat_messages
+         WHERE content_type = 'redpacket' AND created_at >= ?
+         ORDER BY id DESC LIMIT 60`
+      )
+      .all(Math.floor(Date.now() / 1000) - 3600);
+    for (const row of stale) {
+      try {
+        const mm = db.prepare('SELECT text FROM chat_messages WHERE id = ?').get(row.id);
+        const meta = JSON.parse(mm?.text || '{}');
+        if (!meta.group || meta.status !== 'unclaimed') continue;
+        if (Math.floor(Date.now() / 1000) - row.created_at >= GROUP_RP_EXPIRE_MS / 1000) {
+          expireGroupRedPacket(db, row.id);
+        }
+      } catch (e) { /* ignore */ }
     }
   } catch (e) {
     console.error('[redpacketTick]', e.message);
@@ -1146,6 +1429,11 @@ export {
   autoSendRedPacket,
   claimRedPacket,
   returnRedPacket,
+  sendGroupRedPacket,
+  memberSendGroupRedPacket,
+  grabGroupRedPacket,
+  expireGroupRedPacket,
+  getGroupRedPacketDetail,
   redpacketTick,
   proactiveTick,
   sendCallRecord,

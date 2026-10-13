@@ -25,13 +25,13 @@ const EXPORT_TABLES = [
   'moments', 'moment_interactions', 'letters', 'divinations',
   'global_settings', 'proactive_jobs', 'group_member_settings',
   'anniversaries', 'songs', 'song_favs', 'companion_invites',
-  'listen_together', 'app_items'
+  'listen_together', 'app_items', 'red_packet_grabs'
 ]
 
 /* 大板块 → 数据表（对齐桌面功能；感知 / 心迹为即时功能不落库，无需导出。
  * 红包（wallets）属于聊天的一部分，随聊天板块一起导出，不单列。） */
 export const BACKUP_FEATURES = [
-  { key: 'chat', label: '聊天', tables: ['chat_messages', 'wallets'] },
+  { key: 'chat', label: '聊天', tables: ['chat_messages', 'wallets', 'red_packet_grabs'] },
   { key: 'music', label: '音乐', tables: ['songs', 'song_favs'] },
   { key: 'cards', label: '字卡', tables: ['card_groups', 'cards'] },
   { key: 'letters', label: '信件', tables: ['letters'] },
@@ -50,7 +50,8 @@ const ID_TABLES = {
   contacts: 'id', card_groups: 'id', cards: 'id', chat_messages: 'id',
   favorites: 'id', moments: 'id', moment_interactions: 'id', letters: 'id',
   divinations: 'id', proactive_jobs: 'id', anniversaries: 'id', songs: 'id',
-  companion_invites: 'id', listen_together: 'id', app_items: 'id'
+  companion_invites: 'id', listen_together: 'id', app_items: 'id',
+  red_packet_grabs: 'id'
 }
 
 /* 表 → 外键列 → 目标表（导出时按此自动带入关联行，导入时按此重映射 / 断开） */
@@ -75,6 +76,7 @@ const REFS = {
   song_favs: { song_id: 'songs', contact_id: 'contacts' },
   companion_invites: { contact_id: 'contacts', message_id: 'chat_messages' },
   listen_together: { contact_id: 'contacts', song_id: 'songs', message_id: 'chat_messages' },
+  red_packet_grabs: { message_id: 'chat_messages' },
   app_items: { contact_id: 'contacts' }
 }
 
@@ -87,7 +89,8 @@ const LABELS = {
   moments: '朋友圈', moment_interactions: '朋友圈互动', letters: '信件', divinations: '占卜记录',
   global_settings: '全局设置', proactive_jobs: '主动消息任务', group_member_settings: '群成员设置',
   anniversaries: '纪念日', songs: '歌曲', song_favs: '歌曲收藏', companion_invites: '陪伴邀请',
-  listen_together: '一起听', app_items: '模块记录'
+  listen_together: '一起听', app_items: '模块记录',
+  red_packet_grabs: '红包领取记录'
 }
 
 /* 表名 → 中文名（设置页展示用） */

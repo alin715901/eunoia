@@ -312,9 +312,15 @@ function squeezedHtml(raw) {
   }
   return out
 }
-/* 红包状态文案 */
+/* 红包状态文案（群红包按「我是否抢到 / 领完 / 退回」区分） */
 const rpStatusText = computed(() => {
   const s = meta.value?.status
+  if (meta.value?.group) {
+    if (s === 'expired') return '已退回'
+    if (meta.value.my_grab != null) return '已领取 ¥' + fmtAmount(meta.value.my_grab)
+    if (s === 'claimed') return '已领完'
+    return '待领取'
+  }
   return s === 'claimed' ? '已领取' : s === 'returned' ? '已退回' : '待领取'
 })
 /* 通话气泡文案：接通后（我或对方挂断）一律显示「通话时长 + 时长」；未接通按结果区分 */

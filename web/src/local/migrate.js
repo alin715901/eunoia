@@ -147,6 +147,16 @@ export function migrate() {
     message_id INTEGER,
     created_at INTEGER
   )`)
+  // 群红包领取记录（每人限领一份，唯一索引保证）
+  db.exec(`CREATE TABLE IF NOT EXISTS red_packet_grabs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    message_id INTEGER NOT NULL,
+    grabber TEXT NOT NULL,
+    amount REAL DEFAULT 0,
+    created_at INTEGER,
+    FOREIGN KEY (message_id) REFERENCES chat_messages(id) ON DELETE CASCADE
+  )`)
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_rpg_msg_grabber ON red_packet_grabs(message_id, grabber)')
 
   // 一次性迁移标记表
   db.exec('CREATE TABLE IF NOT EXISTS _migrations(key TEXT PRIMARY KEY)')

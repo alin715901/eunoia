@@ -8,12 +8,12 @@
           <button class="rp-close" @click="$emit('close')">✕</button>
         </div>
 
-        <!-- 余额：仅单人联系人展示「我的余额」与「对方余额」（群聊不涉及钱包）。
-             「我的余额」可直接编辑自定义；「对方余额」只读，不提供修改 -->
-        <div v-if="!isGroup && wallet" class="rp-wallet">
+        <!-- 余额：单聊展示「我的余额」与「对方余额」；群聊只展示「我的余额」。
+             「我的余额」可直接编辑自定义（虚线下划线只在编辑中出现）；「对方余额」只读 -->
+        <div v-if="wallet" class="rp-wallet">
           <div class="rp-bal">
             <span class="rp-bal-label">我的余额</span>
-            <span class="rp-bal-edit">
+            <span class="rp-bal-edit" :class="{ 'is-edit': balEditing }">
               <span class="rp-bal-yen">¥</span>
               <input
                 v-model="myBalanceDraft"
@@ -24,17 +24,46 @@
                 step="0.01"
                 placeholder="0.00"
                 aria-label="我的余额，可自定义"
+                @focus="balEditing = true"
+                @blur="balEditing = false"
                 @change="saveMyBalance"
                 @keyup.enter="saveMyBalance"
               />
             </span>
           </div>
-          <div class="rp-bal">
+          <div v-if="!isGroup" class="rp-bal">
             <span class="rp-bal-label">对方余额</span>
             <span class="rp-bal-val">¥{{ wallet.contact_balance?.toFixed(2) }}</span>
           </div>
         </div>
-        <p v-if="!isGroup" class="rp-tip">对方会随机给你发红包，领取后计入「我的余额」；「我的余额」也可直接输入自定义</p>
+        <p class="rp-tip">{{ isGroup ? '群成员也可发红包，以各自余额为准；红包可设置个数，群成员随机领取' : '对方会随机给你发红包，领取后计入「我的余额」；「我的余额」也可直接输入自定义' }}</p>
+
+        <!-- 红包个数（仅群聊）：预设 + 自定义，每人随机领取一份 -->
+        <div v-if="isGroup" class="rp-count">
+          <span class="rp-count-label">红包个数</span>
+          <div class="rp-count-chips">
+            <button
+              v-for="c in countPresets"
+              :key="c"
+              type="button"
+              class="rp-count-chip"
+              :class="{ active: count === String(c) }"
+              @click="count = String(c)"
+            >
+              {{ c }}
+            </button>
+            <input
+              v-model="count"
+              class="rp-count-input"
+              type="number"
+              inputmode="numeric"
+              min="1"
+              max="100"
+              placeholder="自定义"
+              aria-label="红包个数，可自定义"
+            />
+          </div>
+        </div>
 
         <div class="rp-presets">
           <button
@@ -80,7 +109,9 @@ import { useNotificationsStore } from '@/stores/notifications'
 const props = defineProps({
   show: { type: Boolean, default: false },
   contactId: { type: [String, Number], default: null },
-  isGroup: { type: Boolean, default: false }
+  isGroup: { type: Boolean, default: false },
+  // 群成员数（群聊传）：用于默认红包份数
+  memberCount: { type: Number, default: 0 }
 })
 const emit = defineEmits(['close', 'send'])
 const toast = useNotificationsStore()
@@ -91,9 +122,14 @@ const amount = ref('')
 const note = ref('')
 const err = ref('')
 const wallet = ref(null)
+/* 群红包份数：预设 + 自定义（默认与群成员数一致，拿不到成员数时回落 1） */
+const countPresets = [1, 3, 5, 8, 10]
+const count = ref('1')
 
 /* 「我的余额」编辑草稿：打开面板/钱包加载后用当前值填充 */
 const myBalanceDraft = ref('0.00')
+/* 虚线下划线只在编辑时出现：聚焦显示、失焦收起 */
+const balEditing = ref(false)
 
 watch(
   () => props.show,
@@ -103,7 +139,9 @@ watch(
       note.value = ''
       err.value = ''
       myBalanceDraft.value = '0.00'
-      if (!props.isGroup && props.contactId != null) {
+      balEditing.value = false
+      // 群聊也展示「我的余额」（群里的我的钱 = wallets(群).my_balance）
+      if (props.contactId != null) {
         getWallet(props.contactId)
           .then((w) => {
             wallet.value = w
@@ -113,6 +151,7 @@ watch(
       } else {
         wallet.value = null
       }
+      count.value = String(Math.max(1, Number(props.memberCount) || 1))
     }
   }
 )
@@ -142,7 +181,13 @@ async function saveMyBalance() {
 
 const valid = computed(() => {
   const n = Number(amount.value)
-  return Number.isFinite(n) && n > 0 && n <= 99999
+  if (!Number.isFinite(n) || n <= 0 || n > 99999) return false
+  if (props.isGroup) {
+    const c = Math.floor(Number(count.value))
+    // 份数须为 1~100 的整数，且每份至少 0.01 元
+    return Number.isInteger(c) && c >= 1 && c <= 100 && n >= c * 0.01
+  }
+  return true
 })
 
 function confirm() {
@@ -151,8 +196,23 @@ function confirm() {
     err.value = '请输入有效金额'
     return
   }
+  if (props.isGroup) {
+    const c = Math.floor(Number(count.value))
+    if (!Number.isInteger(c) || c < 1 || c > 100) {
+      err.value = '红包个数须为 1~100 的整数'
+      return
+    }
+    if (n < c * 0.01) {
+      err.value = '每份至少 0.01 元，请提高金额或减少份数'
+      return
+    }
+  }
   err.value = ''
-  emit('send', { amount: n, note: note.value.trim() })
+  emit('send', {
+    amount: n,
+    count: props.isGroup ? Math.floor(Number(count.value)) : 1,
+    note: note.value.trim()
+  })
 }
 </script>
 
@@ -198,15 +258,17 @@ function confirm() {
 .rp-bal { display: flex; align-items: baseline; justify-content: space-between; }
 .rp-bal-label { font-size: 13px; color: #c98d75; }
 .rp-bal-val { font-size: 18px; font-weight: 800; color: #c05e45; }
-/* 我的余额：可直接输入自定义（虚线下划线提示可编辑） */
+/* 我的余额：可直接输入自定义；虚线下划线只在编辑中出现（聚焦/修改时） */
 .rp-bal-edit {
   display: inline-flex;
   align-items: baseline;
   gap: 1px;
-  border-bottom: 1px dashed rgba(192, 94, 69, 0.45);
+  border-bottom: 1px solid transparent;
   padding: 0 2px;
+  transition: border-color 0.15s ease;
 }
-.rp-bal-edit:focus-within { border-bottom-color: #c05e45; }
+.rp-bal-edit.is-edit { border-bottom-color: rgba(192, 94, 69, 0.45); }
+.rp-bal-edit.is-edit:focus-within { border-bottom-color: #c05e45; }
 .rp-bal-yen { font-size: 14px; font-weight: 800; color: #c05e45; }
 .rp-bal-input {
   width: 84px;
@@ -222,6 +284,38 @@ function confirm() {
 }
 .rp-bal-input::-webkit-outer-spin-button,
 .rp-bal-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+/* 群红包份数：预设 chips + 自定义输入 */
+.rp-count { margin-bottom: 14px; }
+.rp-count-label { display: block; margin: 0 2px 8px; font-size: 12px; color: var(--text-soft); }
+.rp-count-chips { display: flex; gap: 8px; }
+.rp-count-chip {
+  flex: 1;
+  padding: 9px 0;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-soft);
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+  transition: all 0.15s ease;
+}
+.rp-count-chip.active { border-color: #f391a9; background: #fdf0f3; color: #e56a87; }
+.rp-count-chip:active { transform: scale(0.97); }
+.rp-count-input {
+  width: 64px;
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-soft);
+  padding: 9px 8px;
+  font-size: 14px;
+  color: var(--text);
+  text-align: center;
+  outline: none;
+  -moz-appearance: textfield;
+}
+.rp-count-input::-webkit-outer-spin-button,
+.rp-count-input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+.rp-count-input:focus { border-color: #f391a9; }
 .rp-tip { margin: 0 2px 14px; font-size: 11px; color: var(--text-soft); line-height: 1.5; }
 .rp-close {
   position: absolute;

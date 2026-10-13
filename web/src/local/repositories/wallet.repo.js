@@ -63,6 +63,20 @@ function addToMyBalance(contactId, amount) {
   return getWallet(contactId);
 }
 
+/* 扣减「对方（联系人/群成员）自己的余额」：群成员发群红包时用，不足则抛错。
+   与 debitMyBalance 对称——一个动 my_balance，一个动 contact_balance */
+function debitContactBalance(contactId, amount) {
+  ensure(contactId);
+  const amt = Math.round(Number(amount) * 100) / 100;
+  if (!Number.isFinite(amt) || amt <= 0) return getWallet(contactId);
+  const w = getWallet(contactId);
+  if (w.contact_balance < amt) throw new Error('余额不足');
+  db.prepare(
+    'UPDATE wallets SET contact_balance = contact_balance - ?, updated_at = ? WHERE contact_id = ?'
+  ).run(amt, Math.floor(Date.now() / 1000), contactId);
+  return getWallet(contactId);
+}
+
 /* 自定义「我的余额」：直接设为指定值（保留两位小数，不小于 0）。
    只改 my_balance——对方余额与领取/发送逻辑都不动 */
 function setMyBalance(contactId, value) {
@@ -81,6 +95,7 @@ export {
   creditMyBalance,
   debitMyBalance,
   addToMyBalance,
+  debitContactBalance,
   setMyBalance,
   ensure,
 };

@@ -95,9 +95,26 @@
       @change="onAlbumPick"
     />
 
-    <!-- 红包金额面板（我发红包） -->
-    <RedPacketSheet :show="showRedPacket" :contact-id="contactId" :is-group="isGroup" @close="showRedPacket = false" @send="onSendRedPacket" />
-    <!-- 领取/退回对方红包弹窗 -->
+    <!-- 红包金额面板（我发红包；群聊可选份数） -->
+    <RedPacketSheet
+      :show="showRedPacket"
+      :contact-id="contactId"
+      :is-group="isGroup"
+      :member-count="memberCount"
+      @close="showRedPacket = false"
+      @send="onSendRedPacket"
+    />
+    <!-- 群红包详情：拼手气结果 + 领取记录（可开红包） -->
+    <GroupRedPacketSheet
+      v-if="groupPacket"
+      :show="showGroupPacket"
+      :message="groupPacket"
+      :member-map="memberMap"
+      :my-name="myName"
+      :my-avatar="myAvatar"
+      @close="showGroupPacket = false; groupPacketId = null"
+    />
+    <!-- 领取/退回对方红包弹窗（仅单聊） -->
     <RedPacketClaimSheet
       :show="showClaim"
       :message="claimPacket"
@@ -137,6 +154,7 @@ import MessageBubble from './MessageBubble.vue'
 import ChatInput from './ChatInput.vue'
 import TypingIndicator from './TypingIndicator.vue'
 import RedPacketSheet from './RedPacketSheet.vue'
+import GroupRedPacketSheet from './GroupRedPacketSheet.vue'
 import RedPacketClaimSheet from './RedPacketClaimSheet.vue'
 import QuestionSheet from './QuestionSheet.vue'
 import { useChatStore } from '@/stores/chat'
@@ -373,24 +391,36 @@ async function onSendSticker(assetPath) {
   }
 }
 
-/* 红包：确认金额（+ 可选留言）后发送红包卡片（状态由服务端流转：已领取/退回） */
-async function onSendRedPacket({ amount, note }) {
+/* 红包：确认金额（+ 可选留言）后发送红包卡片（状态由服务端流转：已领取/退回）。
+   群聊：带份数一起发（拼手气群红包，成员随机领取） */
+async function onSendRedPacket({ amount, count, note }) {
   showRedPacket.value = false
   try {
-    const msg = await sendRedPacket(props.contactId, amount, note)
+    const msg = await sendRedPacket(props.contactId, amount, note, count || 1)
     chat.push(props.contactId, msg)
   } catch (e) {
     toast.pushToast({ title: '发送失败', text: e?.message || '红包发送失败，请重试', type: 'message' })
   }
 }
 
-/* 点击红包卡片：对方发来的、待领取 → 弹出「领取 / 退回」选择框；其余（我发的、已领取/退回）不弹窗 */
+/* 点击红包卡片：
+   群红包 → 打开群红包详情（可开红包/看领取记录）；
+   对方发来的、待领取 → 弹出「领取 / 退回」选择框；其余（我发的、已领取/退回）不弹窗 */
 const claimPacket = ref(null)
 const showClaim = ref(false)
+/* 群红包详情：按消息 id 从会话列表派生——成员实时领取（message_update）后，
+   卡片与详情弹窗都会跟着刷新 */
+const groupPacketId = ref(null)
+const showGroupPacket = ref(false)
 function onOpenRedPacket(m) {
   if (!m || m.content_type !== 'redpacket') return
   let meta
   try { meta = JSON.parse(m.text || '{}') } catch (e) { return }
+  if (meta.group) {
+    groupPacketId.value = m.id
+    showGroupPacket.value = true
+    return
+  }
   if (m.sender === 'contact' && meta.status === 'unclaimed') {
     claimPacket.value = m
     showClaim.value = true
@@ -442,6 +472,12 @@ const messages = computed(() => messagesByContact.value[props.contactId] || [])
 const typing = computed(() => !!typingByContact.value[props.contactId])
 /* 群聊：群成员表非空即为群聊（父组件只在群聊时传）→ 输入指示器走「三点」样式 */
 const isGroup = computed(() => !!props.memberMap)
+/* 群成员数：群红包默认份数用 */
+const memberCount = computed(() => (props.memberMap ? Object.keys(props.memberMap).length : 0))
+/* 群红包详情弹窗的目标消息：跟着 store 实时更新（成员领取后卡片/详情同步刷新） */
+const groupPacket = computed(() =>
+  groupPacketId.value != null ? messages.value.find((m) => m.id === groupPacketId.value) || null : null
+)
 
 /* ── 聊天记录搜索：两段式 ──
    list    ：展示全部相关记录（命中列表）

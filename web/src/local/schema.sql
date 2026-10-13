@@ -128,6 +128,19 @@ CREATE TABLE IF NOT EXISTS wallets (
   FOREIGN KEY (contact_id) REFERENCES contacts(id) ON DELETE CASCADE
 );
 
+-- 群红包领取记录：一条群红包消息（chat_messages.content_type='redpacket' 且 text JSON 带 group:true）
+-- 对应 N 条领取流水。grabber：'me' 或 'm:<成员id>'；每人限领一份（唯一索引保证）。
+-- 余额归属：我 → wallets(group_id).my_balance；成员 → wallets(成员id).contact_balance（成员自己的钱）。
+CREATE TABLE IF NOT EXISTS red_packet_grabs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  message_id INTEGER NOT NULL,
+  grabber TEXT NOT NULL,
+  amount REAL DEFAULT 0,
+  created_at INTEGER,
+  FOREIGN KEY (message_id) REFERENCES chat_messages(id) ON DELETE CASCADE
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_rpg_msg_grabber ON red_packet_grabs(message_id, grabber);
+
 CREATE TABLE IF NOT EXISTS moments (
   id INTEGER PRIMARY KEY,
   contact_id INTEGER,
