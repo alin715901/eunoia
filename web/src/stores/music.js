@@ -346,7 +346,12 @@ export const useMusicStore = defineStore('music', {
       }
     },
     async clearUnplayable() {
-      const r = await clearUnplayableSongs()
+      const r = await clearUnplayableSongs('unplayable')
+      await this.reload()
+      return r.deleted
+    },
+    async removeVipSongs() {
+      const r = await clearUnplayableSongs('vip')
       await this.reload()
       return r.deleted
     },

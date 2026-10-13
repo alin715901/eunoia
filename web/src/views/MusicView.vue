@@ -2,7 +2,7 @@
   <div class="md-page">
     <AppHeader title="音乐" back>
       <template #right>
-        <button class="md-op" @click="removeVipSongs" aria-label="移除会员付费歌曲" title="移除会员付费歌曲"><AppIcon name="trash" :size="18" /></button>
+        <button class="md-op" @click="openRemoval" aria-label="移除会员付费歌曲" title="移除会员付费歌曲"><AppIcon name="trash" :size="18" /></button>
         <button class="md-op" @click="goSettings" aria-label="设置"><AppIcon name="more" :size="20" /></button>
       </template>
     </AppHeader>
@@ -311,6 +311,23 @@
     >
       <AppIcon name="music" :size="16" />
     </button>
+
+    <!-- 移除歌曲弹窗：第一行「移除会员 / 移除不可播」，第二行「取消」 -->
+    <div v-if="showRemoval" class="mu-mask" @click.self="showRemoval = false">
+      <div class="mu-menu mu-removal">
+        <p class="mu-menu-title">清理歌曲</p>
+        <p class="mu-menu-sub">会员歌曲可试听 30 秒，按需选择移除</p>
+        <div class="mu-menu-row2">
+          <button class="mu-menu-btn danger" :disabled="!removalVip" @click="doRemoval('vip')">
+            移除会员<em>{{ removalVip }}</em>
+          </button>
+          <button class="mu-menu-btn danger" :disabled="!removalUnplay" @click="doRemoval('unplayable')">
+            移除不可播<em>{{ removalUnplay }}</em>
+          </button>
+        </div>
+        <button class="mu-menu-btn cancel" @click="showRemoval = false">取消</button>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -348,24 +365,26 @@ function goSettings() {
   router.push('/music/settings')
 }
 
-/* 移除会员付费（不可播放）歌曲：弹确认框，移除/取消 */
-async function removeVipSongs() {
-  const vipCount = store.songs.filter((s) => s.vip || !s.audio).length
-  if (!vipCount) {
+/* ═══ 移除歌曲：弹窗分两类（会员可试听30秒 / 完全不可播） ═══ */
+const showRemoval = ref(false)
+const removalVip = ref(0)
+const removalUnplay = ref(0)
+function openRemoval() {
+  const vip = store.songs.filter((s) => s.vip).length
+  const unplay = store.songs.filter((s) => !s.audio && !s.vip).length
+  if (!vip && !unplay) {
     toast.pushToast({ title: '没有需要移除的歌曲', text: '当前没有会员付费或不可播放的歌曲' })
     return
   }
-  const ok = await confirmDialog({
-    title: '移除会员付费歌曲？',
-    text: `将删除曲库中 ${vipCount} 首因版权不可播放的歌曲，之后可在设置里重新导入。`,
-    okText: '移除',
-    cancelText: '取消',
-    danger: true
-  })
-  if (!ok) return
+  removalVip.value = vip
+  removalUnplay.value = unplay
+  showRemoval.value = true
+}
+async function doRemoval(kind) {
+  showRemoval.value = false
   try {
-    const n = await store.clearUnplayable()
-    toast.pushToast({ title: `已移除 ${n} 首`, text: '曲库已清理' })
+    const n = kind === 'vip' ? await store.removeVipSongs() : await store.clearUnplayable()
+    toast.pushToast({ title: `已移除 ${n} 首`, text: kind === 'vip' ? '会员付费歌曲已清理' : '不可播放歌曲已清理' })
   } catch (e) {
     toast.pushToast({ title: '移除失败', text: e.message })
   }
@@ -865,6 +884,9 @@ onMounted(() => {
   font-size: 14px; font-weight: 600;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
+.mu-pl-num {
+  font-size: 11px; color: var(--text-soft); font-variant-numeric: tabular-nums;
+}
 .mu-pl-body { padding: 2px 0 6px 8px; border-left: 1px solid var(--border); margin-left: 22px; }
 .mu-pl-empty { text-align: center; font-size: 12px; color: var(--text-soft); padding: 14px 0 10px; line-height: 1.6; }
 .mu-pl-arrow { flex: 0 0 auto; color: var(--text-soft); transition: transform 0.22s ease; }
@@ -961,6 +983,19 @@ onMounted(() => {
 .mu-menu-list { max-height: 200px; overflow-y: auto; }
 .mu-menu-new { display: flex; gap: 8px; align-items: center; margin: 6px 0 2px; }
 .mu-menu-new .md-input { flex: 1; }
+
+/* 清理歌曲弹窗：两按钮并排 + 取消 */
+.mu-menu-sub { margin: -4px 0 12px; font-size: 12px; color: var(--text-soft); text-align: center; line-height: 1.5; }
+.mu-menu-row2 { display: flex; gap: 8px; margin-bottom: 4px; }
+.mu-menu-row2 .mu-menu-btn {
+  flex: 1; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  padding: 14px 6px; background: var(--bg-soft); border-radius: 12px;
+  font-size: 14px; color: var(--text); border: none;
+}
+.mu-menu-row2 .mu-menu-btn:active { transform: scale(0.97); }
+.mu-menu-row2 .mu-menu-btn:disabled { opacity: 0.38; }
+.mu-menu-row2 .mu-menu-btn.danger { color: #c0576b; }
+.mu-menu-row2 .mu-menu-btn em { font-style: normal; font-size: 11px; color: var(--text-soft); }
 
 /* 当前播放列表弹窗 */
 .mu-queue { max-width: 340px; }

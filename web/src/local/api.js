@@ -836,8 +836,12 @@ export async function batchDeleteMusicSongs(ids) {
 }
 
 // 清理会员/无法播放的歌曲
-export async function clearUnplayableSongs() {
-  const r = db.prepare("DELETE FROM songs WHERE audio = '' AND source NOT IN ('local','link')").run()
+// mode: 'unplayable'（默认，删无音源的云端歌）| 'vip'（删会员付费云端歌，哪怕能试听30秒）
+export async function clearUnplayableSongs(mode = 'unplayable') {
+  const where = mode === 'vip'
+    ? "vip = 1 AND source NOT IN ('local','link')"
+    : "audio = '' AND source NOT IN ('local','link')"
+  const r = db.prepare(`DELETE FROM songs WHERE ${where}`).run()
   return { deleted: r.changes }
 }
 
