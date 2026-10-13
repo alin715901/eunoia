@@ -4,28 +4,50 @@ import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { fileURLToPath, URL } from 'node:url'
 
-// 构建后把 dist/assets 里的 sql-wasm-*.wasm 以 <link rel="preload"> 注入 index.html。
-// 作用：HTML 解析时就开始并行下载 wasm，不必等主 JS 下载并执行后才发起，
-// 首屏时间从「JS 下载 + wasm 下载」串行叠加缩短为两者取最大值。
-// 注意：不能加 crossorigin 属性——运行时 fetch(wasmUrl) 是同源 same-origin
-// 请求，加了会变成 CORS 模式导致预加载资源不匹配、双重下载。
+// 把 `*.wasm?inline` 的导入在构建期转成 base64 data URL 模块。
+// 背景：GitHub Pages CDN 对 .wasm 响应体会卡流（不报错、不结束，
+// 重试也救不回），且主 bundle 内联 base64 会膨胀 857KB。
+// 故 wasm 数据经 src/local/wasm-data.js 这个独立模块动态 import，
+// Rollup 将其拆为独立 .js chunk 并行下载（.js 不受卡流影响）。
+// Vite 5 的 asset 插件不认 .wasm 的 `?inline`，故自建此插件。
+function wasmInlinePlugin() {
+  return {
+    name: 'eunoia:wasm-inline',
+    enforce: 'pre',
+    load(id) {
+      const qi = id.indexOf('?')
+      if (qi < 0) return null
+      const query = id.slice(qi)
+      if (!/(?:\?|&)inline(?:&|$)/.test(query)) return null
+      let file = id.slice(0, qi)
+      if (file.startsWith('/@fs/')) file = file.slice(4) // dev 模式下 node_modules 的 id 前缀
+      if (!file.endsWith('.wasm')) return null
+      const buf = readFileSync(file)
+      return `export default ${JSON.stringify('data:application/wasm;base64,' + buf.toString('base64'))}`
+    }
+  }
+}
+
+// 构建后把 dist/assets 里的 wasm-data-*.js chunk 以 <link rel="modulepreload">
+// 注入 index.html：HTML 解析时即开始并行下载，与主 bundle 时间重叠，
+// 不必等主 JS 执行到动态 import 才发起。
 function wasmPreloadPlugin() {
   return {
     name: 'eunoia:wasm-preload',
     closeBundle() {
       const distDir = fileURLToPath(new URL('./dist', import.meta.url))
       const assetsDir = join(distDir, 'assets')
-      let wasmFile = null
+      let wasmChunk = null
       try {
-        wasmFile = readdirSync(assetsDir).find((f) => /^sql-wasm-.*\.wasm$/.test(f))
+        wasmChunk = readdirSync(assetsDir).find((f) => /^wasm-data-.*\.js$/.test(f))
       } catch (_) {
         return
       }
-      if (!wasmFile) return
+      if (!wasmChunk) return
       const htmlPath = join(distDir, 'index.html')
       let html = readFileSync(htmlPath, 'utf8')
-      if (html.includes('sql-wasm')) return
-      const link = `<link rel="preload" href="./assets/${wasmFile}" as="fetch" type="application/wasm">`
+      if (html.includes('wasm-data-')) return
+      const link = `<link rel="modulepreload" href="./assets/${wasmChunk}">`
       html = html.replace('</head>', `  ${link}\n  </head>`)
       writeFileSync(htmlPath, html)
       console.log('[wasm-preload] 已注入:', link)
@@ -37,10 +59,9 @@ function wasmPreloadPlugin() {
 // 数据跑在浏览器里的 sql.js（WASM SQLite）中，持久化到 IndexedDB。
 // GitHub Pages 部署在 /<仓库名>/ 子路径下，由 CI 传入 BASE_PATH（见 .github/workflows/deploy.yml）；
 // 本地 dev/preview 不带该变量，base 为 '/'。
-// sql.js 的 wasm 走独立文件 + preload（见 db.js loadSqlJs 的历史注释）。
 export default defineConfig({
   base: process.env.BASE_PATH || '/',
-  plugins: [vue(), wasmPreloadPlugin()],
+  plugins: [vue(), wasmInlinePlugin(), wasmPreloadPlugin()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url))

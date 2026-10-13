@@ -1,7 +1,9 @@
 import { onMounted, onUnmounted } from 'vue'
 
 const SEEN_KEY = 'app_version_seen'
-const CHECK_MS = 15000
+/* 60s：version.json 在慢链路下一次请求可能耗时数十秒，15s 轮询太吵；
+   且部署不是分钟级敏感事，60s 足够及时 */
+const CHECK_MS = 60 * 1000
 
 /**
  * 自动检测新版本：定期拉取 version.json（构建时由 scripts/version.mjs 写入 dist），

@@ -190,45 +190,42 @@ const db = {
 
 /* ── 初始化 / 重置 ── */
 
-/* 加载 sql.js 的 WASM（独立 .wasm 文件，fetch + wasmBinary）。
-   历史演进：
-   - 最初直接 fetch：GitHub Pages CDN 对该 .wasm 响应体在部分网络路径下
-     会卡流（instantiateStreaming 的 promise 永远 pending，sql.js 回退
-     只捕获 reject 不捕获 hang）；
-   - 曾改为构建期 base64 内联（?inline）规避：但 base64 使首屏 JS bundle
-     膨胀 857KB（gzip 394KB），链路慢时首屏白屏 50s+，得不偿失；
-   - 现方案：独立文件（gzip 仅 315KB，index.html 有 preload 可与 JS
-     并行下载），fetch + wasmBinary（不走 streaming，避开卡流坑），
-     带超时与缓存穿透重试。 */
-async function loadSqlJs() {
+/* 加载 sql.js 的 WASM。
+   方案演进（都踩过坑，按时间序）：
+   1. 直接 fetch .wasm 文件：GitHub Pages CDN 对该响应体会卡流
+      （instantiateStreaming 的 promise 永远 pending，sql.js 回退只捕获
+      reject 不捕获 hang；实测连 HEAD 请求都无响应）；
+   2. 构建期 base64 内联进主 bundle：零请求可靠了，但首屏 JS 膨胀
+      857KB（gzip 394KB），慢链路下白屏 50s+；
+   3. base64 拆独立 JS chunk 动态 import（现方案）：与主 bundle 并行
+      下载（index.html 有 modulepreload），.js 响应 CDN 不卡流，
+      主 JS 回到 ~242KB gzip。加载失败时重试，仍失败则抛错由
+      App.vue 错误页提供「重新加载」。 */
+async function loadWasmDataUrl() {
   let lastErr = null
-  for (let attempt = 1; attempt <= 4; attempt++) {
+  for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const sep = wasmUrl.includes('?') ? '&' : '?'
-      const url = `${wasmUrl}${sep}v=${attempt}`
-      const buf = await new Promise((resolve, reject) => {
-        const timer = setTimeout(() => reject(new Error('wasm 加载超时')), 20000)
-        fetch(url, { cache: attempt === 1 ? 'force-cache' : 'no-store' })
-          .then((r) => {
-            if (!r.ok) throw new Error('wasm HTTP ' + r.status)
-            return r.arrayBuffer()
-          })
-          .then(resolve, reject)
-          .finally(() => clearTimeout(timer))
-      })
-      if (buf && buf.byteLength > 1024) {
-        const SQL = await initSqlJs({ wasmBinary: buf })
-        console.log('[db] wasm 独立文件加载成功', buf.byteLength, 'bytes')
-        return SQL
-      }
-      throw new Error('wasm 数据异常: ' + (buf ? buf.byteLength : 0))
+      const mod = await import('./wasm-data.js')
+      if (mod && typeof mod.default === 'string' && mod.default.length > 1024) return mod.default
+      throw new Error('wasm 数据模块内容异常')
     } catch (e) {
       lastErr = e
-      console.warn('[db] wasm 第', attempt, '次加载失败:', e.message)
-      await new Promise((r) => setTimeout(r, 600))
+      console.warn('[db] wasm 数据 chunk 第', attempt, '次加载失败:', e && e.message)
+      if (attempt < 3) await new Promise((r) => setTimeout(r, 600))
     }
   }
-  throw lastErr || new Error('wasm 加载失败')
+  throw lastErr || new Error('wasm 数据 chunk 加载失败')
+}
+
+async function loadSqlJs() {
+  const dataUrl = await loadWasmDataUrl()
+  const b64 = dataUrl.slice(dataUrl.indexOf(',') + 1)
+  const bin = atob(b64)
+  const bytes = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
+  const SQL = await initSqlJs({ wasmBinary: bytes })
+  console.log('[db] wasm 数据 chunk 加载成功', bytes.byteLength, 'bytes')
+  return SQL
 }
 
 export async function initDb() {

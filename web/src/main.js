@@ -26,11 +26,10 @@ dbReady
   })
 
 // Service Worker：缓存同源静态资源，二次访问瞬间打开（GitHub Pages 链路慢的对策）。
+// 直接注册（不等 load 事件：慢链路上 load 可能迟迟不来或时机不可靠）。
 // 相对路径注册，GitHub Pages /<仓库名>/ 子路径部署同样有效。
 if ('serviceWorker' in navigator) {
-  window.addEventListener('load', () => {
-    navigator.serviceWorker.register('./sw.js').catch(() => {
-      /* 注册失败（如 http 环境）静默忽略，不影响首次访问 */
-    })
-  })
+  navigator.serviceWorker.register('./sw.js')
+    .then(() => console.log('[sw] 注册成功'))
+    .catch((e) => console.warn('[sw] 注册失败（不影响使用）:', e && e.message))
 }
