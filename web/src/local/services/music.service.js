@@ -79,7 +79,7 @@ function neSongFromDetail(s) {
   return {
     title: s.name || '未知歌曲',
     artist: (s.artists || []).map((a) => a.name).join('/') || '',
-    cover: (s.album && s.album.picUrl) || '',
+    cover: ((s.album && s.album.picUrl) || '').replace(/^http:\/\//i, 'https://'),
     duration: Math.round((s.duration || 0) / 1000),
     source: 'netease',
     source_id: String(s.id),
