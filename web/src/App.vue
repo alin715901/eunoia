@@ -1,42 +1,65 @@
 <template>
   <div class="app-root">
-    <div class="phone-frame">
-      <div class="phone-screen">
-        <div
-          class="rv-wrap"
-          :class="{ 'with-tabbar': showTabBar && !uiStore.tabbarHidden }"
-          :style="isHome ? homeBgStyle : null"
-        >
-          <router-view v-slot="{ Component }">
-            <!-- 带 :id 的联系人内页用完整 path 作 key，
-                 避免从 A 联系人切到 B 联系人时复用同一实例（onMounted 不再执行）。
-                 注释必须放在 keep-alive 外：dev 模式下编译器会把 keep-alive 内的
-                 注释节点也计为子节点，报 “expects exactly one child component” -->
-            <keep-alive>
-              <component :is="Component" :key="viewKey" />
-            </keep-alive>
-          </router-view>
+    <!-- 数据库就绪前：骨架屏（JS 下载完即显示，wasm/init 在后台跑） -->
+    <div v-if="!dbOk && !dbErr" class="phone-frame boot-frame">
+      <div class="phone-screen boot-screen">
+        <div class="boot-brand">Eunoia</div>
+        <div class="boot-heart">
+          <svg viewBox="0 0 32 29" width="34" height="30" aria-hidden="true">
+            <path d="M16 28.5S1.5 19.6 1.5 9.9C1.5 4.9 5.5 1.5 9.6 1.5c2.7 0 5.2 1.3 6.4 3.4 1.2-2.1 3.7-3.4 6.4-3.4 4.1 0 8.1 3.4 8.1 8.4 0 9.7-14.5 18.6-14.5 18.6z"/>
+          </svg>
         </div>
-        <BottomTabBar v-if="showTabBar && !uiStore.tabbarHidden" />
+        <div class="boot-text">正在恢复数据…</div>
       </div>
     </div>
+    <!-- 数据库初始化失败：错误页 + 重试 -->
+    <div v-else-if="dbErr" class="phone-frame boot-frame">
+      <div class="phone-screen boot-screen">
+        <div class="boot-brand">Eunoia</div>
+        <div class="boot-text boot-err-text">数据初始化失败</div>
+        <div class="boot-tip">可能是网络不佳导致组件加载失败，请重试</div>
+        <button class="boot-retry" @click="reload">重新加载</button>
+      </div>
+    </div>
+    <template v-else>
+      <div class="phone-frame">
+        <div class="phone-screen">
+          <div
+            class="rv-wrap"
+            :class="{ 'with-tabbar': showTabBar && !uiStore.tabbarHidden }"
+            :style="isHome ? homeBgStyle : null"
+          >
+            <router-view v-slot="{ Component }">
+              <!-- 带 :id 的联系人内页用完整 path 作 key，
+                   避免从 A 联系人切到 B 联系人时复用同一实例（onMounted 不再执行）。
+                   注释必须放在 keep-alive 外：dev 模式下编译器会把 keep-alive 内的
+                   注释节点也计为子节点，报 “expects exactly one child component” -->
+              <keep-alive>
+                <component :is="Component" :key="viewKey" />
+              </keep-alive>
+            </router-view>
+          </div>
+          <BottomTabBar v-if="showTabBar && !uiStore.tabbarHidden" />
+        </div>
+      </div>
 
-    <Toast />
-    <ConfirmDialog />
+      <Toast />
+      <ConfirmDialog />
 
-    <!-- 全局通话组件：独立于路由，跨页面保持（主叫/来电/通话中/可拖动悬浮窗） -->
-    <CallOverlay />
+      <!-- 全局通话组件：独立于路由，跨页面保持（主叫/来电/通话中/可拖动悬浮窗） -->
+      <CallOverlay />
 
-    <!-- 全局音乐悬浮窗：独立于路由，跨页面常驻 -->
-    <MusicFloat />
+      <!-- 全局音乐悬浮窗：独立于路由，跨页面常驻 -->
+      <MusicFloat />
 
-    <!-- 全局歌词页：独立于路由，全屏覆盖 -->
-    <MusicLyrics />
+      <!-- 全局歌词页：独立于路由，全屏覆盖 -->
+      <MusicLyrics />
+    </template>
   </div>
 </template>
 
 <script setup>
-import { onMounted, onUnmounted, computed, watch } from 'vue'
+import { onMounted, onUnmounted, computed, watch, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import BottomTabBar from '@/components/layout/BottomTabBar.vue'
 import Toast from '@/components/common/Toast.vue'
@@ -47,6 +70,7 @@ import MusicLyrics from '@/components/music/MusicLyrics.vue'
 import { connect, disconnect } from '@/composables/useSSE'
 import { useAutoUpdate } from '@/composables/useAutoUpdate'
 import { requestNotificationPermission } from '@/composables/useNotification'
+import { dbReady } from '@/local/db'
 import { useSettingsStore } from '@/stores/settings'
 import { useContactsStore } from '@/stores/contacts'
 import { useCompanionStore } from '@/stores/companion'
@@ -59,6 +83,23 @@ const settings = useSettingsStore()
 const contactsStore = useContactsStore()
 const desktop = useDesktopStore()
 const uiStore = useUiStore()
+
+/* 数据库就绪状态：就绪前显示骨架屏，失败显示错误页 */
+const dbOk = ref(false)
+const dbErr = ref(false)
+dbReady
+  .then(() => {
+    dbOk.value = true
+    boot()
+  })
+  .catch((e) => {
+    console.error('[app] 数据库初始化失败', e)
+    dbErr.value = true
+  })
+
+function reload() {
+  location.reload()
+}
 
 /* 自动检测新版本并刷新：部署后无需手动清缓存/换链接即可生效 */
 useAutoUpdate()
@@ -99,7 +140,8 @@ const viewKey = computed(() =>
   /^\/contacts\/\d+\//.test(route.path) ? route.fullPath : route.path
 )
 
-/* 开屏选择联系人的开关已从设置页移除，启动直接进入当前桌面 */
+/* 开屏选择联系人的开关已从设置页移除，启动直接进入当前桌面。
+   db 就绪后调用（dbReady.then → boot）。 */
 async function boot() {
   connect()
   // 尽早申请系统通知权限（部分浏览器要求用户交互后授权；失败静默忽略）
@@ -117,11 +159,7 @@ async function boot() {
 }
 
 onMounted(() => {
-  boot()
-  /* 拦截系统级横滑后退手势（iOS Safari 边缘横滑 / 安卓 WebView 边缘横滑）：
-     这类手势会绕过应用内返回层级、直接跳浏览器历史记录（hash 路由被弹出 → 跳页）。
-     overscroll-behavior-x 在部分系统上拦不住，这里在「从屏幕左右边缘起手且横向位移占主导」时
-     preventDefault 拦截，正常纵向滚动与其它横向滚动不受影响 */
+  /* 横滑后退手势拦截与 db 无关，mount 时即注册（骨架屏期间也生效） */
   let sx = 0, sy = 0, active = false
   let inHScroll = false, hEl = null
   const onTs = (e) => {
@@ -242,4 +280,60 @@ html, body { overscroll-behavior-x: none; touch-action: pan-y; }
 .app-root, .phone-screen, .rv-wrap { overscroll-behavior-x: none; }
 /* 各纵向滚动容器只允许纵向滑动，避免横向手势触发浏览器/系统后退 */
 .hub-scroll, .cards-main, .card-grid, .msg-list, .search-results, .cm-scroll { touch-action: pan-y; }
+
+/* ── 启动骨架屏（db 初始化期间）── */
+.boot-screen {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  background: var(--bg-screen);
+}
+.boot-brand {
+  font-family: var(--font-serif);
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  color: var(--accent);
+}
+.boot-heart svg path {
+  fill: var(--accent);
+  animation: bootBeat 1.2s ease-in-out infinite;
+  transform-origin: center 60%;
+}
+@keyframes bootBeat {
+  0%, 100% { transform: scale(1); opacity: 0.85; }
+  14% { transform: scale(1.18); opacity: 1; }
+  28% { transform: scale(1); opacity: 0.85; }
+  42% { transform: scale(1.12); opacity: 1; }
+  70% { transform: scale(1); opacity: 0.85; }
+}
+.boot-text {
+  font-size: 13px;
+  color: var(--text-soft);
+  letter-spacing: 0.06em;
+}
+.boot-err-text {
+  font-size: 16px;
+  font-weight: 600;
+  color: var(--text);
+}
+.boot-tip {
+  font-size: 12px;
+  color: var(--text-soft);
+  max-width: 220px;
+  text-align: center;
+  line-height: 1.7;
+}
+.boot-retry {
+  margin-top: 6px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 10px 36px;
+}
 </style>
