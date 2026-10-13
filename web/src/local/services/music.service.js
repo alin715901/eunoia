@@ -258,9 +258,28 @@ async function kugouGetPlayUrl(hash) {
 
 async function kugouFromPage(url) {
   const html = await fetchText(url);
-  const hash = (html.match(/hash=([0-9a-fA-F]{32})/) || html.match(/"hash":"([0-9a-fA-F]{32})"/) || [])[1];
-  const title = (html.match(/<title>([^<]+)<\/title>/) || [])[1] || '';
-  return { hash: hash ? hash.toLowerCase() : '', title: title.replace(/[-_|]\s*酷狗.*$/i, '').trim() };
+  const pick = (re) => { const m = html.match(re); return m ? m[1] : '' }
+  const hash = (pick(/hash=([0-9a-fA-F]{32})/) || pick(/"hash":"([0-9a-fA-F]{32})"/) || '').toLowerCase();
+  /* <title> 形如「花雨落-酷狗音乐」或「任然 - 花雨落-酷狗音乐」 */
+  let title = (pick(/<title>([^<]+)<\/title>/) || '').replace(/[-_|]\s*酷狗.*$/i, '').trim();
+  /* 页面内嵌字段（值可能是 \uXXXX 转义）：歌手/封面/时长，一次拿全免去后续多次往返 */
+  const unesc = (s) => s ? s.replace(/\\u([0-9a-fA-F]{4})/g, (_, h) => String.fromCharCode(parseInt(h, 16))) : ''
+  const artist = unesc(pick(/"author_name":"([^"]*)"/));
+  let cover = unesc(pick(/"imgurl":"([^"]*)"/) || pick(/"album_img":"([^"]*)"/)).replace(/\\\//g, '/');
+  if (cover) cover = cover.replace(/\{size\}/g, '400').replace(/^http:\/\//i, 'https://');
+  /* 页面内时长字段：climax_info.timelength 是高潮片段（秒级），128/320timelength 才是完整音频毫秒数 */
+  const durStr = pick(/"(?:128|320)timelength":(\d+)/) || pick(/"timelength":"(\d+)"/);
+  const duration = Math.round((Number(durStr) || 0) / 1000);
+  /* 标题里带「歌手 - 歌名」时拆开，与 author_name 互相校验 */
+  if (title && artist) {
+    const both = [`${artist} - ${title}`, `${title} - ${artist}`]
+    for (const b of both) {
+      if (title === b) { title = title.split(' - ').pop(); break }
+    }
+    if (title.startsWith(`${artist} - `)) title = title.slice(artist.length + 3)
+    else if (title.endsWith(` - ${artist}`)) title = title.slice(0, -(artist.length + 3))
+  }
+  return { hash, title, artist, cover, duration };
 }
 
 async function kugouSearchMeta(keyword, hash) {
@@ -297,54 +316,52 @@ async function kugouAlbumCover(albumId) {
 
 async function kugouResolve({ hash: hashIn, url }) {
   let hash = String(hashIn || '').toLowerCase();
-  let pageTitle = '';
-  if (!hash && url) {
-    const p = await kugouFromPage(url);
-    hash = p.hash;
-    pageTitle = p.title;
-  }
+  /* 分享页（chain 链接）：一次拿齐 hash/歌名/歌手/封面/时长，省掉后续多次元数据往返 */
+  let page = { title: '', artist: '', cover: '', duration: 0 };
+  if (!hash && url) page = await kugouFromPage(url), hash = page.hash;
   if (!hash) throw new Error('没解析到歌曲信息，请确认是酷狗歌曲分享链接');
-  /* 直链（拿不到 = VIP/付费/下架）+ 文件名（形如「歌手 - 歌名 - 专辑」）+ 时长 */
-  const play = await kugouGetPlayUrl(hash).catch(() => null);
-  let title = '';
-  let artist = '';
-  let duration = (play && play.duration) || 0;
+  /* 直链（拿不到 = VIP/付费/下架）+ 文件名 + 时长；页面元数据不全时才并行补一次歌词检索 */
+  const pageMetaOk = page.title && !kugouGarbage(page.title) && page.artist && !kugouGarbage(page.artist) && page.duration;
+  const [play, lyric] = await Promise.all([
+    kugouGetPlayUrl(hash).catch(() => null),
+    pageMetaOk ? null : kugouLyricSearch(hash).catch(() => null)
+  ]);
+  let title = page.title || '';
+  let artist = page.artist || '';
+  let duration = (play && play.duration) || page.duration || 0;
+  let cover = page.cover || '';
+  /* tracker 文件名（「歌手 - 歌名 - 专辑」）比页面标题更准，优先采用 */
   if (play && play.fileName) {
     const seg = play.fileName.split(' - ').map((s) => s.trim()).filter(Boolean);
-    if (seg.length >= 2) { artist = seg[0]; title = seg[1]; }
-    else if (seg.length === 1) { title = seg[0]; }
+    if (seg.length >= 2 && !kugouGarbage(seg[0]) && !kugouGarbage(seg[1])) { artist = seg[0]; title = seg[1]; }
+    else if (seg.length === 1 && !kugouGarbage(seg[0]) && !title) title = seg[0];
   }
-  /* 元数据补全：歌词检索接口可按 hash 反查歌名/歌手
-     （VIP 歌拿不到直链、用户上传文件文件名是 hex 乱码、或缺少歌手时用） */
-  const metaBad = !title || kugouGarbage(title) || !artist || kugouGarbage(artist);
-  if (metaBad || !duration) {
-    const l = await kugouLyricSearch(hash).catch(() => null);
-    if (l) {
-      if (metaBad) {
-        if (l.song && !kugouGarbage(l.song)) title = l.song;
-        if (l.singer) artist = l.singer;
+  /* 歌词检索兜底元数据（页面/文件名都脏或缺失时） */
+  if (lyric) {
+    if ((!title || kugouGarbage(title)) && lyric.song && !kugouGarbage(lyric.song)) title = lyric.song;
+    if ((!artist || kugouGarbage(artist)) && lyric.singer && !kugouGarbage(lyric.singer)) artist = lyric.singer;
+    if (!duration && lyric.duration) duration = Math.round(lyric.duration / 1000);
+  }
+  /* 仍缺元数据 → 搜索接口按关键词补（老格式分享页/乱码文件名场景） */
+  if (!title || kugouGarbage(title) || !artist || kugouGarbage(artist)) {
+    const kw = [title, artist, page.title].filter(Boolean).join(' ').trim();
+    if (kw) {
+      const m = await kugouSearchMeta(kw, hash).catch(() => null);
+      if (m) {
+        if (!title || kugouGarbage(title)) title = m.title;
+        if ((!artist || kugouGarbage(artist)) && m.artist) artist = m.artist;
+        if (!duration && m.duration) duration = m.duration;
       }
-      if (!duration && l.duration) duration = Math.round(l.duration / 1000);
     }
   }
-  /* 页面标题兜底（老格式分享页 <title> 里有歌名_歌手） */
-  if (!title && pageTitle) {
-    const m = await kugouSearchMeta(pageTitle, hash).catch(() => null);
-    if (m) {
-      title = m.title;
-      artist = artist || m.artist;
-      if (!duration && m.duration) duration = m.duration;
-    }
-  }
-  /* 封面：按 歌名+歌手 搜接口（优先同 hash 结果）拿 album_id，再查专辑接口取 imgurl */
-  let cover = '';
-  if (title) {
+  /* 仍缺封面 → 搜索接口拿 album_id，再查专辑接口（分享页没带图时的兜底） */
+  if (!cover && title) {
     const m = await kugouSearchMeta(`${title} ${artist}`.trim(), hash).catch(() => null);
-    if (m && m.album_id) cover = await kugouAlbumCover(m.album_id).catch(() => '');
+    if (m && m.album_id) cover = (await kugouAlbumCover(m.album_id).catch(() => '')) || '';
   }
   /* 清理乱码文件名残留（去掉扩展名/hex 歌手名） */
-  if (kugouGarbage(title)) title = title.replace(/\.[a-z0-9]+$/i, '');
-  if (kugouGarbage(artist)) artist = '';
+  if (title && kugouGarbage(title)) title = title.replace(/\.[a-z0-9]+$/i, '');
+  if (artist && kugouGarbage(artist)) artist = '';
   /* 既拿不到直链也查不到任何元数据 = 链接无效/歌曲下架，直接报错不入库 */
   if (!title && !play) throw new Error('没找到这首歌，链接可能无效或歌曲已下架');
   return {
@@ -492,7 +509,9 @@ async function resolveStreamUrl(song) {
   /* 音源已经是 Meting 端点（自刷新、永不过期，私密歌单/官方缺直链都走它）→ 直接用作播放地址，
      省去一次注定失败的官方 neGetSongUrl 请求 */
   if (song.audio && /\/meting\//.test(song.audio)) return song.audio;
-  if (song.source === 'netease' && song.source_id && !song.vip) {
+  /* 网易云：每次播放重新解析（会员歌也一并尝试——官方/Meting 常能返回 30 秒试听地址，
+     能播即标「会员」而不是「不可播」） */
+  if (song.source === 'netease' && song.source_id) {
     return neGetSongUrl(song.source_id).catch(() => song.audio || '');
   }
   /* 酷狗 CDN 直链带时效，每次播放重新解析；失败回退导入时存的地址 */

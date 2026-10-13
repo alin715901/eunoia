@@ -3,7 +3,7 @@ import {
   getMusicSongs, favMusicSong, deleteMusicSong, batchDeleteMusicSongs,
   clearUnplayableSongs, getMusicSettings, saveMusicSettings, streamUrl,
   importMusic, addMusicManual, updateMusicSong, uploadMusicFile, getMusicLyric,
-  refreshSongAudio, enqueueMusicCache, backfillMusicCache, getMusicCacheStats,
+  refreshSongAudio, updateSongDuration, enqueueMusicCache, backfillMusicCache, getMusicCacheStats,
   setMusicCacheUpdateListener
 } from '@/api/music'
 import {
@@ -69,7 +69,8 @@ export const useMusicStore = defineStore('music', {
     /* 一起听计时（用于累计到首页「一起听已经 X 分钟」） */
     listenStartAt: 0,
     listenAccMin: 0,
-    listenMinutes: cachedListenMinutes()   // 全局累计的一起听分钟数（切换联系人/结束会话/刷新都不清零）
+    listenMinutes: cachedListenMinutes(),   // 全局累计的一起听分钟数（切换联系人/结束会话/刷新都不清零）
+    listenSeconds: 0,                       // 不足 1 分钟的零头（内存里累计，满 60 秒即入库）
   }),
   getters: {
     favSet: (s) => new Set(s.favIds),
@@ -263,7 +264,13 @@ export const useMusicStore = defineStore('music', {
       this._recoverTried = null // 新的一首：允许一次「重解析地址」恢复
       audio.src = streamUrl(this.current.id)
       notifyMediaState(this.current, true)
-      audio.play().catch(() => {
+      audio.play().catch((e) => {
+        /* 自动播放策略拒绝（页面还没被用户交互过）：不是链接问题，安静退回即可，别误报「加载失败」 */
+        if (e && e.name === 'NotAllowedError') {
+          this.playing = false
+          notifyMediaState(this.current, false)
+          return
+        }
         /* play() 被拒且 src 本身加载失败（audio.error 非空）→ 直链很可能过期了，重解析再试 */
         if (audio.error && !this.current?.vip) {
           this._recoverAudio()
@@ -281,7 +288,7 @@ export const useMusicStore = defineStore('music', {
        第二次调用静默等结果，只有「已试过且失败了」才报错放弃。 */
     async _recoverAudio() {
       const song = this.current
-      if (!song || song.vip) return
+      if (!song) return
       const giveUp = (text) => {
         const toast = useNotificationsStore()
         toast.pushToast({ title: '播放失败', text })
@@ -490,6 +497,35 @@ export const useMusicStore = defineStore('music', {
         }
       } catch (e) { /* ignore */ }
     },
+    /* 播放时自动识别时长并回写：补齐导入时缺失的时长（Meting 歌单/手动导入不带时长）。
+       只补空缺不覆盖——会员试听只有 30 秒，不代表歌曲真实长度 */
+    _persistDuration() {
+      const song = this.current
+      if (!song || !song.id) return
+      const d = Math.round(audio.duration || 0)
+      if (!d || d <= 0) return
+      if (song.duration && song.duration > 0) return
+      if (this._durPersisted === song.id) return
+      this._durPersisted = song.id
+      song.duration = d
+      updateSongDuration(song.id, d).catch(() => { /* ignore */ })
+    },
+    /* 累计收听秒表：按音频真实播放进度计秒（不受后台定时器节流影响），
+       每满 1 分钟立即入库并刷新首页「已经收听」显示（实时同步） */
+    _tickListenSeconds() {
+      if (!this.playing) { this._lastAudioTime = -1; return }
+      const cur = audio.currentTime
+      if (this._lastAudioTime >= 0 && cur > this._lastAudioTime) {
+        const step = cur - this._lastAudioTime
+        if (step <= 30) this.listenSeconds = (this.listenSeconds || 0) + step /* 拖动跳变不计 */
+      }
+      this._lastAudioTime = cur
+      if (this.listenSeconds >= 60) {
+        const add = Math.floor(this.listenSeconds / 60)
+        this.listenSeconds -= add * 60
+        this._addListenMinutes(add)
+      }
+    },
     async setListenMinutes(value) {
       const r = await setListenMinutes(Math.max(0, Number(value) || 0))
       if (r && r.minutes != null) {
@@ -627,29 +663,34 @@ export function bindAudioEvents() {
       store.playing = false
       setMediaPlaybackState(false)
     }
-    /* src 加载失败（直链过期/为空）：非 VIP 歌尝试重解析地址恢复，每首只试一次 */
-    if (store.current && !store.current.vip && store._recoverTried !== store.current.id) {
+    /* src 加载失败（直链过期/为空）：尝试重解析地址恢复，每首只试一次
+       （会员歌也试——网易云会员常能拿到 30 秒试听地址） */
+    if (store.current && store._recoverTried !== store.current.id) {
       store._recoverAudio()
     }
   })
-  audio.addEventListener('play', () => setMediaPlaybackState(true))
-  audio.addEventListener('pause', () => setMediaPlaybackState(false))
+  audio.addEventListener('play', () => { setMediaPlaybackState(true); const s = useMusicStore(); s._lastAudioTime = audio.currentTime })
+  audio.addEventListener('pause', () => { setMediaPlaybackState(false); useMusicStore()._lastAudioTime = -1 })
   audio.addEventListener('timeupdate', () => {
     const store = useMusicStore()
     store.currentTime = audio.currentTime
     setMediaPosition(store.duration, store.currentTime)
+    store._tickListenSeconds()
   })
   audio.addEventListener('loadedmetadata', () => {
     const store = useMusicStore()
     store.duration = audio.duration || 0
+    store._persistDuration()
   })
   audio.addEventListener('seeked', () => {
     const store = useMusicStore()
     store.currentTime = audio.currentTime
+    store._lastAudioTime = audio.currentTime
   })
   audio.addEventListener('durationchange', () => {
     const store = useMusicStore()
     store.duration = audio.duration || 0
+    store._persistDuration()
   })
 }
 

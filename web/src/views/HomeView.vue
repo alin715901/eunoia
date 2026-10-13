@@ -108,9 +108,9 @@
             </div>
           </div>
 
-          <!-- 一起听时长：仅展示，不再弹窗（吞掉点击，避免冒泡触发音乐卡背景菜单） -->
+          <!-- 累计收听时长：按真实播放进度实时累计，满 1 分钟即刷新显示 -->
           <div class="listen-row" @click.stop>
-            <span class="cb-label">一起听已经</span>
+            <span class="cb-label">已经收听</span>
             <span class="listen-val">{{ fmtListenMin(music.listenMinutes) }}</span>
           </div>
         </div>

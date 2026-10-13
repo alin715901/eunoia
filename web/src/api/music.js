@@ -15,6 +15,7 @@ export {
   getFavIds,
   getMusicLyric,
   refreshSongAudio,
+  updateSongDuration,
   enqueueMusicCache,
   backfillMusicCache,
   getMusicCacheStats,

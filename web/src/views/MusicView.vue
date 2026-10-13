@@ -77,7 +77,8 @@
               <span class="mu-title">{{ s.title }}</span>
               <span class="mu-sub">
                 <span class="mu-artist">{{ s.artist || '未知歌手' }}</span>
-                <span v-if="s.vip || !s.audio" class="mu-chip warn">不可播</span>
+                <span v-if="s.vip" class="mu-chip vip">会员</span>
+                <span v-else-if="!s.audio" class="mu-chip warn">不可播</span>
               </span>
             </span>
             <template v-if="!selectMode">
@@ -147,7 +148,7 @@
                 </span>
                 <span class="mu-main">
                   <span class="mu-title">{{ s.title }}</span>
-                  <span class="mu-sub"><span class="mu-artist">{{ s.artist || '未知歌手' }}</span><span v-if="s.vip || !s.audio" class="mu-chip warn">不可播</span></span>
+                  <span class="mu-sub"><span class="mu-artist">{{ s.artist || '未知歌手' }}</span><span v-if="s.vip" class="mu-chip vip">会员</span><span v-else-if="!s.audio" class="mu-chip warn">不可播</span></span>
                 </span>
                 <template v-if="!selectMode">
                   <button class="mu-act" :class="{ on: store.favSet.has(s.id) }" @click.stop="toggleFavRow(s)" :aria-label="store.favSet.has(s.id) ? '取消收藏' : '收藏'">
@@ -843,6 +844,7 @@ onMounted(() => {
   font-size: 10px; color: var(--text-soft); flex: 0 0 auto;
 }
 .mu-chip.warn { color: #c0576b; background: rgba(192, 87, 107, 0.08); }
+.mu-chip.vip { color: var(--accent); background: var(--accent-soft); }
 .mu-artist { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mu-dur { flex: 0 0 auto; font-size: 11px; color: var(--text-soft); opacity: 0.75; font-variant-numeric: tabular-nums; }
 

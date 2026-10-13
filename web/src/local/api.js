@@ -845,6 +845,14 @@ export async function clearUnplayableSongs(mode = 'unplayable') {
   return { deleted: r.changes }
 }
 
+// 播放时自动识别到的时长回写（补齐导入时缺失的时长：Meting 歌单/手动导入都不带时长）
+export async function updateSongDuration(id, duration) {
+  const d = Math.max(0, Math.round(Number(duration) || 0))
+  if (!d) return
+  /* 只补空缺，不覆盖已有时长（会员试听只有 30 秒，不代表歌曲真实长度） */
+  db.prepare('UPDATE songs SET duration = ? WHERE id = ? AND (duration IS NULL OR duration <= 0)').run(d, Number(id))
+}
+
 // 收藏（按联系人切换）
 export async function favMusicSong(id, contactId) {
   const cid = Number(contactId || 0)
