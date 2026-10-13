@@ -1,21 +1,31 @@
 // 朋友圈：联系人主动发动态（按联系人的「朋友圈设置」调度，内容取该联系人的字卡库）
 import db from '../db'
-import * as drawCards from './cardDraw.service'
+import { drawCards } from './cardDraw.service'
 import * as notification from './notification.service'
 
-/* 内容来源：抽该联系人的字卡（专属库 + 通用库，按板块权重），
-   有图就带图，文字就用字卡内容 —— 不接任何 AI */
+/* 内容来源：抽 n 张字卡「拼」成一条动态（拼字卡式，1~7 张随机）：
+   文字卡的 content 拼成正文，图片/表情包卡的图收进 images；
+   三种形态都可能出现 —— 只有文字、只有图、文字+图混合，与手动发朋友圈一致。
+   纯文字但太短（如单字「行」）就再抽一次，避免动态空洞。 */
 function drawContent(contactId) {
-  /* 最多抽 3 次：内容太短（如单字「行」）就再抽一张，避免动态空洞 */
-  for (let i = 0; i < 3; i++) {
-    const cards = drawCards(db, contactId, 1) || [];
-    const card = cards[0];
-    if (!card) continue;
-    const text = String(card.content || '').trim();
-    const isVisual = card.category === 'image' || card.category === 'sticker';
-    const images = isVisual && card.asset_path ? [card.asset_path] : [];
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const cards = drawCards(db, contactId, randInt(1, 7)) || [];
+    const texts = [];
+    const images = [];
+    for (const card of cards) {
+      if (!card) continue;
+      const isVisual = card.category === 'image' || card.category === 'sticker';
+      /* 视觉卡只出图（其 content 是字卡名/备注，不当正文）；文字卡进正文 */
+      if (isVisual && card.asset_path && images.length < 9) {
+        images.push(card.asset_path);
+        continue;
+      }
+      const t = String(card.content || '').trim();
+      if (t) texts.push(t);
+    }
+    const text = texts.join(' ');
     if (!text && !images.length) continue;
-    if (!images.length && text.length < 2 && i < 2) continue;
+    if (!images.length && text.length < 2 && attempt === 0) continue;
     return { text, images };
   }
   return null;

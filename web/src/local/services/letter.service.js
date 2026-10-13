@@ -1,7 +1,7 @@
 // 自动寄信：按联系人「信件设置」（主动寄信开关 + 每周封数 + 句数 + 开头结尾）
 // 定时从 TA 的字卡库（专属库 + 通用库）抽句，生成一封「对方寄来的信」。
 import db from '../db'
-import * as drawCards from './cardDraw.service'
+import { drawCards } from './cardDraw.service'
 import * as notification from './notification.service'
 import * as settingsRepo from '../repositories/settings.repo'
 

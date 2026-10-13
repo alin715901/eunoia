@@ -1,4 +1,5 @@
 import { defineStore } from 'pinia'
+import { useContactsStore } from './contacts'
 
 /* 聊天列表快照（来自 /chats：含每个会话的最后一条摘要 lastText / 时间 lastAt）。
    单独成 store，让 SSE 收到新消息时能即时更新对应行的「内容 + 时间」，
@@ -36,6 +37,14 @@ export const useChatListStore = defineStore('chatList', {
         text = '（一条卡片消息）'
       }
       row.lastText = text
+      /* 群聊预览要带「是谁说的」：同步发送者与发言成员（成员名找联系人 store 解析） */
+      row.lastSender = msg.sender
+      row.lastAuthorMember = msg.author_member_id ?? null
+      if (row.kind === 'group' && msg.author_member_id) {
+        row.lastAuthorName = useContactsStore().getById(msg.author_member_id)?.name || ''
+      } else {
+        row.lastAuthorName = ''
+      }
       const tsRaw = msg.created_at
       row.lastAt = tsRaw
         ? typeof tsRaw === 'number'

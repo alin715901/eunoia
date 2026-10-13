@@ -275,7 +275,8 @@ export function connect() {
       }
       useNotificationsStore().pushToast({
         title: `${data.name || '对方'}发了一条朋友圈`,
-        text: data.moment?.text || '',
+        /* 纯图动态没有正文，提示里显示「[图片]」 */
+        text: data.moment?.text || (data.moment?.images?.length ? '[图片]' : ''),
         avatar: data.avatar || '',
         type: 'message',
         duration: 4000,

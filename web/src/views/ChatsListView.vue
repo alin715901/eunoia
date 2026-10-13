@@ -409,8 +409,13 @@ function preview(row) {
   if (row.lastRecalled) {
     return row.lastSender === 'me' ? '我撤回了一条消息' : `${row.name || '对方'}撤回了一条消息`
   }
-  /* 只显示内容本身，不带「我：」「某某：」昵称前缀 */
-  return row.lastText || '（一条卡片消息）'
+  /* 群聊：带上是谁说的（我：/ 成员名：）；单人聊天只显示内容本身 */
+  let prefix = ''
+  if (row.kind === 'group') {
+    if (row.lastSender === 'me') prefix = '我：'
+    else if (row.lastAuthorName) prefix = `${row.lastAuthorName}：`
+  }
+  return prefix + (row.lastText || '（一条卡片消息）')
 }
 
 function timeText(ts) {
