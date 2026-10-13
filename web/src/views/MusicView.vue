@@ -451,11 +451,31 @@ const selPls = ref(new Set())
 let plLpTimer = null
 let plLpFired = false
 const allPlSelected = computed(() => !!plList.value.length && plList.value.every((g) => selPls.value.has(g.name)))
+
+/* 歌单长按的「起点/落点」守卫：歌单头与第一首歌之间只隔 10px padding，
+   手指稍往上偏就命中歌单头；且 Android 长按触发 contextmenu 时的 target 是
+   收尾落点，手指从第一首歌滑到歌单头同样会命中。任一情况都会误弹歌单操作菜单。
+   判定规则（满足其一即按「想操作歌曲」处理，忽略歌单长按）：
+   ① 事件 target 在歌曲行内；② 触点/落点坐标在歌单头下缘 14px 内；
+   ③ elementFromPoint 落在歌曲列表区域。 */
+function plHitIsSongIntent(e) {
+  if (!e) return false
+  if (e.target && e.target.closest && e.target.closest('.mu-row')) return true
+  const head = e.currentTarget
+  const r = head && head.getBoundingClientRect ? head.getBoundingClientRect() : null
+  const t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0])
+  const x = t ? t.clientX : e.clientX
+  const y = t ? t.clientY : e.clientY
+  if (r && typeof y === 'number' && y >= r.bottom - 14) return true
+  if (typeof x === 'number' && typeof y === 'number' && document.elementFromPoint) {
+    const el = document.elementFromPoint(x, y)
+    if (el && el.closest && el.closest('.mu-pl-body')) return true
+  }
+  return false
+}
+
 function plLpStart(e, g) {
-  /* 歌单内的歌曲行有自己的长按语义（多选歌曲）：起点落在歌曲行上一律忽略。
-     DOM 上歌曲行是歌单头的兄弟节点、正常不会冒泡过来，这里再加一道保险，
-     保证只有长按歌单本体才弹歌单操作 */
-  if (e && e.target && e.target.closest && e.target.closest('.mu-row')) return
+  if (plHitIsSongIntent(e)) return
   plLpFired = false
   plLpCancel()
   plLpTimer = setTimeout(() => {
@@ -468,7 +488,7 @@ function plLpCancel() {
   if (plLpTimer) { clearTimeout(plLpTimer); plLpTimer = null }
 }
 function enterPlSelect(e, name) {
-  if (e && e.target && e.target.closest && e.target.closest('.mu-row')) return
+  if (plHitIsSongIntent(e)) return
   exitSelect() /* 退出歌曲多选：避免「已选 N 首」和「已选 N 个歌单」两条操作条同时出现 */
   plSelectMode.value = true
   selPls.value = new Set([name])
@@ -857,7 +877,7 @@ onMounted(() => {
 .mu-pl-num {
   font-size: 11px; color: var(--text-soft); font-variant-numeric: tabular-nums;
 }
-.mu-pl-body { padding: 2px 0 6px 8px; border-left: 1px solid var(--border); margin-left: 22px; }
+.mu-pl-body { padding: 4px 0 6px 8px; border-left: 1px solid var(--border); margin-left: 22px; }
 .mu-pl-empty { text-align: center; font-size: 12px; color: var(--text-soft); padding: 14px 0 10px; line-height: 1.6; }
 .mu-pl-arrow { flex: 0 0 auto; color: var(--text-soft); transition: transform 0.22s ease; }
 .mu-pl-arrow.up { transform: rotate(180deg); }
