@@ -20,7 +20,7 @@
 
       <!-- ═══ 音乐导入 ═══ -->
       <div class="ms-card">
-        <div class="ms-title"><AppIcon name="upload" :size="15" color="var(--accent)" /> 音乐导入</div>
+        <div class="ms-title"><AppIcon name="download" :size="15" color="var(--accent)" /> 音乐导入</div>
         <input v-model="form.title" class="ms-input" placeholder="歌曲名称（例如：这里的风暴）" maxlength="60" />
         <input v-model="form.artist" class="ms-input" placeholder="歌手/备注" maxlength="60" />
         <div class="ms-audio-row">
@@ -37,8 +37,7 @@
         <div class="ms-title"><AppIcon name="music" :size="15" color="var(--accent)" /> 解析服务</div>
         <input v-model="proxyUrl" class="ms-input" placeholder="留空则用默认云服务，例如 http://127.0.0.1:8787" />
         <div class="ms-hint-row">
-          <AppIcon name="music" :size="13" color="var(--accent)" />
-          <span>默认云端解析取酷狗歌名/封面/歌词，走 Cloudflare Pages 免费额度（每日 10 万次请求，约可解析/播放数万首）；也可自行填写其他解析服务地址。注：网易云音源/歌词已浏览器直连，无需中转</span>
+          <span>默认云端解析提取酷狗歌名/封面/歌词/音频，每日免费额度10万次请求，约可解析/播放2-5万首；也可自行填写其他解析服务地址。网易云音源/歌词已浏览器直连，无需中转</span>
         </div>
         <div class="ms-proxy-row">
           <button class="ms-ghost grow" @click="saveProxy">保存</button>
@@ -52,7 +51,6 @@
         <div class="ms-title"><AppIcon name="download" :size="15" color="var(--accent)" /> 链接导入</div>
         <textarea v-model="plUrl" class="ms-textarea" placeholder="每行一个链接，支持网易云歌曲/歌单、酷狗歌曲分享链接、mp3/m4a 直链" />
         <div class="ms-hint-row">
-          <AppIcon name="music" :size="13" color="var(--accent)" />
           <span>一行一个链接，点导入后逐条抓取；歌单会自动抓取全部曲目</span>
         </div>
         <button class="ms-primary soft" :disabled="plLoading" @click="importPlaylist">{{ plLoading ? (importProgress || '抓取中…') : '导入' }}</button>
@@ -62,7 +60,6 @@
       <div class="ms-card">
         <div class="ms-title"><AppIcon name="download" :size="15" color="var(--accent)" /> 本地缓存</div>
         <div class="ms-hint-row">
-          <AppIcon name="music" :size="13" color="var(--accent)" />
           <span>把曲库里歌曲的封面图和歌词抓到本地存好，之后断网也能显示；新导入的歌会在后台自动缓存</span>
         </div>
         <button class="ms-primary soft" :disabled="cacheBtnLoading" @click="backfillCache">
@@ -369,6 +366,8 @@ onMounted(() => {
 .ms-file-name { font-size: 11px; color: var(--accent); margin: 8px 0 0; word-break: break-all; }
 .ms-proxy-row { display: flex; gap: 10px; margin-top: 2px; }
 .ms-proxy-row .grow { flex: 1; min-width: 0; }
+/* 保存按钮与「测试连接」等高 */
+.ms-proxy-row .ms-ghost { padding: 13px 16px; font-size: 14px; font-weight: 700; }
 .ms-primary {
   width: 100%; margin-top: 14px; padding: 13px 0; border: none; border-radius: 999px;
   background: var(--accent); color: #fff; font-size: 14px; font-weight: 700;
