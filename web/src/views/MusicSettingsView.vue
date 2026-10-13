@@ -49,9 +49,9 @@
       <!-- ═══ 链接导入（网易云/酷狗/音频直链，支持批量） ═══ -->
       <div class="ms-card">
         <div class="ms-title"><AppIcon name="download" :size="15" color="var(--accent)" /> 链接导入</div>
-        <textarea v-model="plUrl" class="ms-textarea" placeholder="每行一个链接，支持网易云歌曲/歌单、酷狗歌曲分享链接、mp3/m4a 直链" />
+        <textarea v-model="plUrl" class="ms-textarea" placeholder="每行一个链接，支持网易云歌曲/歌单、酷狗歌曲分享链接、mp3/m4a 直链（因QQ音乐限制，暂不支持解析导入）" />
         <div class="ms-hint-row">
-          <span>一行一个链接，点导入后逐条抓取；歌单会自动抓取全部曲目</span>
+          <span>一行一个链接，点「导入」后一次性并发抓取全部；歌单会自动展开抓取全部曲目（因QQ音乐限制，暂不支持解析导入）</span>
         </div>
         <button class="ms-primary soft" :disabled="plLoading" @click="importPlaylist">{{ plLoading ? (importProgress || '抓取中…') : '导入' }}</button>
       </div>
@@ -217,7 +217,7 @@ async function saveManual() {
   }
 }
 
-/* 链接导入：一行一个链接，逐条抓取（网易云歌曲/歌单、酷狗歌曲、音频直链） */
+/* 链接导入：一行一个链接，一次性并发抓取全部（网易云歌曲/歌单、酷狗歌曲、音频直链） */
 async function importPlaylist() {
   const lines = plUrl.value.split('\n').map((s) => s.trim()).filter(Boolean)
   if (!lines.length) return
@@ -226,21 +226,29 @@ async function importPlaylist() {
   let vipCount = 0
   let skipCount = 0
   let failLines = []
+  let done = 0
   try {
-    for (let i = 0; i < lines.length; i++) {
-      importProgress.value = `导入中 ${i + 1}/${lines.length}`
-      try {
-        const r = await store.importLink(lines[i])
-        if (r && r.imported) {
-          okCount += r.imported
-          vipCount += r.unplayable || 0
+    // 并发抓取（限制 4 个 worker），避免逐条等待也避免压测云端额度
+    let cursor = 0
+    const worker = async () => {
+      while (cursor < lines.length) {
+        const i = cursor++
+        importProgress.value = `导入中 ${done + 1}/${lines.length}`
+        try {
+          const r = await store.importLink(lines[i])
+          if (r && r.imported) {
+            okCount += r.imported
+            vipCount += r.unplayable || 0
+          }
+          skipCount += (r && r.skipped) || 0
+          if (r && !r.imported && !r.skipped) failLines.push(lines[i])
+        } catch (e) {
+          failLines.push(lines[i])
         }
-        skipCount += (r && r.skipped) || 0
-        if (r && !r.imported && !r.skipped) failLines.push(lines[i])
-      } catch (e) {
-        failLines.push(lines[i])
+        done++
       }
     }
+    await Promise.all(Array.from({ length: Math.min(4, lines.length) }, worker))
     const parts = []
     if (okCount) parts.push(`成功 ${okCount} 首`)
     if (skipCount) parts.push(`跳过 ${skipCount} 首重复`)
