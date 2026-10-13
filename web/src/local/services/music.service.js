@@ -128,6 +128,31 @@ async function neAudioBest(id) {
   return '';
 }
 
+/* 批量查网易云歌曲元数据：song/detail 匿名接口带 duration + fee（会员标志）。
+   Meting 歌单接口不带这些字段，导入私密歌单和存量回填都靠它补。
+   输入 id 数组，返回 Map<id, { duration(秒), vip }>；20 个一批，失败批次跳过 */
+async function neBatchDetail(ids) {
+  const out = new Map()
+  const list = ids.map((x) => String(x)).filter(Boolean)
+  for (let i = 0; i < list.length; i += 20) {
+    const batch = list.slice(i, i + 20)
+    try {
+      const d = await fetchJson(
+        `https://music.163.com/api/song/detail?id=${batch[0]}&ids=[${batch.join(',')}]`
+      )
+      for (const x of d.songs || []) {
+        out.set(String(x.id), {
+          duration: Math.round((x.duration || 0) / 1000),
+          vip: x.fee === 1 || x.fee === 4 ? 1 : 0
+        })
+      }
+    } catch (e) {
+      /* 这批失败跳过：导入不阻塞，播放时还会自动补时长 */
+    }
+  }
+  return out
+}
+
 async function neResolveSong(id) {
   const d = await fetchJson(`https://music.163.com/api/song/detail?id=${id}&ids=[${id}]`);
   const song = d && d.songs && d.songs[0];
@@ -186,6 +211,15 @@ async function neResolvePlaylistMeting(id) {
       plist: name
     };
   });
+  /* Meting 不带时长/会员字段：批量补一笔（匿名 song/detail 可读），
+     让导入即有「3:33」时长和「会员」标识，不用等播放时才补 */
+  const detailMap = await neBatchDetail(songs.map((s) => s.source_id));
+  for (const s of songs) {
+    const m = detailMap.get(String(s.source_id));
+    if (!m) continue;
+    if (m.duration > 0) s.duration = m.duration;
+    if (m.vip) s.vip = 1;
+  }
   return { name, songs };
 }
 
@@ -388,6 +422,13 @@ async function kugouLyricSearch(hash) {
     singer: cand.singer || '',
     duration: cand.duration || 0
   };
+}
+
+/* 按 hash 反查歌曲时长（秒）：歌词检索接口的候选带 duration（毫秒），
+   分享页解析失败/历史导入缺时长的歌用它补 */
+async function kugouSongDuration(hash) {
+  const r = await kugouLyricSearch(hash).catch(() => null);
+  return r && r.duration ? Math.round(r.duration / 1000) : 0;
 }
 
 /* 酷狗歌词兜底：Meting 直连（带 CORS，不依赖中转）。
@@ -610,4 +651,4 @@ function contactFavTick() {
   }
 }
 
-export { parseLink, resolveImport, resolveStreamUrl, refreshAudioUrl, fetchCoverDataUrl, neGetSongUrl, neGetLyric, kugouGetLyric, contactFavTick }
+export { parseLink, resolveImport, resolveStreamUrl, refreshAudioUrl, fetchCoverDataUrl, neGetSongUrl, neGetLyric, kugouGetLyric, contactFavTick, neBatchDetail, kugouSongDuration }

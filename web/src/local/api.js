@@ -853,6 +853,54 @@ export async function updateSongDuration(id, duration) {
   db.prepare('UPDATE songs SET duration = ? WHERE id = ? AND (duration IS NULL OR duration <= 0)').run(d, Number(id))
 }
 
+/* 一键补全缺失时长（设置页用）：扫曲库里没时长的歌，按来源批量补——
+   网易云走 song/detail（顺带补会员标志），酷狗走歌词检索反查；
+   local/link 来源没有可查的元数据，跳过（播放时会自动识别兜底）。
+   onProgress(done, total) 用于界面进度显示。 */
+export async function backfillSongDurations(onProgress) {
+  const rows = db.prepare(
+    "SELECT id, source, source_id FROM songs WHERE (duration IS NULL OR duration <= 0) AND source IN ('netease','kugou') AND source_id <> ''"
+  ).all()
+  const total = rows.length
+  let done = 0
+  let filled = 0
+  const tick = () => { done++; if (onProgress) onProgress(done, total) }
+
+  /* 网易云：20 个一批查 song/detail，拿 duration + fee（会员标志） */
+  const ne = rows.filter((r) => r.source === 'netease')
+  for (let i = 0; i < ne.length; i += 20) {
+    const batch = ne.slice(i, i + 20)
+    const map = await musicService.neBatchDetail(batch.map((r) => r.source_id))
+    for (const r of batch) {
+      const m = map.get(String(r.source_id))
+      if (m && m.duration > 0) {
+        /* vip 只升不降：接口说是会员就标上，不把已有标志清掉 */
+        db.prepare('UPDATE songs SET duration = ?, vip = MAX(vip, ?) WHERE id = ?').run(m.duration, m.vip, r.id)
+        filled++
+      }
+      tick()
+    }
+  }
+
+  /* 酷狗：歌词检索接口按 hash 反查时长（4 个并发） */
+  const kg = rows.filter((r) => r.source === 'kugou')
+  let cursor = 0
+  const worker = async () => {
+    while (cursor < kg.length) {
+      const r = kg[cursor++]
+      const d = await musicService.kugouSongDuration(r.source_id).catch(() => 0)
+      if (d > 0) {
+        db.prepare('UPDATE songs SET duration = ? WHERE id = ?').run(d, r.id)
+        filled++
+      }
+      tick()
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(4, kg.length) }, worker))
+
+  return { total, filled }
+}
+
 // 收藏（按联系人切换）
 export async function favMusicSong(id, contactId) {
   const cid = Number(contactId || 0)

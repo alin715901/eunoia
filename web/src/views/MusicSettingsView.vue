@@ -56,6 +56,17 @@
         <button class="ms-primary soft" :disabled="plLoading" @click="importPlaylist">{{ plLoading ? (importProgress || '抓取中…') : '导入' }}</button>
       </div>
 
+      <!-- ═══ 补全缺失时长（历史导入歌没时长/没标会员的，一键补上） ═══ -->
+      <div class="ms-card">
+        <div class="ms-title"><AppIcon name="download" :size="15" color="var(--accent)" /> 补全缺失时长</div>
+        <div class="ms-hint-row">
+          <span>导入时没带上时长的歌曲，按来源批量补全（网易云/酷云可查，本地音频播放时自动识别）；网易云的会员标志也会一起补上</span>
+        </div>
+        <button class="ms-primary soft" :disabled="durLoading" @click="backfillDurations">
+          {{ durLoading ? (durProgress || '补全中…') : '一键补全缺失时长' }}
+        </button>
+      </div>
+
       <!-- ═══ 本地缓存（封面/歌词抓到本地，断网也能看） ═══ -->
       <div class="ms-card">
         <div class="ms-title"><AppIcon name="download" :size="15" color="var(--accent)" /> 本地缓存</div>
@@ -104,7 +115,7 @@ import { useMusicStore } from '@/stores/music'
 import { useDesktopStore } from '@/stores/desktop'
 import { useNotificationsStore } from '@/stores/notifications'
 import { uploadFile } from '@/api/settings'
-import { backfillMusicCache, getMusicCacheStats } from '@/api/music'
+import { backfillMusicCache, getMusicCacheStats, backfillSongDurations } from '@/api/music'
 
 const store = useMusicStore()
 const desktop = useDesktopStore()
@@ -120,6 +131,9 @@ const vinylEl = ref(null)
 /* 一键缓存封面/歌词 */
 const cacheBtnLoading = ref(false)
 const cacheProgress = ref('')
+/* 一键补全缺失时长 */
+const durLoading = ref(false)
+const durProgress = ref('')
 
 /* 解析服务地址：本地中转优先于云端配置 */
 const PROXY_KEY = 'eunoia.musicProxy'
@@ -268,6 +282,29 @@ async function importPlaylist() {
   } finally {
     importProgress.value = ''
     plLoading.value = false
+  }
+}
+
+/* 一键补全缺失时长：扫曲库按来源批量补（网易云/酷狗），完事刷新曲库显示 */
+async function backfillDurations() {
+  durLoading.value = true
+  durProgress.value = '补全中…'
+  try {
+    const r = await backfillSongDurations((done, total) => {
+      durProgress.value = `补全中 ${done}/${total}`
+    })
+    await store.reload()
+    toast.pushToast({
+      title: r.filled ? `已补全 ${r.filled} 首时长` : '没有可补全的歌曲',
+      text: r.total
+        ? `共扫描 ${r.total} 首缺失时长的歌曲${r.filled ? '' : '（本地音频播放时会自动识别）'}`
+        : '所有歌曲都带时长，无需补全'
+    })
+  } catch (e) {
+    toast.pushToast({ title: '补全失败', text: e.message || '网络异常，请稍后再试' })
+  } finally {
+    durLoading.value = false
+    durProgress.value = ''
   }
 }
 

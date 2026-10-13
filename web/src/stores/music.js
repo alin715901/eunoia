@@ -62,6 +62,7 @@ export const useMusicStore = defineStore('music', {
     showLyrics: false,
     lyric: '',
     lyricSongId: null,
+    lyricLoading: false,     // 抓取中：切歌后先显示「加载中」，别误显示「暂无歌词」
     /* 一起听歌 */
     listenSession: null,   // 进行中：{inviteId, contactId, contactName, contactAvatar, myAvatar, songTitle, songArtist, songCover}
     pendingListen: null,   // 我发出的、等待对方接受：{id, contactId, contactName, songTitle, songArtist, songCover}
@@ -215,7 +216,9 @@ export const useMusicStore = defineStore('music', {
       const i = pool.findIndex((s) => s.id === this.current?.id)
       return i < 0 ? 0 : i
     },
-    /* 跳到第 idx 首（超出范围自动绕回），并跳过不可播的歌 */
+    /* 跳到第 idx 首（超出范围自动绕回），并跳过不可播的歌。
+       注意：会员歌不跳过——能试听 30 秒，播放失败还会自动重解析地址；
+       只跳过云端歌里彻底没音源的（死链/付费无试听）。本地和直链歌都能播。 */
     _jump(idx, forward = true) {
       const pool = this._ensureQueue()
       if (!pool.length) return
@@ -223,7 +226,7 @@ export const useMusicStore = defineStore('music', {
       let n = ((idx % len) + len) % len
       for (let i = 0; i < len; i++) {
         const cand = pool[n]
-        if (cand && (cand.audio || cand.source === '') && !cand.vip) break
+        if (cand && (cand.audio || cand.source === 'local' || cand.source === 'link')) break
         n = (((n + (forward ? 1 : -1)) % len) + len) % len
       }
       this.current = pool[n]
@@ -271,8 +274,9 @@ export const useMusicStore = defineStore('music', {
           notifyMediaState(this.current, false)
           return
         }
-        /* play() 被拒且 src 本身加载失败（audio.error 非空）→ 直链很可能过期了，重解析再试 */
-        if (audio.error && !this.current?.vip) {
+        /* play() 被拒且 src 本身加载失败（audio.error 非空）→ 直链很可能过期了，重解析再试
+           （会员歌也试——网易云会员常能拿到 30 秒试听地址） */
+        if (audio.error) {
           this._recoverAudio()
           return
         }
@@ -403,15 +407,18 @@ export const useMusicStore = defineStore('music', {
     /* 当前歌歌词：优先读本地缓存，没有才按源抓取并入库（网易云/酷狗之外的数据源返回空） */
     async fetchLyric(force = false) {
       const id = this.current?.id
-      if (!id) { this.lyric = ''; this.lyricSongId = null; return }
+      if (!id) { this.lyric = ''; this.lyricSongId = null; this.lyricLoading = false; return }
       if (!force && this.lyricSongId === id) return
       this.lyricSongId = id
       this.lyric = ''
+      this.lyricLoading = true
       try {
         const r = await getMusicLyric(id)
         this.lyric = (r && r.lyric) || ''
       } catch (e) {
         this.lyric = ''
+      } finally {
+        this.lyricLoading = false
       }
     },
 

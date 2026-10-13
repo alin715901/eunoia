@@ -77,7 +77,7 @@
               <span class="mu-title">{{ s.title }}</span>
               <span class="mu-sub">
                 <span class="mu-artist">{{ s.artist || '未知歌手' }}</span>
-                <span v-if="s.vip" class="mu-chip vip">会员</span>
+                <span v-if="s.vip && s.audio" class="mu-chip vip">会员</span>
                 <span v-else-if="!s.audio" class="mu-chip warn">不可播</span>
               </span>
             </span>
@@ -148,7 +148,7 @@
                 </span>
                 <span class="mu-main">
                   <span class="mu-title">{{ s.title }}</span>
-                  <span class="mu-sub"><span class="mu-artist">{{ s.artist || '未知歌手' }}</span><span v-if="s.vip" class="mu-chip vip">会员</span><span v-else-if="!s.audio" class="mu-chip warn">不可播</span></span>
+                  <span class="mu-sub"><span class="mu-artist">{{ s.artist || '未知歌手' }}</span><span v-if="s.vip && s.audio" class="mu-chip vip">会员</span><span v-else-if="!s.audio" class="mu-chip warn">不可播</span></span>
                 </span>
                 <template v-if="!selectMode">
                   <button class="mu-act" :class="{ on: store.favSet.has(s.id) }" @click.stop="toggleFavRow(s)" :aria-label="store.favSet.has(s.id) ? '取消收藏' : '收藏'">
@@ -227,38 +227,12 @@
         <span class="mu-mini-title">{{ store.current.title }}</span>
         <span class="mu-mini-sub">{{ store.current.artist || '' }}</span>
       </span>
+      <button class="mu-mini-btn" @click="store.prev()" aria-label="上一首"><AppIcon name="prev" :size="21" /></button>
       <button class="mu-mini-btn" @click="store.toggle()" aria-label="播放暂停"><AppIcon :name="store.playing ? 'pause' : 'play'" :size="26" /></button>
-      <button class="mu-mini-btn" @click="showQueue = true" aria-label="播放列表"><AppIcon name="order" :size="20" /></button>
+      <button class="mu-mini-btn" @click="store.next()" aria-label="下一首"><AppIcon name="next" :size="21" /></button>
       <button class="mu-mini-btn mu-mode" :title="curMode.label" @click="store.cycleMode()">
         <AppIcon :name="curMode.icon" :size="17" />
         <span class="mu-mode-txt">{{ curMode.short }}</span>
-      </button>
-    </div>
-
-    <!-- 当前播放列表弹窗 -->
-    <div v-if="showQueue" class="mu-mask" @click.self="showQueue = false">
-      <div class="mu-menu mu-queue">
-        <p class="mu-menu-title">当前播放 · {{ store.queueLabel || '播放列表' }}<span class="mu-queue-num">{{ store.queue.length }}首</span></p>
-        <div class="mu-queue-list">
-          <div
-            v-for="(s, i) in store.queue"
-            :key="s.id + '-' + i"
-            class="mu-queue-row"
-            :class="{ on: store.current?.id === s.id, flash: flashId === s.id }"
-            :data-qid="s.id"
-            @click="store.playSong(s, store.queue, store.queueLabel)"
-          >
-            <span class="mu-queue-idx">{{ i + 1 }}</span>
-            <span class="mu-queue-name">{{ s.title }}<em>{{ s.artist || '未知歌手' }}</em></span>
-            <AppIcon v-if="store.current?.id === s.id" name="music" :size="13" color="var(--accent)" />
-          </div>
-          <p v-if="!store.queue.length" class="mu-queue-empty">还没有正在播放的歌曲</p>
-        </div>
-        <button class="mu-menu-btn cancel" @click="showQueue = false">关闭</button>
-      </div>
-      <!-- 播放列表里的锚点：跳到正在播放 -->
-      <button v-if="store.current" class="mu-queue-jump" aria-label="定位正在播放" @click="jumpInQueue">
-        <AppIcon name="music" :size="15" />
       </button>
     </div>
 
@@ -352,7 +326,6 @@ const toast = useNotificationsStore()
 const router = useRouter()
 
 const tab = ref('lib')
-const showQueue = ref(false)
 
 const progressPct = computed(() => (store.duration ? (store.currentTime / store.duration) * 100 : 0))
 
@@ -641,20 +614,6 @@ function toggleAll() {
   selIds.value = new Set(curRows.value.map((s) => s.id))
 }
 
-/* 播放列表弹窗里的小锚点：定位正在播放 */
-function jumpInQueue() {
-  const cur = store.current
-  if (!cur) return
-  nextTick(() => {
-    setTimeout(() => {
-      const el = document.querySelector(`.mu-queue-row[data-qid="${cur.id}"]`)
-      if (!el) return
-      el.scrollIntoView({ block: 'center', behavior: 'smooth' })
-      flashId.value = cur.id
-      setTimeout(() => { if (flashId.value === cur.id) flashId.value = null }, 1400)
-    }, 60)
-  })
-}
 /* 右下角锚点：跳到正在播放的歌曲并短暂高亮 */
 const flashId = ref(null)
 function jumpToCurrent() {
@@ -998,33 +957,4 @@ onMounted(() => {
 .mu-menu-row2 .mu-menu-btn:disabled { opacity: 0.38; }
 .mu-menu-row2 .mu-menu-btn.danger { color: #c0576b; }
 .mu-menu-row2 .mu-menu-btn em { font-style: normal; font-size: 11px; color: var(--text-soft); }
-
-/* 当前播放列表弹窗 */
-.mu-queue { max-width: 340px; }
-.mu-queue-num { margin-left: 8px; font-size: 11px; font-weight: 400; color: var(--text-soft); }
-.mu-queue-list { max-height: 46vh; overflow-y: auto; margin: 2px 0 6px; }
-.mu-queue-row {
-  display: flex; align-items: center; gap: 10px; padding: 10px 6px;
-  border-radius: 10px; cursor: pointer;
-}
-.mu-queue-row:active { background: var(--bg-soft); }
-.mu-queue-row.flash { animation: muFlash 1.4s ease; }
-.mu-queue-jump {
-  position: absolute; right: 22px; bottom: 14px; z-index: 2;
-  width: 34px; height: 34px; border-radius: 50%;
-  display: flex; align-items: center; justify-content: center;
-  border: 1px solid var(--border);
-  background: color-mix(in srgb, var(--bg-screen) 60%, transparent);
-  color: var(--accent); opacity: 0.65;
-}
-.mu-queue-jump:active { opacity: 1; transform: scale(0.92); }
-.mu-queue-row.on .mu-queue-name { color: var(--accent); font-weight: 600; }
-.mu-queue-idx { flex: 0 0 auto; width: 20px; text-align: center; font-size: 11px; color: var(--text-soft); font-variant-numeric: tabular-nums; }
-.mu-queue-name {
-  flex: 1; min-width: 0; font-size: 13px; font-weight: 500;
-  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-  display: flex; align-items: baseline; gap: 8px;
-}
-.mu-queue-name em { font-style: normal; font-size: 11px; color: var(--text-soft); flex: 0 0 auto; }
-.mu-queue-empty { text-align: center; font-size: 13px; color: var(--text-soft); padding: 24px 0; }
 </style>

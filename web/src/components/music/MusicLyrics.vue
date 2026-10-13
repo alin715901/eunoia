@@ -50,7 +50,7 @@
         class="ml-lyric"
         @click="discView = true"
       >
-        <p v-if="!lines.length" class="ml-empty">暂无歌词<br /><span>仅网易云导入的歌曲支持自动识别歌词</span></p>
+        <p v-if="!lines.length" class="ml-empty">{{ store.lyricLoading ? '歌词加载中…' : '暂无歌词' }}<br /><span>仅网易云导入的歌曲支持自动识别歌词</span></p>
         <template v-else>
           <p
             v-for="(l, i) in lines"
@@ -218,6 +218,13 @@ watch(() => store.showLyrics, (v) => {
     store.fetchLyric()
     nextTick(() => { scrollEl.value && (scrollEl.value.scrollTop = 0); scrollToActive() })
   }
+})
+/* 歌词页开着时切歌（页内点上下首 / 自动续播）：立即重抓歌词。
+   fetchLyric 会先把旧词清空，新词到达后即时渲染，不做任何延迟等待 */
+watch(() => store.current?.id, () => {
+  if (!store.showLyrics) return
+  store.fetchLyric()
+  nextTick(() => { scrollEl.value && (scrollEl.value.scrollTop = 0) })
 })
 
 function openPicker() {

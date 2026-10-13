@@ -110,7 +110,7 @@
 
           <!-- 累计收听时长：按真实播放进度实时累计，满 1 分钟即刷新显示 -->
           <div class="listen-row" @click.stop>
-            <span class="cb-label">已经收听</span>
+            <span class="cb-label">一起听已经</span>
             <span class="listen-val">{{ fmtListenMin(music.listenMinutes) }}</span>
           </div>
         </div>

@@ -16,6 +16,7 @@ export {
   getMusicLyric,
   refreshSongAudio,
   updateSongDuration,
+  backfillSongDurations,
   enqueueMusicCache,
   backfillMusicCache,
   getMusicCacheStats,
