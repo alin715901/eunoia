@@ -19,10 +19,19 @@ export const useChatListStore = defineStore('chatList', {
     applyMessage(contactId, msg) {
       const row = this.rows.find((r) => String(r.id) === String(contactId))
       if (!row || !msg) return
+      /* 群聊预览要带「是谁说的」：发言成员名找联系人 store 解析 */
+      const memberName =
+        row.kind === 'group' && msg.author_member_id
+          ? useContactsStore().getById(msg.author_member_id)?.name || ''
+          : ''
       let text = msg.text || ''
       // 撤回：显示撤回提示，不显示「（一条卡片消息）」等占位
       if (msg.recalled) {
-        text = msg.sender === 'me' ? '我撤回了一条消息' : `${row.name || '对方'}撤回了一条消息`
+        /* 群聊里显示撤回的成员名，单聊显示对方名 */
+        text =
+          msg.sender === 'me'
+            ? '我撤回了一条消息'
+            : `${memberName || row.name || '对方'}撤回了一条消息`
         row.lastRecalled = 1
         row.lastSender = msg.sender
       }
@@ -37,14 +46,9 @@ export const useChatListStore = defineStore('chatList', {
         text = '（一条卡片消息）'
       }
       row.lastText = text
-      /* 群聊预览要带「是谁说的」：同步发送者与发言成员（成员名找联系人 store 解析） */
       row.lastSender = msg.sender
       row.lastAuthorMember = msg.author_member_id ?? null
-      if (row.kind === 'group' && msg.author_member_id) {
-        row.lastAuthorName = useContactsStore().getById(msg.author_member_id)?.name || ''
-      } else {
-        row.lastAuthorName = ''
-      }
+      row.lastAuthorName = memberName
       const tsRaw = msg.created_at
       row.lastAt = tsRaw
         ? typeof tsRaw === 'number'

@@ -407,7 +407,9 @@ function preview(row) {
   if (!row.lastAt) return '还没有消息，去说点什么吧'
   /* 撤回的消息：显示撤回提示，不显示「（一条卡片消息）」等占位 */
   if (row.lastRecalled) {
-    return row.lastSender === 'me' ? '我撤回了一条消息' : `${row.name || '对方'}撤回了一条消息`
+    /* 群聊里显示撤回的成员名，单聊显示对方名 */
+    const who = row.lastSender === 'me' ? '我' : (row.lastAuthorName || row.name || '对方')
+    return `${who}撤回了一条消息`
   }
   /* 群聊：带上是谁说的（我：/ 成员名：）；单人聊天只显示内容本身 */
   let prefix = ''
