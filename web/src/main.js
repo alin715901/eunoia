@@ -24,3 +24,13 @@ dbReady
     // App.vue 已展示错误页与重试入口，这里只留日志
     console.error('[main] 本地数据库初始化失败', e)
   })
+
+// Service Worker：缓存同源静态资源，二次访问瞬间打开（GitHub Pages 链路慢的对策）。
+// 相对路径注册，GitHub Pages /<仓库名>/ 子路径部署同样有效。
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('./sw.js').catch(() => {
+      /* 注册失败（如 http 环境）静默忽略，不影响首次访问 */
+    })
+  })
+}
