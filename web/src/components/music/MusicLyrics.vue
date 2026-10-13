@@ -72,7 +72,6 @@
           </div>
           <div class="ml-disc-hole"></div>
         </div>
-        <p class="ml-stage-tip">轻触唱片返回歌词</p>
       </div>
 
       <!-- 底部：进度 + 控制 -->
@@ -380,7 +379,6 @@ onMounted(() => {
   background: #0b0b0e; box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.12);
 }
 @keyframes mlSpin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
-.ml-stage-tip { margin: 0; font-size: 11px; color: rgba(255, 255, 255, 0.45); letter-spacing: 0.5px; }
 
 .ml-empty {
   text-align: center; font-size: 15px; color: rgba(255,255,255,0.6); margin-top: 30vh;

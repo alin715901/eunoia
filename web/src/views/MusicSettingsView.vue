@@ -38,7 +38,7 @@
         <input v-model="proxyUrl" class="ms-input" placeholder="留空则用默认云服务，例如 http://127.0.0.1:8787" />
         <div class="ms-hint-row">
           <AppIcon name="music" :size="13" color="var(--accent)" />
-          <span>默认云端解析取酷狗歌名/封面/歌词；也可自行填写其他解析服务地址（网易云音源/歌词已直连，无需中转）</span>
+          <span>默认云端解析取酷狗歌名/封面/歌词，走 Cloudflare Pages 免费额度（每日 10 万次请求，约可解析/播放数万首）；也可自行填写其他解析服务地址。注：网易云音源/歌词已浏览器直连，无需中转</span>
         </div>
         <div class="ms-proxy-row">
           <button class="ms-ghost grow" @click="saveProxy">保存</button>
