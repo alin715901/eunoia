@@ -39,32 +39,20 @@
         </p>
       </div>
 
+      <!-- 后台保活 / 消息通知 -->
       <div class="panel sec">
         <div class="row-item static">
           <span class="ri-icon"><AppIcon name="shield" :size="18" /></span>
-          <span class="ri-label">
-            后台保活
-            <span class="scope-tag global">全局</span>
-          </span>
+          <span class="ri-label">后台保活</span>
           <span class="spacer"></span>
           <label class="switch" @click.stop>
             <input type="checkbox" :checked="keepAliveOn" @change="toggleKeepAlive" />
             <span class="slider-sw"></span>
           </label>
         </div>
-        <p class="sub keepalive-sub">
-          开启后防止浏览器清理 / 刷新 / 杀掉页面，让音乐续播、通话、主动消息不被打断。
-          <template v-if="keepAliveLevel === 'limited'">（当前浏览器不支持屏幕常亮锁，主要靠 PWA 与应用安装保活，效果有限）</template>
-        </p>
-      </div>
-
-      <div class="panel sec">
         <div class="row-item static">
           <span class="ri-icon"><AppIcon name="chat" :size="18" /></span>
-          <span class="ri-label">
-            消息通知
-            <span class="scope-tag global">全局</span>
-          </span>
+          <span class="ri-label">消息通知</span>
           <span class="spacer"></span>
           <label class="switch" @click.stop>
             <input type="checkbox" :checked="notifyOn" @change="toggleNotify" />
@@ -124,7 +112,6 @@ const contactsStore = useContactsStore()
 const desktop = useDesktopStore()
 const settings = useSettingsStore()
 const keepAlive = useKeepAlive()
-const keepAliveLevel = keepAlive.supportLevel()
 
 /* 莫兰迪 / 奶茶色系（全局一份，对所有联系人生效） */
 const accents = [
