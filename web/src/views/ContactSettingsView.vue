@@ -491,16 +491,16 @@ async function chooseClear() {
       }
     } else if (target === 'them') {
       if (synced) {
-        await updateDesktop(props.id, { partnerAvatar: '' })
-        desk.value = { ...desk.value, partnerAvatar: '' }
+        await updateDesktop(props.id, { partner_avatar: '' })
+        desk.value = { ...desk.value, partner_avatar: '' }
       } else {
         await contactsStore.update(props.id, { avatar: '' })
         contact.value = await getContact(props.id)
       }
     } else { // me
       if (synced) {
-        await updateDesktop(props.id, { myAvatar: '' })
-        desk.value = { ...desk.value, myAvatar: '' }
+        await updateDesktop(props.id, { my_avatar: '' })
+        desk.value = { ...desk.value, my_avatar: '' }
       } else {
         await updateContactSettings(props.id, { my_avatar: '' })
         settings.value = { ...settings.value, my_avatar: '' }
@@ -546,8 +546,8 @@ async function applyAvatar(file) {
     } else if (avatarTarget === 'them') {
       if (synced) {
         const r = await uploadFile(file)
-        await updateDesktop(props.id, { partnerAvatar: r.path })
-        desk.value = { ...desk.value, partnerAvatar: r.path }
+        await updateDesktop(props.id, { partner_avatar: r.path })
+        desk.value = { ...desk.value, partner_avatar: r.path }
       } else {
         const r = await uploadAvatar(props.id, file)
         await contactsStore.update(props.id, { avatar: r.avatar })
@@ -556,8 +556,8 @@ async function applyAvatar(file) {
     } else {
       if (synced) {
         const r = await uploadFile(file)
-        await updateDesktop(props.id, { myAvatar: r.path })
-        desk.value = { ...desk.value, myAvatar: r.path }
+        await updateDesktop(props.id, { my_avatar: r.path })
+        desk.value = { ...desk.value, my_avatar: r.path }
       } else {
         const r = await uploadFile(file)
         await updateContactSettings(props.id, { my_avatar: r.path })

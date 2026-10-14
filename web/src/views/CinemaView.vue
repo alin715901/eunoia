@@ -409,19 +409,18 @@ function memberOf(m) {
 }
 
 /* 加载「我」的头像（跟随当前聊天对象，每个联系人可设自己的）：
- * 优先联系人设置里的 my_avatar；开启「同步人物卡头像到聊天」时取人物卡的 my_avatar */
+ * 与一起听歌保持同一套逻辑——开启「同步人物卡头像到聊天」时优先桌面 my_avatar，
+ * 否则用设置里的 my_avatar，最后桌面 my_avatar 兜底 */
 async function loadMyAvatar(contactId) {
   if (!contactId) return
   try {
-    const settings = await getContactSettings(contactId)
-    let avatar = (settings && settings.my_avatar) || ''
-    if (settings && settings.sync_chat_avatar) {
-      try {
-        const desk = await getDesktop(contactId)
-        if (desk && desk.my_avatar) avatar = desk.my_avatar
-      } catch (e) { /* 忽略 */ }
-    }
-    myAvatar.value = avatar
+    const [settings, desk] = await Promise.all([
+      getContactSettings(contactId).catch(() => null),
+      getDesktop(contactId).catch(() => null)
+    ])
+    const deskMy = (desk && desk.my_avatar) || ''
+    const setMy = (settings && settings.my_avatar) || ''
+    myAvatar.value = (desk && desk.sync_chat_avatar && deskMy) ? deskMy : (setMy || deskMy)
   } catch (e) { /* 忽略 */ }
 }
 
@@ -759,8 +758,9 @@ onBeforeUnmount(stopWatchTimer)
 .cv-with-actions { margin-left: auto; display: inline-flex; gap: 6px; flex: 0 0 auto; }
 .cv-with-btn { border: none; background: rgba(255, 255, 255, 0.14); color: #fff; width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; }
 
-/* 视频区：竖屏固定 16:9 置顶；横屏/全屏撑满剩余空间（iframe 内部自行黑边适配） */
-.cv-stage { position: relative; flex: 0 1 auto; width: 100%; aspect-ratio: 16 / 9; max-height: 100%; min-height: 0; background: #000; overflow: hidden; }
+/* 视频区：竖屏固定 16:9 置顶（flex 0 0 不收缩：消息再多也压不扁）；
+   横屏/全屏/聊天室收起时撑满剩余空间（iframe 内部自行黑边适配） */
+.cv-stage { position: relative; flex: 0 0 auto; width: 100%; aspect-ratio: 16 / 9; max-height: 100%; min-height: 0; background: #000; overflow: hidden; }
 .cv-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: none; background: #000; }
 
 /* 全屏：视频铺满整个屏幕，聊天室以最大 46% 高度沉在底部 */
@@ -797,8 +797,8 @@ onBeforeUnmount(stopWatchTimer)
 .cv-chat-msgs { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 4px 12px; display: flex; flex-direction: column; gap: 8px; }
 .cv-chat-empty { font-size: 12px; color: rgba(255, 255, 255, 0.45); text-align: center; padding: 18px 0; }
 .cv-msg { display: flex; align-items: flex-start; gap: 8px; }
-/* 我的消息：气泡靠左、头像在右侧（DOM 顺序 [气泡][头像]，正向排列即可） */
-.cv-msg.me { flex-direction: row; }
+/* 我的消息：整组靠右，气泡在左、头像在最右（DOM 顺序 [气泡][头像]） */
+.cv-msg.me { flex-direction: row; justify-content: flex-end; }
 .cv-msg-ava { flex: 0 0 auto; }
 .cv-msg-main { flex: 0 1 auto; min-width: 0; max-width: 74%; display: flex; flex-direction: column; gap: 2px; }
 .cv-msg.me .cv-msg-main { align-items: flex-end; }
