@@ -71,35 +71,6 @@ function groupMembers(groupId) {
     .map((m) => ({ id: m.id, name: m.name || '成员', avatar: m.avatar || '' }));
 }
 
-/* 群观影：TA（群）接受后，模拟成员们陆续进房发言 */
-function membersJoinChat(contactId, invId) {
-  const members = groupMembers(contactId);
-  if (!members.length) return;
-  const lines = ['来啦来啦', '这部我早就想看了', '等着开场～', '占个沙发位置'];
-  const picked = members.slice(0, Math.min(members.length, 3));
-  picked.forEach((m, i) => {
-    setTimeout(() => {
-      const inv = db.prepare('SELECT * FROM cinema_together WHERE id = ?').get(invId);
-      if (!inv || inv.status !== 'accepted') return;
-      const seq = getNextSeq(db, contactId);
-      const info = db
-        .prepare(
-          `INSERT INTO chat_messages(contact_id, sender, author_member_id, content_type, text, read_receipt, read, seq, created_at)
-           VALUES(?, 'contact', ?, 'text', ?, 'read', 1, ?, ?)`
-        )
-        .run(contactId, m.id, lines[i % lines.length], seq, Math.floor(Date.now() / 1000));
-      const row = db.prepare('SELECT * FROM chat_messages WHERE id = ?').get(Number(info.lastInsertRowid));
-      const ci = effectiveContactInfo(db, contactId);
-      notification.broadcast('new_messages', {
-        contactId,
-        messages: [row],
-        avatar: m.avatar || ci.avatar,
-        name: m.name || '成员'
-      });
-    }, 1500 + i * 2600);
-  });
-}
-
 /* 把邀请状态写回聊天卡片消息，并广播更新（聊天页卡片实时变状态） */
 function syncMessage(d, inv, status) {
   if (!inv.message_id) return;
@@ -168,9 +139,6 @@ function respondAsContact(inviteId) {
   if (!inv || inv.status !== 'pending') return;
   const accept = Math.random() < 0.85;
   updateStatus(db, inv, accept ? 'accepted' : 'rejected');
-  if (accept && contactKind(inv.contact_id) === 'group') {
-    membersJoinChat(inv.contact_id, inv.id);
-  }
   broadcastInvite(accept ? 'accepted' : 'rejected', { ...inv, status: accept ? 'accepted' : 'rejected' });
 }
 
@@ -229,7 +197,6 @@ function respond(inviteId, accept) {
   updateStatus(db, inv, accept ? 'accepted' : 'rejected');
   broadcastInvite(accept ? 'accepted' : 'rejected', { ...inv, status: accept ? 'accepted' : 'rejected' });
   const isGroup = contactKind(inv.contact_id) === 'group';
-  if (accept && isGroup) membersJoinChat(inv.contact_id, inv.id);
   const ci = effectiveContactInfo(db, inv.contact_id);
   return {
     ok: true,
