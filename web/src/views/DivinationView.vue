@@ -437,8 +437,8 @@ function drawTarot() {
     loadHistory()
   }, 450)
 }
-function cancelLenormand() { lmResult.value = [] }
-function cancelTarot() { tResult.value = [] }
+function cancelLenormand() { lmResult.value = []; lmQuestion.value = '' }
+function cancelTarot() { tResult.value = []; tQuestion.value = '' }
 
 /* ───────── 往昔 ───────── */
 const history = ref([])
