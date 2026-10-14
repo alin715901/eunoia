@@ -16,6 +16,8 @@ export const useCinemaStore = defineStore('cinema', {
     /* TA 邀我待处理（SSE incoming）：{inviteId, contactId, film...}，聊天卡片也会渲染，
        这里只做"有新邀请"的提示用途 */
     incoming: null,
+    /* TA 拒绝了我的观影邀请：{contactId, contactName, at}，播放器状态条显示「对方拒绝观影」 */
+    rejected: null,
     /* 播放器是否打开中：打开时 SSE 消息弹窗不再从屏幕顶部弹出
        （白色消息弹条会盖住视频，消息在播放器聊天室里实时可见） */
     playerOpen: false
@@ -29,9 +31,10 @@ export const useCinemaStore = defineStore('cinema', {
       else if (t === 'cancelled') this.clearPendingOut(data.invite && data.invite.id)
       else if (t === 'ended') this.clearWatching(data.invite && data.invite.id)
     },
-    /* 我邀请 TA → 记 pendingOut */
+    /* 我邀请 TA → 记 pendingOut（同时清掉上一次的拒绝提示） */
     onInviteSent(inviteId, contactId, film) {
       this.pendingOut = { inviteId, contactId, film }
+      this.rejected = null
     },
     /* SSE：TA 对我的邀请做出响应 */
     onContactResponded(data) {
@@ -56,8 +59,15 @@ export const useCinemaStore = defineStore('cinema', {
           }
           /* 已进入陪看：清掉待接受状态，避免结束观影后还显示「等待对方接受邀请」 */
           this.pendingOut = null
+          this.rejected = null
         } else {
+          /* TA 拒绝：记下是谁拒的，播放器状态条显示「对方拒绝观影」 */
           this.pendingOut = null
+          this.rejected = {
+            contactId: inv.contact_id,
+            contactName: inv.contact_name || '',
+            at: Date.now()
+          }
         }
       }
     },

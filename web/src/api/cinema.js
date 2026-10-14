@@ -6,4 +6,6 @@ export {
   endCinema,
   getCinemaInvites,
   getActiveCinema,
+  getWatchSeconds,
+  addWatchSeconds,
 } from '../local/api'

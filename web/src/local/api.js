@@ -1163,7 +1163,20 @@ export async function getStorageStats() {
   }
 }
 
-/* ─────────── 一起听 ─────────── */
+/* ─────────── 一起看（影院）─────────── */
+
+const WATCH_KEY = 'cinema_watch_seconds'
+const readWatchSeconds = () => Number(settingsRepo.getGlobal(WATCH_KEY)) || 0
+
+export async function getWatchSeconds() {
+  return { seconds: readWatchSeconds() }
+}
+
+export async function addWatchSeconds(add) {
+  const v = Math.max(0, readWatchSeconds() + (Number(add) || 0))
+  settingsRepo.setGlobal(WATCH_KEY, v)
+  return { seconds: v }
+}
 
 const LISTEN_KEY = 'listen_minutes'
 const readMinutes = () => Number(settingsRepo.getGlobal(LISTEN_KEY)) || 0

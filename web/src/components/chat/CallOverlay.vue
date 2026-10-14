@@ -6,10 +6,11 @@
       <!-- 最小化：悬浮小窗（可拖动，显示在所有页面） -->
       <div
         v-if="call.minimized"
+        ref="miniEl"
         class="call-mini"
-        :style="{ right: miniPos.x + 'px', bottom: miniPos.y + 'px' }"
+        :style="{ left: miniPos.x + 'px', top: miniPos.y + 'px' }"
         @pointerdown="onMiniDown"
-        @click="call.restore()"
+        @click="onMiniClick"
       >
         <AppAvatar :name="call.name" :avatar="call.avatar" :size="32" :style="avatarStyle" />
         <div class="call-mini-info">
@@ -97,7 +98,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import AppAvatar from '@/components/common/AppAvatar.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
@@ -128,16 +129,36 @@ const avatarStyle = computed(() => ({
   borderRadius: call.avatarShape === 'circle' ? '50%' : (call.avatarRadius || 12) + 'px'
 }))
 
-/* 悬浮小窗拖动 */
+/* 悬浮小窗拖动：
+ * 用 left/top 定位（而非 right/bottom），拖动时按视口边界钳制；
+ * 位移超过 4px 算拖动——拖动结束后不再触发点击 restore（否则一拖就弹回全屏） */
+const miniEl = ref(null)
 const miniPos = ref({ x: 14, y: 90 })
 let dragging = false
+let moved = false
 let startX = 0
 let startY = 0
 let baseX = 0
 let baseY = 0
+let miniInited = false
+/* 首次最小化：定位到右下角（之后记住拖动到的位置） */
+function ensureMiniPos() {
+  if (miniInited) return
+  miniInited = true
+  const el = miniEl.value
+  const w = el ? el.offsetWidth : 160
+  const h = el ? el.offsetHeight : 48
+  miniPos.value = {
+    x: Math.max(8, window.innerWidth - w - 14),
+    y: Math.max(8, window.innerHeight - h - 90)
+  }
+}
+watch(() => call.minimized, (v) => {
+  if (v) nextTick(ensureMiniPos)
+})
 function onMiniDown(e) {
-  // 小窗点按（不拖动）也会触发 click → restore；拖动时不 restore
   dragging = true
+  moved = false
   startX = e.clientX
   startY = e.clientY
   baseX = miniPos.value.x
@@ -149,13 +170,26 @@ function onMiniMove(e) {
   if (!dragging) return
   const dx = e.clientX - startX
   const dy = e.clientY - startY
-  miniPos.value.x = Math.max(0, baseX - dx)
-  miniPos.value.y = Math.max(0, baseY - dy)
+  if (!moved && Math.abs(dx) + Math.abs(dy) > 4) moved = true
+  if (!moved) return
+  const el = miniEl.value
+  const w = el ? el.offsetWidth : 160
+  const h = el ? el.offsetHeight : 48
+  miniPos.value.x = Math.min(Math.max(0, baseX + dx), Math.max(0, window.innerWidth - w))
+  miniPos.value.y = Math.min(Math.max(0, baseY + dy), Math.max(0, window.innerHeight - h))
 }
 function onMiniUp() {
   dragging = false
   window.removeEventListener('pointermove', onMiniMove)
   window.removeEventListener('pointerup', onMiniUp)
+}
+/* 点按（未拖动）→ 恢复全屏通话；拖动结束的那次点击忽略 */
+function onMiniClick() {
+  if (moved) {
+    moved = false
+    return
+  }
+  call.restore()
 }
 </script>
 

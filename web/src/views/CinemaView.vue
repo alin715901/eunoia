@@ -7,7 +7,7 @@
       <div class="cv-summary">
         <span class="cv-sum-ic"><AppIcon name="film" :size="26" color="var(--accent)" /></span>
         <span class="cv-sum-main">
-          <span class="cv-sum-title">站点 {{ allSites.length }} 个 · 片单 {{ linkList.length }} 条</span>
+          <span class="cv-sum-title">站点 {{ allSites.length }} 个 · 片单 {{ linkList.length }} 条 · 累计观影 {{ watchTotalText }}</span>
           <span class="cv-sum-sub">一起看过的，和想一起看的</span>
         </span>
       </div>
@@ -109,10 +109,8 @@
       </div>
     </div>
 
-    <!-- 应用内播放器：16:9 视频在上，视频下方是陪看聊天室；
-         全屏时进入直播间模式——聊天列表收起、只留输入框沉底，
-         消息以弹幕对话的形式堆叠在视频左下方（参考直播间样式） -->
-    <div v-if="player.show" ref="playerWrap" class="cv-player">
+    <!-- 应用内播放器：16:9 视频在上，视频下方是陪看聊天室 -->
+    <div v-if="player.show" class="cv-player">
       <div class="cv-bar">
         <button class="cv-bar-btn" @click="closePlayer" aria-label="关闭"><AppIcon name="close" :size="20" /></button>
         <span class="cv-bar-title">{{ player.title }}</span>
@@ -120,7 +118,7 @@
       </div>
 
       <div class="cv-main" :class="{ 'chat-collapsed': chatCollapsed }">
-      <!-- 视频区：竖屏固定 16:9；聊天室收起 / 横屏 / 全屏时撑满剩余空间 -->
+      <!-- 视频区：竖屏固定 16:9；聊天室收起 / 横屏时撑满剩余空间 -->
       <div class="cv-stage">
         <iframe
           v-if="player.type === 'iframe'"
@@ -140,36 +138,9 @@
           webkit-playsinline
           :src="player.src"
         ></video>
-
-        <!-- 直播间式弹幕对话：仅全屏时显示，消息堆叠在视频左下方 -->
-        <div v-if="fsOn && danmakuOn" ref="liveEl" class="cv-live">
-          <div v-for="m in liveMsgs" :key="m.id" class="cv-live-row" :class="{ me: m.sender === 'me' }">
-            <AppAvatar
-              class="cv-live-ava"
-              :name="senderName(m)"
-              :avatar="m.sender === 'me' ? myAvatar : memberAvatar(m)"
-              :size="20"
-            />
-            <span class="cv-live-body">
-              <span v-if="memberOf(m)" class="cv-live-name">{{ senderName(m) }}</span>
-              <span class="cv-live-text">{{ msgText(m) }}</span>
-            </span>
-          </div>
-        </div>
-
-        <!-- 弹幕开关：只影响全屏时的弹幕对话区 -->
-        <button
-          v-if="fsOn"
-          class="cv-live-toggle"
-          :class="{ off: !danmakuOn }"
-          @click="danmakuOn = !danmakuOn"
-          :aria-label="danmakuOn ? '关闭弹幕' : '开启弹幕'"
-        >
-          <span class="cv-live-dot" />{{ danmakuOn ? '弹幕开' : '弹幕关' }}
-        </button>
       </div>
 
-      <!-- 视频下方：陪看状态 + 邀请 / 全屏操作 -->
+      <!-- 视频下方：陪看状态 + 邀请操作 -->
       <div class="cv-with">
         <span v-if="watching" class="cv-with-ava">
           <template v-if="watching.isGroup">
@@ -189,7 +160,10 @@
         </span>
         <span class="cv-with-txt">
           <template v-if="watching">
-            {{ watching.isGroup ? `${watching.contactName || '群'}的成员` : (watching.contactName || 'TA') }} 正在陪你观影 · {{ watchClock }}
+            {{ watching.isGroup ? `${watching.contactName || '群'}的成员` : (watching.contactName || 'TA') }} 观影中 · {{ watchClock }}
+          </template>
+          <template v-else-if="cinemaStore.rejected">
+            {{ cinemaStore.rejected.contactName || '对方' }} 拒绝观影
           </template>
           <template v-else-if="cinemaStore.pendingOut">等待对方接受邀请…</template>
           <template v-else>邀请联系人，边看边聊</template>
@@ -197,14 +171,13 @@
         <button v-if="watching" class="cv-with-end" @click="endWatching">结束</button>
         <span class="cv-with-actions">
           <button class="cv-with-btn" @click="onInviteClick" aria-label="邀请一起看"><AppIcon name="users" :size="17" /></button>
-          <button class="cv-with-btn" @click="toggleFullscreen" aria-label="全屏"><AppIcon name="expand" :size="17" /></button>
         </span>
       </div>
 
-      <!-- 聊天室：占满视频下方剩余区域，输入框沉底；全屏时只保留输入框 -->
+      <!-- 聊天室：占满视频下方剩余区域，输入框沉底 -->
       <div class="cv-chat" :class="{ collapsed: chatCollapsed }">
         <div class="cv-chat-hd">
-          <span class="cv-chat-hd-title">陪看聊天室</span>
+          <span class="cv-chat-hd-title">聊天室</span>
           <button
             class="cv-chat-fold"
             @click="chatCollapsed = !chatCollapsed"
@@ -227,7 +200,7 @@
         <div class="cv-chat-input">
           <input
             v-model="chatDraft"
-            :placeholder="chatReady ? '发条弹幕…' : '邀请一起看后即可聊天'"
+            :placeholder="chatReady ? '说点什么…' : '邀请一起看后即可聊天'"
             :disabled="!chatReady"
             maxlength="100"
             @keyup.enter="sendChat"
@@ -271,7 +244,7 @@ import { useChatStore } from '@/stores/chat'
 import { useContactsStore } from '@/stores/contacts'
 import { useHomeStore } from '@/stores/home'
 import { useCinemaStore } from '@/stores/cinema'
-import { sendCinemaInvite } from '@/api/cinema'
+import { sendCinemaInvite, getWatchSeconds, addWatchSeconds } from '@/api/cinema'
 import { getContactMembers, getContactSettings, getDesktop } from '@/api/contacts'
 import { confirmDialog } from '@/utils/dialog'
 
@@ -320,7 +293,6 @@ function resolveVideo(url) {
 }
 
 const player = reactive({ show: false, type: '', src: '', raw: '', title: '' })
-const playerWrap = ref(null)
 function playLink(l) {
   const r = resolveVideo(l.body)
   if (r.type === 'external') {
@@ -334,14 +306,12 @@ function playLink(l) {
   player.show = true
 }
 function closePlayer() {
-  /* 全屏中先退出全屏，避免播放器隐藏后文档仍停留在全屏（黑屏且无法操作） */
-  if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
   player.show = false
   player.src = ''
   player.raw = ''
 }
 
-/* ── 陪看聊天（直播间式弹幕） ── */
+/* ── 陪看聊天 ── */
 const chatStore = useChatStore()
 const contactsStore = useContactsStore()
 const homeStore = useHomeStore()
@@ -351,32 +321,24 @@ const chatDraft = ref('')
 const pickerShow = ref(false)
 /* 选择器只用于「邀请谁一起看」：选中即切换聊天对象并发出邀请 */
 const chatTarget = ref({ id: 0, name: '对方', avatar: '' })
-/* 群成员的 id → {name, avatar}（聊天室发言人前缀 / 弹幕前缀 / 头像用） */
+/* 群成员的 id → {name, avatar}（聊天室发言人前缀 / 头像用） */
 const memberMap = ref({})
 const chatListEl = ref(null)
 /* 「我」的头像（跟随当前聊天对象）：显示在消息气泡右侧 / 状态条 */
 const myAvatar = ref('')
-/* 弹幕（直播间对话）开关：仅全屏时生效，默认开启 */
-const danmakuOn = ref(true)
-/* 聊天室收起：只留顶部细条，视频区撑满（全屏时尤其好用） */
+/* 聊天室收起：只留顶部细条，视频区撑满 */
 const chatCollapsed = ref(false)
-/* 全屏状态：进入全屏后切换为直播间布局 */
-const fsOn = ref(false)
-/* 直播间弹幕对话区元素引用（自动滚底用） */
-const liveEl = ref(null)
 
 const contactList = computed(() => contactsStore.list || [])
 const chatMsgs = computed(() => {
   const list = chatStore.messages(chatTarget.value.id) || []
   return list.filter((m) => !m.recalled || m.sender !== 'me')
 })
-/* 直播间弹幕对话：只渲染最近的消息，进播放器不刷屏 */
-const liveMsgs = computed(() => chatMsgs.value.slice(-30))
 
 /* 只有建立了陪看关系（我邀的被接受 / 我接受了 TA 的邀请）才能聊 */
 const chatReady = computed(() => !!watching.value || !!cinemaStore.myAccepted)
 
-/* 去掉 HTML 标签取纯文本（字卡消息的 text 是富文本，弹幕/聊天室里要显示真实内容） */
+/* 去掉 HTML 标签取纯文本（字卡消息的 text 是富文本，聊天室里要显示真实内容） */
 function stripHtml(html) {
   if (!html) return ''
   return String(html)
@@ -405,7 +367,7 @@ function msgText(m) {
   return m.text || ''
 }
 
-/* 弹幕 / 聊天室发送者名：我 / 群成员名 / 对方名 */
+/* 聊天室发送者名：我 / 群成员名 / 对方名 */
 function senderName(m) {
   if (m.sender === 'me') return '我'
   const mem = m.author_member_id && memberMap.value[m.author_member_id]
@@ -449,7 +411,7 @@ async function pickChatTarget(c) {
   pickerShow.value = false
   /* 我的头像跟随聊天对象 */
   loadMyAvatar(c.id)
-  /* 群聊：加载成员名映射，聊天室/弹幕前缀显示发言人 */
+/* 群聊：加载成员名映射，聊天室前缀显示发言人 */
   memberMap.value = {}
   if (c.kind === 'group') {
     try {
@@ -477,22 +439,7 @@ async function sendChat() {
   } catch (e) { /* 忽略 */ }
 }
 
-/* ── 直播间弹幕对话区：有新消息就滚到底部（堆叠在视频左下方） ── */
-watch(liveMsgs, async () => {
-  await nextTick()
-  const el = liveEl.value
-  if (el) el.scrollTop = el.scrollHeight
-})
-/* 进入全屏（直播间模式）时也滚到底部 */
-watch(fsOn, async (v) => {
-  if (!v) return
-  await nextTick()
-  await nextTick()
-  const el = liveEl.value
-  if (el) el.scrollTop = el.scrollHeight
-})
-
-/* 聊天室消息列表：有新消息就滚到底部 */
+/* ── 聊天室消息列表：有新消息就滚到底部 ── */
 watch(chatMsgs, async () => {
   await nextTick()
   const el = chatListEl.value
@@ -517,15 +464,54 @@ function fmtClock(sec) {
   const s = String(sec % 60).padStart(2, '0')
   return `${m}:${s}`
 }
+
+/* 累计观影时长：全局持久化（一起看的每秒都计入），影院页统计展示 */
+const watchTotal = ref(0)
+let watchPending = 0
+let flushTimer = null
+async function loadWatchTotal() {
+  try {
+    const r = await getWatchSeconds()
+    watchTotal.value = Number(r && r.seconds) || 0
+  } catch (e) { /* 忽略 */ }
+}
+async function flushWatch() {
+  if (watchPending <= 0) return
+  const add = watchPending
+  watchPending = 0
+  try {
+    const r = await addWatchSeconds(add)
+    watchTotal.value = Number(r && r.seconds) || (watchTotal.value + add)
+  } catch (e) {
+    watchTotal.value += add
+  }
+}
+/* 「X 小时 Y 分 / X 分钟 / X 秒」：影院页统计行展示 */
+const watchTotalText = computed(() => {
+  const s = Math.max(0, Math.floor(watchTotal.value || 0))
+  if (s < 60) return `${s} 秒`
+  const h = Math.floor(s / 3600)
+  const m = Math.floor((s % 3600) / 60)
+  if (h > 0) return `${h} 小时 ${m} 分`
+  return `${m} 分钟`
+})
+
 function startWatchTimer() {
   stopWatchTimer()
   const startedAt = Date.now()
   watchTimer = setInterval(() => {
     watchClock.value = fmtClock(Math.floor((Date.now() - startedAt) / 1000))
+    /* 陪看的每一秒都计入累计观影时长 */
+    watchPending += 1
+    if (watchPending >= 5) flushWatch()
   }, 1000)
+  /* 每 5 秒落盘一次，避免频繁写库 */
+  flushTimer = setInterval(() => flushWatch(), 5000)
 }
 function stopWatchTimer() {
   if (watchTimer) { clearInterval(watchTimer); watchTimer = null }
+  if (flushTimer) { clearInterval(flushTimer); flushTimer = null }
+  flushWatch()
 }
 watch(watching, (v) => {
   if (v) { watchClock.value = '00:00'; startWatchTimer() }
@@ -583,9 +569,9 @@ watch(() => cinemaStore.active, async (a) => {
   player.raw = a.film.url
   player.title = a.film.title || ''
   player.show = true
-  /* 先加载消息再进播放器：聊天室 / 直播间弹幕对话直接显示 */
+  /* 先加载消息再进播放器：聊天室直接显示 */
   try { await chatStore.load(a.contactId) } catch (e) { /* 忽略 */ }
-  /* 群邀请：加载成员名映射，聊天室/弹幕对话前缀显示发言人 */
+  /* 群邀请：加载成员名映射，聊天室前缀显示发言人 */
   memberMap.value = {}
   if (a.isGroup) {
     try {
@@ -596,33 +582,6 @@ watch(() => cinemaStore.active, async (a) => {
     } catch (e) { /* 忽略 */ }
   }
 }, { immediate: true })
-
-/* 全屏放大：对整个播放器容器请求全屏（iframe 随之铺满，等效「放大回原来的」） */
-function toggleFullscreen() {
-  const el = playerWrap.value
-  if (!el) return
-  if (document.fullscreenElement) {
-    document.exitFullscreen().catch(() => {})
-  } else if (el.requestFullscreen) {
-    el.requestFullscreen().catch(() => toast.pushToast({ title: '当前浏览器不支持全屏' }))
-  } else {
-    toast.pushToast({ title: '当前浏览器不支持全屏' })
-  }
-}
-
-/* 全屏状态变化：进入全屏 = 直播间模式；退出后强制重排一次——
-   个别浏览器退出全屏后 fixed 容器不刷新布局，顶部会露出一条页面底色（白带） */
-function onFsChange() {
-  fsOn.value = !!document.fullscreenElement
-  if (!fsOn.value && player.show) {
-    nextTick(() => {
-      const el = playerWrap.value
-      if (!el) return
-      el.style.willChange = 'transform'
-      requestAnimationFrame(() => requestAnimationFrame(() => { el.style.willChange = '' }))
-    })
-  }
-}
 
 /* 播放器打开状态同步给全局（SSE 消息弹窗在播放器打开时不再弹顶部白条） */
 watch(() => player.show, (v) => cinemaStore.setPlayerOpen(v), { immediate: true })
@@ -688,9 +647,8 @@ async function removeLink(it) {
 }
 
 onMounted(async () => {
-  fsOn.value = !!document.fullscreenElement
-  document.addEventListener('fullscreenchange', onFsChange)
   await Promise.all([sites.load(), links.load()])
+  loadWatchTotal()
   /* 陪看聊天对象：默认取首页当前选中的联系人，没有则取第一个。
    * 若 immediate 的 active 监听已设定对象（接受邀请自动进播放器），不覆盖 */
   if (chatTarget.value.id) return
@@ -708,7 +666,6 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   stopWatchTimer()
-  document.removeEventListener('fullscreenchange', onFsChange)
   cinemaStore.setPlayerOpen(false)
 })
 </script>
@@ -759,13 +716,12 @@ onBeforeUnmount(() => {
 .cv-btn.primary { background: var(--accent); color: #fff; }
 
 .cv-player { position: fixed; inset: 0; background: #000; display: flex; flex-direction: column; z-index: 60; }
-.cv-player:fullscreen { width: 100%; height: 100%; }
 .cv-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 10px 12px; background: rgba(0, 0, 0, 0.85); color: #fff; }
 .cv-bar-btn { border: none; background: transparent; color: #fff; padding: 4px; display: inline-flex; }
 .cv-bar-title { flex: 1 1 auto; min-width: 0; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cv-bar-open { flex: 0 0 auto; border: none; background: rgba(255, 255, 255, 0.18); color: #fff; font-size: 13px; padding: 6px 12px; border-radius: 999px; }
 
-/* 视频下方状态条：陪看状态 + 邀请 / 全屏操作 */
+/* 视频下方状态条：陪看状态 + 邀请操作 */
 .cv-with { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: rgba(255, 255, 255, 0.08); color: #fff; font-size: 12px; }
 .cv-with-ava { position: relative; display: inline-flex; }
 .cv-with-ava .cv-with-me { margin-left: -8px; }
@@ -775,78 +731,13 @@ onBeforeUnmount(() => {
 .cv-with-btn { border: none; background: rgba(255, 255, 255, 0.14); color: #fff; width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; }
 
 /* 视频区：竖屏固定 16:9 置顶（flex 0 0 不收缩：消息再多也压不扁）；
-   横屏/全屏/聊天室收起时撑满剩余空间（iframe 内部自行黑边适配） */
+   横屏 / 聊天室收起时撑满剩余空间（iframe 内部自行黑边适配） */
 .cv-stage { position: relative; flex: 0 0 auto; width: 100%; aspect-ratio: 16 / 9; max-height: 100%; min-height: 0; background: #000; overflow: hidden; }
 .cv-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: none; background: #000; }
 
-/* 全屏 = 直播间：视频铺满整个屏幕；聊天室只留输入框沉底；
-   消息以弹幕对话堆叠在视频左下方 */
-.cv-player:fullscreen .cv-stage { flex: 1 1 auto; aspect-ratio: auto; }
-.cv-player:fullscreen .cv-chat { flex: 0 0 auto; max-height: none; }
-.cv-player:fullscreen .cv-chat-msgs,
-.cv-player:fullscreen .cv-chat-hd { display: none; }
-
-/* 直播间式弹幕对话：仅全屏显示，堆叠在视频左下方，半透明小票样式 */
-.cv-live { display: none; }
-.cv-player:fullscreen .cv-live {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  gap: 6px;
-  position: absolute;
-  left: 10px;
-  right: 10px;
-  bottom: 10px;
-  max-height: 46%;
-  overflow-y: auto;
-  z-index: 2;
-  pointer-events: none;
-  scrollbar-width: none;
-}
-.cv-live::-webkit-scrollbar { display: none; }
-.cv-live-row { display: flex; align-items: center; gap: 6px; }
-/* 我的消息：整组靠右（DOM [头像][内容]，row-reverse 后头像在最右） */
-.cv-live-row.me { flex-direction: row-reverse; }
-.cv-live-ava { flex: 0 0 auto; }
-.cv-live-body {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  min-width: 0;
-  max-width: 100%;
-  padding: 3px 10px;
-  border-radius: 999px;
-  background: rgba(0, 0, 0, 0.45);
-  font-size: 12px;
-  color: #fff;
-}
-.cv-live-row.me .cv-live-body { background: color-mix(in srgb, var(--accent) 82%, transparent); }
-.cv-live-name { flex: 0 0 auto; font-size: 11px; font-weight: 600; color: #ffd76e; }
-.cv-live-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-/* 弹幕开关（仅全屏可见，贴在视频区右上角） */
-.cv-live-toggle {
-  position: absolute;
-  top: 10px;
-  right: 10px;
-  z-index: 3;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  border: none;
-  background: rgba(0, 0, 0, 0.45);
-  color: #fff;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 4px 10px;
-  border-radius: 999px;
-}
-.cv-live-toggle .cv-live-dot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent); }
-.cv-live-toggle.off { color: rgba(255, 255, 255, 0.55); }
-.cv-live-toggle.off .cv-live-dot { background: rgba(255, 255, 255, 0.35); box-shadow: none; }
-
 /* 视频下方整体：状态条 + 聊天室，聊天室占满剩余区域 */
 .cv-main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
-/* 陪看聊天室：占满视频下方剩余区域，输入框沉底；消息同时以弹幕飘过视频区 */
+/* 陪看聊天室：占满视频下方剩余区域，输入框沉底 */
 .cv-chat { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; background: #141418; border-top: 1px solid rgba(255, 255, 255, 0.1); }
 /* 收起：只留顶部细条，视频区撑满剩余空间 */
 .cv-chat.collapsed { flex: 0 0 auto; }
