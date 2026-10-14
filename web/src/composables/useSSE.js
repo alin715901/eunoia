@@ -151,14 +151,18 @@ export function connect() {
           }
         }
         const preview = last ? previewOf(last) : ''
-        notifications.pushToast({
-          title,
-          text: preview,
-          avatar,
-          type: 'message',
-          duration: 4000,
-          route: `/contacts/${contactId}/chat`
-        })
+        /* 影院播放器打开中：消息已在播放器聊天室里实时可见，
+           不再从屏幕顶部弹消息提示（浅色弹条会盖住视频顶部，即"白带"） */
+        if (!useCinemaStore().playerOpen) {
+          notifications.pushToast({
+            title,
+            text: preview,
+            avatar,
+            type: 'message',
+            duration: 4000,
+            route: `/contacts/${contactId}/chat`
+          })
+        }
 
         // 即时刷新聊天列表该会话的「最后一条内容 + 时间」，避免弹窗已到、列表预览却没同步
         useChatListStore().applyMessage(contactId, last)

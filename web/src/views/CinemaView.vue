@@ -109,7 +109,9 @@
       </div>
     </div>
 
-    <!-- 应用内播放器：16:9 视频在上，视频下方全部区域是陪看聊天室（消息同步走弹幕，可收起） -->
+    <!-- 应用内播放器：16:9 视频在上，视频下方是陪看聊天室；
+         全屏时进入直播间模式——聊天列表收起、只留输入框沉底，
+         消息以弹幕对话的形式堆叠在视频左下方（参考直播间样式） -->
     <div v-if="player.show" ref="playerWrap" class="cv-player">
       <div class="cv-bar">
         <button class="cv-bar-btn" @click="closePlayer" aria-label="关闭"><AppIcon name="close" :size="20" /></button>
@@ -139,16 +141,32 @@
           :src="player.src"
         ></video>
 
-        <!-- 直播间式弹幕：消息从右往左飘过视频区（可开关） -->
-        <div v-if="danmakuOn" class="cv-danmaku">
-          <div v-for="d in danmakus" :key="d.key" class="cv-dm" :style="{ top: d.top + '%' }">
-            <span class="cv-dm-name">{{ d.name }}</span>
-            <span class="cv-dm-text">{{ d.text }}</span>
+        <!-- 直播间式弹幕对话：仅全屏时显示，消息堆叠在视频左下方 -->
+        <div v-if="fsOn && danmakuOn" ref="liveEl" class="cv-live">
+          <div v-for="m in liveMsgs" :key="m.id" class="cv-live-row" :class="{ me: m.sender === 'me' }">
+            <AppAvatar
+              class="cv-live-ava"
+              :name="senderName(m)"
+              :avatar="m.sender === 'me' ? myAvatar : memberAvatar(m)"
+              :size="20"
+            />
+            <span class="cv-live-body">
+              <span v-if="memberOf(m)" class="cv-live-name">{{ senderName(m) }}</span>
+              <span class="cv-live-text">{{ msgText(m) }}</span>
+            </span>
           </div>
         </div>
 
-        <!-- 未建立陪看关系时的提示 -->
-        <div v-if="!chatReady" class="cv-lock">邀请一起看后即可聊天</div>
+        <!-- 弹幕开关：只影响全屏时的弹幕对话区 -->
+        <button
+          v-if="fsOn"
+          class="cv-live-toggle"
+          :class="{ off: !danmakuOn }"
+          @click="danmakuOn = !danmakuOn"
+          :aria-label="danmakuOn ? '关闭弹幕' : '开启弹幕'"
+        >
+          <span class="cv-live-dot" />{{ danmakuOn ? '弹幕开' : '弹幕关' }}
+        </button>
       </div>
 
       <!-- 视频下方：陪看状态 + 邀请 / 全屏操作 -->
@@ -183,12 +201,10 @@
         </span>
       </div>
 
-      <!-- 聊天室：占满视频下方剩余区域，输入框沉底；消息同时以弹幕飘过视频区 -->
+      <!-- 聊天室：占满视频下方剩余区域，输入框沉底；全屏时只保留输入框 -->
       <div class="cv-chat" :class="{ collapsed: chatCollapsed }">
         <div class="cv-chat-hd">
-          <button class="cv-dm-toggle" :class="{ off: !danmakuOn }" @click="danmakuOn = !danmakuOn">
-            <span class="cv-dm-dot" />{{ danmakuOn ? '弹幕开启' : '弹幕关闭' }}
-          </button>
+          <span class="cv-chat-hd-title">陪看聊天室</span>
           <button
             class="cv-chat-fold"
             @click="chatCollapsed = !chatCollapsed"
@@ -305,13 +321,6 @@ function resolveVideo(url) {
 
 const player = reactive({ show: false, type: '', src: '', raw: '', title: '' })
 const playerWrap = ref(null)
-/* 打开播放器时记住当前最新消息 id：历史消息不上弹幕，只推之后的新消息 */
-function markDanmakuBaseline() {
-  const list = chatStore.messages(chatTarget.value.id) || []
-  let max = 0
-  for (const m of list) { const id = Number(m.id) || 0; if (id > max) max = id }
-  dmSeenId = max
-}
 function playLink(l) {
   const r = resolveVideo(l.body)
   if (r.type === 'external') {
@@ -323,13 +332,13 @@ function playLink(l) {
   player.raw = l.body
   player.title = l.title || ''
   player.show = true
-  markDanmakuBaseline()
 }
 function closePlayer() {
+  /* 全屏中先退出全屏，避免播放器隐藏后文档仍停留在全屏（黑屏且无法操作） */
+  if (document.fullscreenElement) document.exitFullscreen().catch(() => {})
   player.show = false
   player.src = ''
   player.raw = ''
-  danmakus.value = []
 }
 
 /* ── 陪看聊天（直播间式弹幕） ── */
@@ -347,16 +356,22 @@ const memberMap = ref({})
 const chatListEl = ref(null)
 /* 「我」的头像（跟随当前聊天对象）：显示在消息气泡右侧 / 状态条 */
 const myAvatar = ref('')
-/* 弹幕开关：默认开启，播放器内可随时关闭 / 恢复 */
+/* 弹幕（直播间对话）开关：仅全屏时生效，默认开启 */
 const danmakuOn = ref(true)
 /* 聊天室收起：只留顶部细条，视频区撑满（全屏时尤其好用） */
 const chatCollapsed = ref(false)
+/* 全屏状态：进入全屏后切换为直播间布局 */
+const fsOn = ref(false)
+/* 直播间弹幕对话区元素引用（自动滚底用） */
+const liveEl = ref(null)
 
 const contactList = computed(() => contactsStore.list || [])
 const chatMsgs = computed(() => {
   const list = chatStore.messages(chatTarget.value.id) || []
   return list.filter((m) => !m.recalled || m.sender !== 'me')
 })
+/* 直播间弹幕对话：只渲染最近的消息，进播放器不刷屏 */
+const liveMsgs = computed(() => chatMsgs.value.slice(-30))
 
 /* 只有建立了陪看关系（我邀的被接受 / 我接受了 TA 的邀请）才能聊 */
 const chatReady = computed(() => !!watching.value || !!cinemaStore.myAccepted)
@@ -445,8 +460,6 @@ async function pickChatTarget(c) {
     } catch (e) { /* 忽略 */ }
   }
   try { await chatStore.load(c.id) } catch (e) { /* 忽略 */ }
-  /* 切换对象后重新记基线：历史消息不上弹幕 */
-  markDanmakuBaseline()
   /* 选中即向 TA 发出邀请 */
   await doInvite()
 }
@@ -464,39 +477,19 @@ async function sendChat() {
   } catch (e) { /* 忽略 */ }
 }
 
-/* ── 弹幕轨道：新消息变成从右往左飘过的弹幕，4 条轨道轮播 ── */
-const danmakus = ref([])
-let dmKey = 0
-let dmTrack = 0
-const DM_TRACKS = [7, 23, 39, 55]
-function pushDanmaku(m) {
-  /* 弹幕关闭时不推送 */
-  if (!danmakuOn.value) return
-  /* 邀请卡是状态消息（顶栏/计时条已体现），不上弹幕，保持弹幕流干净 */
-  const t = m.content_type
-  if (t === 'cinema_invite' || t === 'listen_invite' || t === 'companion_invite') return
-  const item = {
-    key: ++dmKey,
-    name: senderName(m),
-    text: msgText(m),
-    top: DM_TRACKS[dmTrack++ % DM_TRACKS.length]
-  }
-  danmakus.value.push(item)
-  setTimeout(() => {
-    const i = danmakus.value.findIndex((d) => d.key === item.key)
-    if (i !== -1) danmakus.value.splice(i, 1)
-  }, 6800)
-}
-/* 只把新增的消息上弹幕（打开播放器时的历史消息不上） */
-let dmSeenId = 0
-watch(chatMsgs, (list) => {
-  for (const m of list) {
-    const id = Number(m.id) || 0
-    if (id > dmSeenId) {
-      dmSeenId = id
-      if (!m.recalled) pushDanmaku(m)
-    }
-  }
+/* ── 直播间弹幕对话区：有新消息就滚到底部（堆叠在视频左下方） ── */
+watch(liveMsgs, async () => {
+  await nextTick()
+  const el = liveEl.value
+  if (el) el.scrollTop = el.scrollHeight
+})
+/* 进入全屏（直播间模式）时也滚到底部 */
+watch(fsOn, async (v) => {
+  if (!v) return
+  await nextTick()
+  await nextTick()
+  const el = liveEl.value
+  if (el) el.scrollTop = el.scrollHeight
 })
 
 /* 聊天室消息列表：有新消息就滚到底部 */
@@ -560,7 +553,8 @@ async function doInvite() {
       playKind: player.type
     })
     cinemaStore.onInviteSent(r.id, chatTarget.value.id, player.title)
-    toast.pushToast({ title: `已邀请${chatTarget.value.name}一起看` })
+    /* 不再弹「已邀请…一起看」：浅色弹条会盖住视频顶部，
+       状态条已实时显示「等待对方接受邀请…」 */
   } catch (e) {
     toast.pushToast({ title: '邀请发送失败' })
   }
@@ -589,10 +583,9 @@ watch(() => cinemaStore.active, async (a) => {
   player.raw = a.film.url
   player.title = a.film.title || ''
   player.show = true
-  /* 先加载消息再记基线：历史消息不上弹幕，只推之后的新消息 */
+  /* 先加载消息再进播放器：聊天室 / 直播间弹幕对话直接显示 */
   try { await chatStore.load(a.contactId) } catch (e) { /* 忽略 */ }
-  markDanmakuBaseline()
-  /* 群邀请：加载成员名映射，聊天室/弹幕前缀显示发言人 */
+  /* 群邀请：加载成员名映射，聊天室/弹幕对话前缀显示发言人 */
   memberMap.value = {}
   if (a.isGroup) {
     try {
@@ -616,6 +609,23 @@ function toggleFullscreen() {
     toast.pushToast({ title: '当前浏览器不支持全屏' })
   }
 }
+
+/* 全屏状态变化：进入全屏 = 直播间模式；退出后强制重排一次——
+   个别浏览器退出全屏后 fixed 容器不刷新布局，顶部会露出一条页面底色（白带） */
+function onFsChange() {
+  fsOn.value = !!document.fullscreenElement
+  if (!fsOn.value && player.show) {
+    nextTick(() => {
+      const el = playerWrap.value
+      if (!el) return
+      el.style.willChange = 'transform'
+      requestAnimationFrame(() => requestAnimationFrame(() => { el.style.willChange = '' }))
+    })
+  }
+}
+
+/* 播放器打开状态同步给全局（SSE 消息弹窗在播放器打开时不再弹顶部白条） */
+watch(() => player.show, (v) => cinemaStore.setPlayerOpen(v), { immediate: true })
 
 function hostOf(u) {
   try {
@@ -678,6 +688,8 @@ async function removeLink(it) {
 }
 
 onMounted(async () => {
+  fsOn.value = !!document.fullscreenElement
+  document.addEventListener('fullscreenchange', onFsChange)
   await Promise.all([sites.load(), links.load()])
   /* 陪看聊天对象：默认取首页当前选中的联系人，没有则取第一个。
    * 若 immediate 的 active 监听已设定对象（接受邀请自动进播放器），不覆盖 */
@@ -694,7 +706,11 @@ onMounted(async () => {
   } catch (e) { /* 忽略 */ }
 })
 
-onBeforeUnmount(stopWatchTimer)
+onBeforeUnmount(() => {
+  stopWatchTimer()
+  document.removeEventListener('fullscreenchange', onFsChange)
+  cinemaStore.setPlayerOpen(false)
+})
 </script>
 
 <style scoped>
@@ -763,19 +779,70 @@ onBeforeUnmount(stopWatchTimer)
 .cv-stage { position: relative; flex: 0 0 auto; width: 100%; aspect-ratio: 16 / 9; max-height: 100%; min-height: 0; background: #000; overflow: hidden; }
 .cv-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: none; background: #000; }
 
-/* 全屏：视频铺满整个屏幕，聊天室以最大 46% 高度沉在底部 */
+/* 全屏 = 直播间：视频铺满整个屏幕；聊天室只留输入框沉底；
+   消息以弹幕对话堆叠在视频左下方 */
 .cv-player:fullscreen .cv-stage { flex: 1 1 auto; aspect-ratio: auto; }
-.cv-player:fullscreen .cv-chat { max-height: 46%; }
+.cv-player:fullscreen .cv-chat { flex: 0 0 auto; max-height: none; }
+.cv-player:fullscreen .cv-chat-msgs,
+.cv-player:fullscreen .cv-chat-hd { display: none; }
 
-/* 直播间式弹幕：消息从右往左飘过视频区 */
-.cv-danmaku { position: absolute; inset: 0; z-index: 2; pointer-events: none; overflow: hidden; }
-.cv-dm { position: absolute; left: 100%; display: inline-flex; align-items: center; gap: 6px; max-width: 78%; padding: 3px 10px; border-radius: 999px; background: rgba(0, 0, 0, 0.32); white-space: nowrap; animation: cv-dm-fly 6.8s linear forwards; }
-.cv-dm-name { flex: 0 0 auto; font-size: 11px; font-weight: 600; color: #ffd76e; }
-.cv-dm-text { font-size: 13px; color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85); overflow: hidden; text-overflow: ellipsis; }
-@keyframes cv-dm-fly { from { transform: translateX(0); } to { transform: translateX(calc(-100vw - 100%)); } }
-
-/* 未建立陪看关系：视频区中央提示（不挡视频点击） */
-.cv-lock { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 3; padding: 8px 16px; border-radius: 999px; background: rgba(0, 0, 0, 0.55); font-size: 13px; color: rgba(255, 255, 255, 0.92); pointer-events: none; }
+/* 直播间式弹幕对话：仅全屏显示，堆叠在视频左下方，半透明小票样式 */
+.cv-live { display: none; }
+.cv-player:fullscreen .cv-live {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 6px;
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
+  max-height: 46%;
+  overflow-y: auto;
+  z-index: 2;
+  pointer-events: none;
+  scrollbar-width: none;
+}
+.cv-live::-webkit-scrollbar { display: none; }
+.cv-live-row { display: flex; align-items: center; gap: 6px; }
+/* 我的消息：整组靠右（DOM [头像][内容]，row-reverse 后头像在最右） */
+.cv-live-row.me { flex-direction: row-reverse; }
+.cv-live-ava { flex: 0 0 auto; }
+.cv-live-body {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+  color: #fff;
+}
+.cv-live-row.me .cv-live-body { background: color-mix(in srgb, var(--accent) 82%, transparent); }
+.cv-live-name { flex: 0 0 auto; font-size: 11px; font-weight: 600; color: #ffd76e; }
+.cv-live-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 弹幕开关（仅全屏可见，贴在视频区右上角） */
+.cv-live-toggle {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: none;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+.cv-live-toggle .cv-live-dot { flex: 0 0 auto; width: 6px; height: 6px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent); }
+.cv-live-toggle.off { color: rgba(255, 255, 255, 0.55); }
+.cv-live-toggle.off .cv-live-dot { background: rgba(255, 255, 255, 0.35); box-shadow: none; }
 
 /* 视频下方整体：状态条 + 聊天室，聊天室占满剩余区域 */
 .cv-main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
@@ -787,11 +854,7 @@ onBeforeUnmount(stopWatchTimer)
 .cv-chat.collapsed .cv-chat-input { display: none; }
 .cv-main.chat-collapsed .cv-stage { flex: 1 1 auto; aspect-ratio: auto; }
 .cv-chat-hd { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; }
-/* 弹幕开关 */
-.cv-dm-toggle { display: inline-flex; align-items: center; gap: 6px; border: none; background: rgba(255, 255, 255, 0.1); color: #fff; font-size: 12px; font-weight: 600; padding: 5px 10px; border-radius: 999px; }
-.cv-dm-toggle .cv-dm-dot { flex: 0 0 auto; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 6px var(--accent); }
-.cv-dm-toggle.off { color: rgba(255, 255, 255, 0.55); }
-.cv-dm-toggle.off .cv-dm-dot { background: rgba(255, 255, 255, 0.35); box-shadow: none; }
+.cv-chat-hd-title { font-size: 12px; font-weight: 600; color: rgba(255, 255, 255, 0.65); }
 /* 聊天室收起 / 展开 */
 .cv-chat-fold { border: none; background: transparent; color: rgba(255, 255, 255, 0.7); padding: 4px; display: inline-flex; align-items: center; }
 .cv-chat-msgs { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 4px 12px; display: flex; flex-direction: column; gap: 8px; }

@@ -15,7 +15,10 @@ export const useCinemaStore = defineStore('cinema', {
     myAccepted: null,
     /* TA 邀我待处理（SSE incoming）：{inviteId, contactId, film...}，聊天卡片也会渲染，
        这里只做"有新邀请"的提示用途 */
-    incoming: null
+    incoming: null,
+    /* 播放器是否打开中：打开时 SSE 消息弹窗不再从屏幕顶部弹出
+       （白色消息弹条会盖住视频，消息在播放器聊天室里实时可见） */
+    playerOpen: false
   }),
   actions: {
     /* SSE 统一入口：分发 TA 邀我 / TA 响应了我的邀请 */
@@ -130,6 +133,10 @@ export const useCinemaStore = defineStore('cinema', {
     },
     clearPendingOut(inviteId) {
       if (!inviteId || (this.pendingOut && this.pendingOut.inviteId === inviteId)) this.pendingOut = null
+    },
+    /* 播放器打开 / 关闭：供全局消息弹窗判断是否要让位 */
+    setPlayerOpen(v) {
+      this.playerOpen = !!v
     }
   }
 })
