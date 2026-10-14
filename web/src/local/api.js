@@ -1238,7 +1238,7 @@ export async function getCompanionInvites(limit = 50) {
 
 /* ─────────── 通用模块（日记/备忘录/心情/经期/相册/音乐/影视/游戏/档案） ─────────── */
 
-const ITEM_MODULES = ['diary', 'memo', 'mood', 'period', 'album', 'music', 'cinema', 'game', 'archive']
+const ITEM_MODULES = ['diary', 'memo', 'mood', 'period', 'album', 'music', 'cinema', 'cinema_sites', 'cinema_links', 'game', 'archive']
 
 function parseExtra(v) {
   if (v == null) return {}

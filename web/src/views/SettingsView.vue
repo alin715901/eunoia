@@ -50,7 +50,7 @@
             <span class="slider-sw"></span>
           </label>
         </div>
-        <div class="row-item static">
+        <div class="row-item static no-divide">
           <span class="ri-icon"><AppIcon name="chat" :size="18" /></span>
           <span class="ri-label">消息通知</span>
           <span class="spacer"></span>
@@ -249,6 +249,7 @@ onMounted(async () => {
   color: var(--text);
 }
 .row-item:last-child { border-bottom: none; }
+.row-item.no-divide { border-bottom: none; }
 .row-item:not(.static):active { background: var(--bg-soft); }
 .ri-icon { color: var(--text); display: inline-flex; }
 .ri-label { display: flex; align-items: center; gap: 6px; flex: 0 1 auto; }

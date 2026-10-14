@@ -1,97 +1,105 @@
 <template>
-  <div class="md-page">
-    <AppHeader title="影院" back>
-      <template #right>
-        <button class="md-op" @click="openAdd" aria-label="添加"><AppIcon name="plus" :size="22" /></button>
-      </template>
-    </AppHeader>
+  <div class="cv-page">
+    <AppHeader title="影院" back />
 
-    <div class="md-body">
-      <div class="md-summary">
-        <span class="md-sum-ic"><AppIcon name="film" :size="26" color="var(--accent)" /></span>
-        <span class="md-sum-main">
-          <span class="md-sum-title">想看 {{ want.length }} 部 · 已看 {{ watched.length }} 部</span>
-          <span class="md-sum-sub">一起看过的，和想一起看的</span>
+    <div class="cv-body">
+      <!-- 顶部观看统计（保留） -->
+      <div class="cv-summary">
+        <span class="cv-sum-ic"><AppIcon name="film" :size="26" color="var(--accent)" /></span>
+        <span class="cv-sum-main">
+          <span class="cv-sum-title">免费站点 {{ allSites.length }} 个 · 我的片单 {{ linkList.length }} 条</span>
+          <span class="cv-sum-sub">一起看过的，和想一起看的</span>
         </span>
       </div>
 
-      <div class="md-seg">
-        <button class="md-seg-btn" :class="{ on: tab === 'want' }" @click="tab = 'want'">想看</button>
-        <button class="md-seg-btn" :class="{ on: tab === 'watched' }" @click="tab = 'watched'">已看</button>
-      </div>
-
-      <p v-if="loading" class="md-tip">加载中…</p>
-      <template v-else>
-        <div v-for="m in list" :key="m.id" class="md-card">
-          <span class="ci-cover">
-            <img v-if="m.body" :src="m.body" alt="" />
-            <AppIcon v-else name="film" :size="18" color="var(--accent)" />
-          </span>
-          <div class="md-card-main" @click="openEdit(m)">
-            <div class="md-title">{{ m.title }}</div>
-            <div class="md-sub">
-              <span v-if="m.extra?.status === 'watched'" class="ci-stars">
-                <i v-for="n in 5" :key="n" :class="{ on: n <= (m.extra?.rating || 0) }">★</i>
-              </span>
-              <span v-else>想看</span>
-              <span v-if="m.extra?.date"> · {{ m.extra.date }}</span>
-            </div>
-            <div class="md-text" v-if="m.extra?.note">{{ m.extra.note }}</div>
-          </div>
-          <div class="md-ops">
-            <button class="md-op" @click="toggle(m)" :aria-label="m.extra?.status === 'watched' ? '标记想看' : '标记已看'">
-              <AppIcon :name="m.extra?.status === 'watched' ? 'heart' : 'check'" :size="16" color="var(--accent)" />
-            </button>
-            <button class="md-op" @click="remove(m)" aria-label="删除"><AppIcon name="trash" :size="16" color="#c0576b" /></button>
-          </div>
+      <!-- 免费观影站点 -->
+      <section class="cv-sec">
+        <div class="cv-sec-head">
+          <span class="cv-sec-title">免费观影站点</span>
+          <button class="cv-add" @click="openAddSite"><AppIcon name="plus" :size="18" /> 添加</button>
         </div>
-        <p v-if="!list.length" class="md-empty">
-          {{ tab === 'want' ? '还没有想看的电影' : '还没有看过的电影' }}<br />
-          <span class="md-empty-sub">点右上角「＋」添加一部</span>
-        </p>
-      </template>
+        <p class="cv-sec-tip">点站点直接进去看；部分站点禁止应用内嵌，会自动让你在浏览器打开。</p>
+        <button
+          v-for="s in allSites"
+          :key="s.id"
+          class="cv-card"
+          @click="openUrl(s.url, s.name)"
+        >
+          <span class="cv-card-ic"><AppIcon name="film" :size="18" color="var(--accent)" /></span>
+          <span class="cv-card-main">
+            <span class="cv-card-title">{{ s.name }}</span>
+            <span class="cv-card-sub">{{ s.desc || hostOf(s.url) }}</span>
+          </span>
+          <span class="cv-card-ops" @click.stop v-if="s.custom">
+            <button class="cv-op" @click="removeSite(s)" aria-label="删除"><AppIcon name="trash" :size="16" color="#c0576b" /></button>
+          </span>
+          <AppIcon name="chevron-right" :size="16" color="var(--text-soft)" v-else />
+        </button>
+        <p v-if="!allSites.length" class="cv-empty">还没有站点，点右上角「＋」添加。</p>
+      </section>
+
+      <!-- 导入视频链接 -->
+      <section class="cv-sec">
+        <div class="cv-sec-head">
+          <span class="cv-sec-title">导入视频链接</span>
+        </div>
+        <p class="cv-sec-tip">粘贴 B 站 / 爱奇艺 / 腾讯视频等播放页链接，存起来随时看。</p>
+        <div class="cv-input-row">
+          <input
+            v-model="linkInput"
+            class="cv-input"
+            placeholder="https://..."
+            @keyup.enter="addLink"
+          />
+          <button class="cv-input-btn" @click="addLink">添加</button>
+        </div>
+        <button
+          v-for="l in linkList"
+          :key="l.id"
+          class="cv-card"
+          @click="openUrl(l.body, l.title)"
+        >
+          <span class="cv-card-ic"><AppIcon name="link" :size="18" color="var(--accent)" /></span>
+          <span class="cv-card-main">
+            <span class="cv-card-title">{{ l.title }}</span>
+            <span class="cv-card-sub">{{ l.body }}</span>
+          </span>
+          <span class="cv-card-ops" @click.stop>
+            <button class="cv-op" @click="removeLink(l)" aria-label="删除"><AppIcon name="trash" :size="16" color="#c0576b" /></button>
+          </span>
+        </button>
+        <p v-if="!linkList.length" class="cv-empty">还没有导入的链接。</p>
+      </section>
     </div>
 
-    <button class="md-fab" @click="openAdd" aria-label="添加"><AppIcon name="plus" :size="24" color="#fff" /></button>
-    <input ref="fileEl" type="file" accept="image/*" hidden @change="onPick" />
-
-    <div v-if="show" class="md-mask" @click.self="close">
-      <div class="md-sheet">
-        <h3 class="md-sheet-title">{{ editing ? '编辑' : '添加影片' }}</h3>
-        <div class="md-fld">
-          <span class="md-fld-label">片名</span>
-          <input v-model="form.title" class="md-input" placeholder="例如：你的名字" maxlength="40" />
+    <!-- 添加站点弹窗 -->
+    <div v-if="siteSheet.show" class="cv-mask" @click.self="closeSiteSheet">
+      <div class="cv-sheet">
+        <h3 class="cv-sheet-title">添加观影站点</h3>
+        <div class="cv-fld">
+          <span class="cv-fld-label">名称</span>
+          <input v-model="siteSheet.name" class="cv-input" placeholder="例如：某某影视" maxlength="20" />
         </div>
-        <div class="md-fld">
-          <span class="md-fld-label">状态</span>
-          <div class="md-chips">
-            <button class="md-chip" :class="{ on: form.status === 'want' }" @click="form.status = 'want'">想看</button>
-            <button class="md-chip" :class="{ on: form.status === 'watched' }" @click="form.status = 'watched'">已看</button>
-          </div>
+        <div class="cv-fld">
+          <span class="cv-fld-label">网址</span>
+          <input v-model="siteSheet.url" class="cv-input" placeholder="https://..." />
         </div>
-        <div class="md-fld" v-if="form.status === 'watched'">
-          <span class="md-fld-label">评分</span>
-          <div class="ci-pick">
-            <i v-for="n in 5" :key="n" :class="{ on: n <= form.rating }" @click="form.rating = n">★</i>
-          </div>
-        </div>
-        <div class="md-fld" v-if="form.status === 'watched'">
-          <span class="md-fld-label">观看日期（可选）</span>
-          <input v-model="form.date" class="md-input" type="date" />
-        </div>
-        <div class="md-fld">
-          <span class="md-fld-label">短评（可选）</span>
-          <textarea v-model="form.note" class="md-textarea" placeholder="看完想说的话…" />
-        </div>
-        <div class="md-fld">
-          <span class="md-fld-label">海报（可选）</span>
-          <button class="ci-pick-btn" @click="fileEl?.click()">{{ form.poster ? '已选择海报' : '选择海报图片' }}</button>
-        </div>
-        <div class="md-actions">
-          <button class="md-btn ghost" @click="close">取消</button>
-          <button class="md-btn primary" @click="save">保存</button>
+        <div class="cv-actions">
+          <button class="cv-btn ghost" @click="closeSiteSheet">取消</button>
+          <button class="cv-btn primary" @click="saveSite">保存</button>
         </div>
       </div>
+    </div>
+
+    <!-- 应用内观看器 -->
+    <div v-if="viewer.show" class="cv-player">
+      <div class="cv-bar">
+        <button class="cv-bar-btn" @click="closeViewer" aria-label="关闭"><AppIcon name="close" :size="20" /></button>
+        <span class="cv-bar-title">{{ viewer.title }}</span>
+        <button class="cv-bar-open" @click="openExternal">浏览器打开</button>
+      </div>
+      <iframe class="cv-frame" :src="viewer.url" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
+      <p class="cv-player-tip">若页面空白（部分站点禁止内嵌），点右上角「浏览器打开」。</p>
     </div>
   </div>
 </template>
@@ -103,96 +111,146 @@ import AppIcon from '@/components/common/AppIcon.vue'
 import { useItems } from '@/composables/useItems'
 import { useNotificationsStore } from '@/stores/notifications'
 import { confirmDialog } from '@/utils/dialog'
-import { uploadFile } from '@/api/settings'
-import { compressImage } from '@/utils/image'
 
-const { items, loading, load, add, update, remove: removeItem } = useItems('cinema')
 const toast = useNotificationsStore()
-const tab = ref('want')
-const show = ref(false)
-const editing = ref(null)
-const fileEl = ref(null)
-const form = reactive({ title: '', status: 'want', rating: 0, date: '', note: '', poster: '' })
+const sites = useItems('cinema_sites')
+const links = useItems('cinema_links')
 
-const want = computed(() => items.value.filter((m) => m.extra?.status !== 'watched'))
-const watched = computed(() => items.value.filter((m) => m.extra?.status === 'watched'))
-const list = computed(() => (tab.value === 'want' ? want.value : watched.value))
+/* 内置几个正版免费平台，用户也能自行添加更多 */
+const BUILTIN = [
+  { id: 'bili', name: '哔哩哔哩', url: 'https://www.bilibili.com', desc: '番剧 / 影视 / 纪录片' },
+  { id: 'm1905', name: '1905 电影网', url: 'https://www.1905.com', desc: '官方正版免费电影' },
+  { id: 'xigua', name: '西瓜视频', url: 'https://www.ixigua.com', desc: '免费影视综艺' },
+  { id: 'cctv', name: 'CCTV 节目官网', url: 'https://tv.cctv.com', desc: '央视免费节目' }
+]
 
-async function onPick(e) {
-  const f = e.target.files?.[0]
-  e.target.value = ''
-  if (!f) return
+const allSites = computed(() =>
+  [...BUILTIN, ...sites.items.value.map((it) => ({ id: it.id, name: it.title, url: it.body, desc: '自定义站点', custom: true }))]
+)
+
+/* 过滤出有效链接，避免空数据渲染出空卡片 */
+const linkList = computed(() =>
+  (Array.isArray(links.items.value) ? links.items.value : []).filter((x) => x && x.body)
+)
+
+const viewer = reactive({ show: false, url: '', title: '' })
+function openUrl(url, title) {
+  viewer.url = url
+  viewer.title = title || url
+  viewer.show = true
+}
+function openExternal() {
+  if (viewer.url) window.open(viewer.url, '_blank', 'noopener')
+}
+function closeViewer() {
+  viewer.show = false
+  viewer.url = ''
+}
+
+function hostOf(u) {
   try {
-    const res = await uploadFile(await compressImage(f))
-    form.poster = res?.path || ''
-  } catch (err) {
-    toast.pushToast({ title: '上传失败', text: err.message })
+    return new URL(u).host.replace(/^www\./, '')
+  } catch {
+    return u
   }
 }
-function openAdd() {
-  editing.value = null
-  Object.assign(form, { title: '', status: tab.value === 'watched' ? 'watched' : 'want', rating: 0, date: '', note: '', poster: '' })
-  show.value = true
+
+/* 添加站点 */
+const siteSheet = reactive({ show: false, name: '', url: '' })
+function openAddSite() {
+  Object.assign(siteSheet, { show: true, name: '', url: '' })
 }
-function openEdit(m) {
-  editing.value = m
-  Object.assign(form, {
-    title: m.title || '',
-    status: m.extra?.status || 'want',
-    rating: Number(m.extra?.rating || 0),
-    date: m.extra?.date || '',
-    note: m.extra?.note || '',
-    poster: m.body || ''
-  })
-  show.value = true
+function closeSiteSheet() {
+  siteSheet.show = false
 }
-function close() {
-  show.value = false
-}
-async function save() {
-  if (!form.title.trim()) {
-    toast.pushToast({ title: '填一下片名' })
+async function saveSite() {
+  const url = siteSheet.url.trim()
+  const name = siteSheet.name.trim()
+  if (!/^https?:\/\//i.test(url)) {
+    toast.pushToast({ title: '网址要以 http(s):// 开头' })
     return
   }
-  const payload = {
-    title: form.title.trim(),
-    body: form.poster,
-    extra: { status: form.status, rating: form.rating, date: form.date, note: form.note.trim() }
+  if (!name) {
+    toast.pushToast({ title: '填一下站点名称' })
+    return
   }
-  const id = editing.value?.id
-  close()
-  try {
-    if (id) await update(id, payload)
-    else await add(payload)
-    toast.pushToast({ title: '已保存' })
-  } catch (e) {
-    toast.pushToast({ title: '失败', text: e.message })
-  }
+  closeSiteSheet()
+  await sites.add({ title: name, body: url, extra: {} })
+  toast.pushToast({ title: '已添加站点' })
 }
-async function toggle(m) {
-  const to = m.extra?.status === 'watched' ? 'want' : 'watched'
-  await update(m.id, { extra: { ...m.extra, status: to } })
-  toast.pushToast({ title: to === 'watched' ? '已标记为看过' : '已移回想看' })
-}
-async function remove(m) {
-  if (!(await confirmDialog({ title: '删除这部影片？', danger: true }))) return
-  await removeItem(m.id)
-  toast.pushToast({ title: '已删除' })
+async function removeSite(it) {
+  if (!(await confirmDialog({ title: '删除该站点？', danger: true }))) return
+  await sites.remove(it.id)
 }
 
-onMounted(load)
+/* 导入链接 */
+const linkInput = ref('')
+async function addLink() {
+  const url = linkInput.value.trim()
+  if (!/^https?:\/\//i.test(url)) {
+    toast.pushToast({ title: '请输入 http(s) 开头的链接' })
+    return
+  }
+  linkInput.value = ''
+  await links.add({ title: hostOf(url), body: url, extra: {} })
+  toast.pushToast({ title: '已添加链接' })
+}
+async function removeLink(it) {
+  if (!(await confirmDialog({ title: '删除该链接？', danger: true }))) return
+  await links.remove(it.id)
+}
+
+onMounted(async () => {
+  await Promise.all([sites.load(), links.load()])
+})
 </script>
 
 <style scoped>
-.ci-cover {
-  flex: 0 0 auto; width: 42px; height: 56px; border-radius: 8px; overflow: hidden;
-  background: var(--bg); display: flex; align-items: center; justify-content: center;
-}
-.ci-cover img { width: 100%; height: 100%; object-fit: cover; }
-.ci-stars i, .ci-pick i { font-style: normal; color: var(--border); font-size: 14px; }
-.ci-stars i.on { color: #e8b04b; }
-.ci-pick { display: flex; gap: 6px; font-size: 22px; }
-.ci-pick i { cursor: pointer; }
-.ci-pick i.on { color: #e8b04b; }
-.ci-pick-btn { width: 100%; padding: 10px 0; font-size: 14px; border-radius: 12px; border: 1px dashed var(--border); background: transparent; color: var(--text-soft); }
+.cv-page { flex: 1; display: flex; flex-direction: column; min-height: 0; background: var(--bg-screen); }
+.cv-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 14px; }
+
+.cv-summary { display: flex; align-items: center; gap: 12px; padding: 14px 12px; background: var(--bg); border-radius: 16px; }
+.cv-sum-ic { flex: 0 0 auto; width: 44px; height: 44px; border-radius: 12px; background: var(--bg-soft); display: flex; align-items: center; justify-content: center; }
+.cv-sum-main { display: flex; flex-direction: column; gap: 2px; }
+.cv-sum-title { font-size: 15px; font-weight: 600; color: var(--text); }
+.cv-sum-sub { font-size: 12px; color: var(--text-soft); }
+
+.cv-sec { background: var(--bg); border-radius: 16px; padding: 12px; }
+.cv-sec-head { display: flex; align-items: center; justify-content: space-between; }
+.cv-sec-title { font-size: 14px; font-weight: 600; color: var(--text); }
+.cv-add { display: inline-flex; align-items: center; gap: 3px; border: none; background: transparent; color: var(--accent); font-size: 13px; font-weight: 600; padding: 4px 6px; }
+.cv-sec-tip { font-size: 12px; color: var(--text-soft); line-height: 1.6; margin: 6px 0 10px; }
+
+.cv-card { width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px 4px; background: transparent; border: none; border-bottom: 1px solid var(--border); text-align: left; }
+.cv-card:last-of-type { border-bottom: none; }
+.cv-card-ic { flex: 0 0 auto; width: 36px; height: 36px; border-radius: 10px; background: var(--bg-soft); display: flex; align-items: center; justify-content: center; }
+.cv-card-main { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+.cv-card-title { font-size: 14px; color: var(--text); }
+.cv-card-sub { font-size: 12px; color: var(--text-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-card-ops { flex: 0 0 auto; display: flex; align-items: center; gap: 6px; }
+.cv-op { border: none; background: transparent; padding: 4px; }
+
+.cv-empty { font-size: 12px; color: var(--text-soft); padding: 10px 4px; }
+
+.cv-input-row { display: flex; gap: 8px; margin-bottom: 10px; }
+.cv-input { flex: 1 1 auto; width: 100%; padding: 11px 12px; font-size: 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-soft); color: var(--text); }
+.cv-input-btn { flex: 0 0 auto; padding: 0 18px; border: none; border-radius: 12px; background: var(--accent); color: #fff; font-size: 14px; font-weight: 600; }
+
+.cv-mask { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); display: flex; align-items: flex-end; z-index: 50; }
+.cv-sheet { width: 100%; background: var(--bg); border-radius: 20px 20px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); }
+.cv-sheet-title { font-size: 16px; font-weight: 700; color: var(--text); margin: 0 0 14px; text-align: center; }
+.cv-fld { margin-bottom: 12px; }
+.cv-fld-label { display: block; font-size: 12px; color: var(--text-soft); margin-bottom: 6px; }
+.cv-actions { display: flex; gap: 10px; margin-top: 6px; }
+.cv-btn { flex: 1; padding: 12px 0; border-radius: 12px; font-size: 15px; border: none; font-weight: 600; }
+.cv-btn.ghost { background: var(--bg-soft); color: var(--text); }
+.cv-btn.primary { background: var(--accent); color: #fff; }
+
+.cv-player { position: fixed; inset: 0; background: #000; display: flex; flex-direction: column; z-index: 60; }
+.cv-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: rgba(0, 0, 0, 0.85); color: #fff; }
+.cv-bar-btn { border: none; background: transparent; color: #fff; padding: 4px; display: inline-flex; }
+.cv-bar-title { flex: 1 1 auto; min-width: 0; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-bar-open { flex: 0 0 auto; border: none; background: rgba(255, 255, 255, 0.18); color: #fff; font-size: 13px; padding: 6px 12px; border-radius: 999px; }
+.cv-frame { flex: 1 1 auto; width: 100%; border: none; background: #fff; }
+.cv-player-tip { flex: 0 0 auto; margin: 0; font-size: 11px; color: rgba(255, 255, 255, 0.7); text-align: center; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); background: rgba(0, 0, 0, 0.85); }
 </style>
