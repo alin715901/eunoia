@@ -62,7 +62,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onActivated } from 'vue'
 import { useRouter } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
@@ -83,6 +83,15 @@ const images = ref([])
 const postTo = ref('')
 const publishing = ref(false)
 const uploading = ref(false)
+
+/* 发布框被 <keep-alive> 缓存：发布后返回再点「＋」重进时，
+   清空上一条遗留的文字 / 图片 / 可见范围，避免串味 */
+function resetForm() {
+  text.value = ''
+  images.value = []
+  postTo.value = ''
+  showScope.value = false
+}
 
 /* 可见范围弹窗：只列单人联系人（群聊不能发朋友圈） */
 const showScope = ref(false)
@@ -149,6 +158,7 @@ async function publish() {
       images: images.value
     })
     toast.pushToast({ title: '已发布' })
+    resetForm()
     router.back()
   } catch (err) {
     toast.pushToast({ title: '发布失败', text: err.message })
@@ -160,6 +170,8 @@ async function publish() {
 onMounted(async () => {
   await contactsStore.load().catch(() => {})
 })
+/* 每次（重）进入发布页都重置，确保不会残留上一条的内容 */
+onActivated(resetForm)
 </script>
 
 <style scoped>

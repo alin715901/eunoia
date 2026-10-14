@@ -12,6 +12,7 @@ export {
   getLetters,
   createLetter,
   markLetterRead,
+  markContactLettersRead,
   deleteLetter,
   favoriteLetter,
   getDivinations,

@@ -106,6 +106,19 @@ function randInt(lo, hi) {
   return a + Math.floor(Math.random() * (b - a + 1));
 }
 
+/* 朋友圈「评论速度」：对方给我朋友圈点赞 / 评论 / 回复的快慢（分钟区间）。
+   慢=克制、适中=日常、快=活跃。返回点赞与评论两套延迟（毫秒，带随机抖动） */
+const SPEED = {
+  slow: { like: [30, 120], comment: [60, 240] },
+  normal: { like: [5, 30], comment: [20, 90] },
+  fast: { like: [1, 8], comment: [5, 30] }
+}
+function speedDelays(speed) {
+  const s = SPEED[speed] || SPEED.normal;
+  const r = (a, b) => (a + Math.random() * (b - a)) * 60 * 1000;
+  return { likeDelay: r(s.like[0], s.like[1]), commentDelay: r(s.comment[0], s.comment[1]) };
+}
+
 /* 每分钟跑一次：到点的联系人发一条（每天条数 / 间隔由设置控制） */
 function momentTick() {
   try {
@@ -149,7 +162,8 @@ function insertComment(momentId, contactId, body, type = 'reply', replyTo = null
   return info.lastInsertRowid;
 }
 
-/* 我评论了对方的动态后，TA 按设置回复：抽 1~3 张字卡凑一条；有小概率不回复 */
+/* 我评论了对方的动态后，TA 按设置回复：抽 1~3 张字卡凑一条；有小概率不回复。
+   回复延迟由「评论速度」控制，不再立即秒回 */
 function scheduleMomentReplies(momentId, contactId) {
   try {
     if (!contactId) return;
@@ -158,6 +172,7 @@ function scheduleMomentReplies(momentId, contactId) {
     if (Number(st.blocked)) return;
     /* 小概率不回复（约 20%） */
     if (Math.random() < 0.2) return;
+    const d = speedDelays(st.moment_comment_speed || 'normal');
     setTimeout(() => {
       try {
         const body = drawReplyContent(contactId);
@@ -167,44 +182,64 @@ function scheduleMomentReplies(momentId, contactId) {
       } catch (err) {
         /* ignore */
       }
-    }, (2 + Math.random() * 4) * 1000);
+    }, d.commentDelay);
   } catch (e) {
     console.error('[scheduleMomentReplies]', e.message);
   }
 }
 
-/* 对方在我的朋友圈下评论（不会去其他联系人的动态下评论） */
-const COMMENT_GAP = 8 * 60 * 60 * 1000;
-function momentCommentTick() {
+/* 我发朋友圈后：各位联系人按自己的「评论速度」选择性地点赞 / 评论（不会立即、也不会全点）。
+   —— 取代原来的定时轮询（momentCommentTick），改为事件驱动，避免「发完就被秒赞秒评」。
+   点赞约 65% 概率；评论受「对方会回复评论」开关控制、约 55% 概率。
+   二者各自独立，所以可能出现「只点赞不评论」或「只评论不点赞」的情况（可点也可不点）。 */
+function reactToMyMoments(momentId) {
   try {
     const rows = db.prepare("SELECT id FROM contacts WHERE kind != 'group'").all();
-    const now = Date.now();
     for (const c of rows) {
       const cid = c.id;
       const st = db.prepare('SELECT * FROM contact_settings WHERE contact_id = ?').get(cid);
-      if (!st || !Number(st.moment_reply_enabled)) continue;
+      if (!st) continue;
       if (Number(st.blocked)) continue;
-      /* 我发的动态里挑一条最近的（只看我的，不碰其他联系人的） */
-      const mine = db
-        .prepare("SELECT id FROM moments WHERE author='me' ORDER BY created_at DESC LIMIT 3")
-        .all();
-      if (!mine.length) continue;
-      const last = db
-        .prepare(
-          "SELECT MAX(created_at) t FROM moment_interactions WHERE contact_id=? AND type='comment'"
-        )
-        .get(cid);
-      if (Number(last?.t || 0) && now - Number(last.t) < COMMENT_GAP) continue;
-      /* 到点了也有小概率不评论（约 30%） */
-      if (Math.random() < 0.3) continue;
-      const target = mine[Math.floor(Math.random() * mine.length)];
-      const body = drawReplyContent(cid);
-      if (!body) continue;
-      insertComment(target.id, cid, body, 'comment');
+      const d = speedDelays(st.moment_comment_speed || 'normal');
+      /* 选择性点赞：已赞过则不重复 */
+      if (Math.random() < 0.65) {
+        setTimeout(() => {
+          try {
+            const dup = db
+              .prepare("SELECT 1 FROM moment_interactions WHERE moment_id=? AND contact_id=? AND type='like'")
+              .get(momentId, cid);
+            if (dup) return;
+            db.prepare(
+              "INSERT INTO moment_interactions(moment_id, contact_id, type, created_at) VALUES(?,?,'like',?)"
+            ).run(momentId, cid, Date.now());
+            const ct = db.prepare('SELECT id, name, avatar FROM contacts WHERE id=?').get(cid);
+            notification.broadcast('moment_new', {
+              momentId,
+              contactId: cid,
+              name: ct?.name || 'TA',
+              avatar: ct?.avatar || ''
+            });
+          } catch (err) {
+            /* ignore */
+          }
+        }, d.likeDelay);
+      }
+      /* 选择性评论：受「对方会回复评论」开关控制，不受赞影响，可点可不点 */
+      if (Number(st.moment_reply_enabled) && Math.random() < 0.55) {
+        setTimeout(() => {
+          try {
+            const body = drawReplyContent(cid);
+            if (!body) return;
+            insertComment(momentId, cid, body, 'comment');
+          } catch (err) {
+            /* ignore */
+          }
+        }, d.commentDelay);
+      }
     }
   } catch (e) {
-    console.error('[momentCommentTick]', e.message);
+    console.error('[reactToMyMoments]', e.message);
   }
 }
 
-export { postContactMoment, momentTick, momentCommentTick, scheduleMomentReplies }
+export { postContactMoment, momentTick, scheduleMomentReplies, reactToMyMoments }

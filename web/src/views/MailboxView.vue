@@ -110,7 +110,7 @@ import AppHeader from '@/components/layout/AppHeader.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import { useContactsStore } from '@/stores/contacts'
 import { useNotificationsStore } from '@/stores/notifications'
-import { getLetters, createLetter, markLetterRead, deleteLetter, favoriteLetter } from '@/api/content'
+import { getLetters, createLetter, markLetterRead, markContactLettersRead, deleteLetter, favoriteLetter } from '@/api/content'
 import { confirmDialog } from '@/utils/dialog'
 import { sendMessage } from '@/api/chat'
 import { getContactSettings } from '@/api/contacts'
@@ -290,6 +290,12 @@ function openWrite() {
 async function load() {
   try {
     list.value = await getLetters(props.id)
+    /* 进入信箱即把 TA 的未读来信全部标记已读（像打开聊天一样），
+       同步本地列表并清掉「新来信」标记，避免信箱角标残留 */
+    await markContactLettersRead(props.id).catch(() => {})
+    for (const l of list.value) {
+      if (l.sender !== 'me' && !l.is_read) l.is_read = 1
+    }
   } catch (e) {
     toast.pushToast({ title: '加载失败', text: e.message })
   }

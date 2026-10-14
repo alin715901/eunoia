@@ -57,6 +57,8 @@ export function migrate() {
   addCol('contact_settings', 'proactive_count_min', 'INTEGER DEFAULT 1')
   addCol('contact_settings', 'proactive_count_max', 'INTEGER DEFAULT 3')
   addCol('contact_settings', 'proactive_interval_max', 'INTEGER DEFAULT 180')
+  // 朋友圈「评论速度」：对方给我朋友圈点赞/评论/回复的快慢
+  addCol('contact_settings', 'moment_comment_speed', "TEXT DEFAULT 'normal'")
   // 主动消息调度持久化
   addCol('contact_settings', 'proactive_last_at', 'INTEGER DEFAULT 0')
   addCol('contact_settings', 'proactive_next_at', 'INTEGER DEFAULT 0')

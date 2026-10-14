@@ -10,7 +10,7 @@
 import db from './db'
 import * as notification from './services/notification.service'
 import { proactiveTick, redpacketTick } from './services/chat.service'
-import { momentTick, momentCommentTick } from './services/moment.service'
+import { momentTick } from './services/moment.service'
 import { letterTick } from './services/letter.service'
 import { contactInviteTick as companionInviteTick } from './services/companion.service'
 import { contactInviteTick as listenInviteTick } from './services/listen.service'
@@ -32,7 +32,6 @@ function runMinuteTicks() {
   }
   try {
     momentTick()
-    momentCommentTick()
   } catch (e) {
     /* ignore */
   }

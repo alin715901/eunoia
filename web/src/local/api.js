@@ -550,6 +550,10 @@ export async function createMoment(payload = {}) {
       Date.now()
     )
   const m = db.prepare('SELECT * FROM moments WHERE id=?').get(info.lastInsertRowid)
+  /* 我发了朋友圈：让各联系人按自己的「评论速度」随后选择性点赞 / 评论（事件驱动，不再秒赞秒评） */
+  if (!authorContactId && author !== 'contact') {
+    momentService.reactToMyMoments(m.id)
+  }
   return { ...m, images: m.images ? JSON.parse(m.images) : [], likes: 0, liked: false, comments: [] }
 }
 
@@ -680,6 +684,15 @@ export async function createLetter(payload = {}) {
 
 export async function markLetterRead(id) {
   db.prepare('UPDATE letters SET is_read=1 WHERE id=?').run(Number(id))
+  return null
+}
+
+/* 进入某人的信箱：把 TA 寄来的全部未读来信一次性标记为已读
+   （与「打开聊天即全读」一致，避免「只展开单封才清未读」导致信箱角标残留） */
+export async function markContactLettersRead(contactId) {
+  db.prepare(
+    "UPDATE letters SET is_read=1 WHERE contact_id=? AND is_read=0"
+  ).run(Number(contactId))
   return null
 }
 

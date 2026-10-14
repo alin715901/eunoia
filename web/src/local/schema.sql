@@ -38,6 +38,13 @@ CREATE TABLE IF NOT EXISTS contact_settings (
   proactive_interval_min INTEGER DEFAULT 60,
   moment_enabled INTEGER DEFAULT 0,
   moment_freq INTEGER DEFAULT 86400,
+  moment_count_min INTEGER DEFAULT 0,
+  moment_count_max INTEGER DEFAULT 2,
+  moment_reply_enabled INTEGER DEFAULT 1,
+  moment_reply_min INTEGER DEFAULT 1,
+  moment_reply_max INTEGER DEFAULT 3,
+  -- 朋友圈「评论速度」：对方给我朋友圈点赞/评论/回复的快慢（slow/normal/fast）
+  moment_comment_speed TEXT DEFAULT 'normal',
   letter_enabled INTEGER DEFAULT 0,
   letter_freq INTEGER DEFAULT 86400,
   letter_sentences_min INTEGER DEFAULT 3,
