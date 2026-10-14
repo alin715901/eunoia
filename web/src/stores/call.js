@@ -225,19 +225,30 @@ export const useCallStore = defineStore('call', {
       this.end('declined')
     },
 
-    /* 接通：进入通话中，启动计时 + 对方挂断概率检测 */
+    /* 接通：进入通话中，启动计时 + 对方挂断调度 */
     connect() {
       this.phase = 'connected'
       this.seconds = 0
       this.connectStart = Date.now()
       clearInterval(tickTimer)
+      clearTimeout(hangupTimer)
       tickTimer = setInterval(() => {
         this.seconds += 1
-        // 通话中：对方有小概率挂断（每秒评估一次，强度 = 挂断概率 / 10，使概率可见但不至于太快）
-        if (Math.random() < (this.hangupProb / 100) / 10) {
-          this.end('hangup_by_them')
-        }
       }, 1000)
+      /* 对方挂断调度：先按「挂断概率」决定这通电话对方会不会挂；
+       * 若会，挂断时刻在 [3 秒, 2 小时] 上均匀随机 —— 只接几秒 / 十几秒 /
+       * 几分钟 / 几小时都可能挂，各时长概率均等。
+       * 不用每秒评估的指数分布：那种分布内存无记忆性，将近一半的通话活不过
+       * 1 分钟，体验上就是「经常不到一分钟就挂」 */
+      if (Math.random() < this.hangupProb / 100) {
+        const minMs = 3 * 1000
+        const maxMs = 2 * 60 * 60 * 1000
+        const at = minMs + Math.random() * (maxMs - minMs)
+        hangupTimer = setTimeout(() => {
+          hangupTimer = null
+          this.end('hangup_by_them')
+        }, at)
+      }
       // 群聊：接通后启动「成员继续加入 / 退出」动态调度
       if (this.isGroup) startGroupTick(this)
     },
@@ -256,10 +267,12 @@ export const useCallStore = defineStore('call', {
     async end(reason) {
       clearTimeout(decideTimer)
       clearInterval(tickTimer)
+      clearTimeout(hangupTimer)
       clearTimeout(inviteTimer)
       clearJoinTimers()
       decideTimer = null
       tickTimer = null
+      hangupTimer = null
       inviteTimer = null
       this.pending = null
       const contactId = this.contactId
@@ -310,6 +323,7 @@ export const useCallStore = defineStore('call', {
 /* 计时与决策定时器不进 state（避免无谓响应式开销） */
 let decideTimer = null
 let tickTimer = null
+let hangupTimer = null // 对方挂断的一次性调度器（均匀随机时刻）
 let inviteTimer = null
 let joinTimers = [] // 群聊：各成员加入的延时器
 let noJoinTimer = null // 群聊：12 秒无人加入的看门狗

@@ -497,6 +497,9 @@ export async function getMoments(contactId = null, viewer = 0, scope = 'contact'
   const likeQ = db.prepare(
     "SELECT 1 FROM moment_interactions WHERE moment_id=? AND contact_id=? AND type='like'"
   )
+  const favQ = db.prepare(
+    "SELECT 1 FROM moment_interactions WHERE moment_id=? AND contact_id=? AND type='favorite'"
+  )
   const cmtQ = db.prepare(
     "SELECT * FROM moment_interactions WHERE moment_id=? AND type IN ('comment','reply') ORDER BY created_at ASC"
   )
@@ -506,6 +509,7 @@ export async function getMoments(contactId = null, viewer = 0, scope = 'contact'
   const contactNameQ = db.prepare('SELECT name FROM contacts WHERE id=?')
   return rows.map((m) => {
     const mine = likeQ.get(m.id, v)
+    const faved = favQ.get(m.id, v)
     const likeNames = likeRowsQ.all(m.id).map((r) =>
       r.contact_id ? contactNameQ.get(r.contact_id)?.name || 'TA' : '我'
     )
@@ -515,6 +519,7 @@ export async function getMoments(contactId = null, viewer = 0, scope = 'contact'
       likes: likeNames.length,
       likeNames,
       liked: !!mine,
+      favorited: !!faved,
       comments: cmtQ.all(m.id).map((c) => {
         let imgs = []
         try { imgs = c.images ? JSON.parse(c.images) : [] } catch (e) { imgs = [] }
@@ -573,6 +578,22 @@ export async function likeMoment(id, viewer = 0) {
   }
   const likes = db.prepare("SELECT COUNT(*) c FROM moment_interactions WHERE moment_id=? AND type='like'").get(mid).c
   return { likes, liked: !exists }
+}
+
+// 收藏/取消收藏朋友圈：复用 moment_interactions（type='favorite'），按 viewer 隔离。
+// 与点赞同构：再点一次即取消。收藏后朋友圈卡片发布者名字旁会显示星星标识。
+export async function favoriteMoment(id, viewer = 0) {
+  const mid = Number(id)
+  const v = viewer === undefined || viewer === null ? 0 : Number(viewer)
+  const exists = db
+    .prepare("SELECT id FROM moment_interactions WHERE moment_id=? AND contact_id=? AND type='favorite'")
+    .get(mid, v)
+  if (exists) {
+    db.prepare("DELETE FROM moment_interactions WHERE moment_id=? AND contact_id=? AND type='favorite'").run(mid, v)
+  } else {
+    db.prepare("INSERT INTO moment_interactions(moment_id, contact_id, type, created_at) VALUES(?,?,'favorite',?)").run(mid, v, Date.now())
+  }
+  return { favorited: !exists }
 }
 
 // 评论/回复：contact_id=viewer 表示是谁说的

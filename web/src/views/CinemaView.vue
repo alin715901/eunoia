@@ -7,7 +7,7 @@
       <div class="cv-summary">
         <span class="cv-sum-ic"><AppIcon name="film" :size="26" color="var(--accent)" /></span>
         <span class="cv-sum-main">
-          <span class="cv-sum-title">站点 {{ allSites.length }} 个 · 片单 {{ linkList.length }} 条 · 累计观影 {{ watchTotalText }}</span>
+          <span class="cv-sum-title">站点 {{ allSites.length }} 个 · 片单 {{ linkList.length }} 条 · 时长 {{ watchTotalText }}</span>
           <span class="cv-sum-sub">一起看过的，和想一起看的</span>
         </span>
       </div>
@@ -501,7 +501,7 @@ function fmtClock(sec) {
   return `${m}:${s}`
 }
 
-/* 累计观影时长：全局持久化（一起看的每秒都计入），影院页统计展示 */
+/* 观影时长：全局持久化（一起看的每秒都计入），影院页统计行以「时长」展示 */
 const watchTotal = ref(0)
 let watchPending = 0
 let flushTimer = null
@@ -531,7 +531,6 @@ const watchTotalText = computed(() => {
   if (h > 0) return `${h} 小时 ${m} 分`
   return `${m} 分钟`
 })
-
 function startWatchTimer() {
   stopWatchTimer()
   const startedAt = Date.now()

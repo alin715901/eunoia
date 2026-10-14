@@ -34,7 +34,11 @@
             @click="openAuthor(m)"
           />
           <div class="p-main">
-            <div class="p-name">{{ authorName(m) }}</div>
+            <div class="p-name">
+              {{ authorName(m) }}
+              <!-- 收藏标识：收藏过的朋友圈在发布者名字旁显示星星 -->
+              <AppIcon v-if="m.favorited" name="star" :size="13" color="#f0b429" class="p-fav-star" />
+            </div>
             <div class="p-text" v-if="m.text">{{ m.text }}</div>
             <div class="p-imgs" v-if="m.images && m.images.length">
               <img
@@ -60,6 +64,11 @@
               <button class="pm-item" @click="toggleLike(m)">
                 <AppIcon name="heart" :size="15" :color="m.liked ? '#e0687a' : 'var(--text)'" />
                 <span>{{ m.liked ? '取消赞' : '赞' }}</span>
+              </button>
+              <span class="pm-div"></span>
+              <button class="pm-item" @click="toggleFavorite(m)">
+                <AppIcon name="star" :size="15" :color="m.favorited ? '#f0b429' : 'var(--text)'" />
+                <span>{{ m.favorited ? '取消收藏' : '收藏' }}</span>
               </button>
               <span class="pm-div"></span>
               <button class="pm-item" @click="openComment(m)">
@@ -216,7 +225,7 @@ import { useContactsStore } from '@/stores/contacts'
 import { useNotificationsStore } from '@/stores/notifications'
 import { useSettingsStore } from '@/stores/settings'
 import { useDeskCacheStore } from '@/stores/deskCache'
-import { getMoments, likeMoment, commentMoment, deleteMoment, deleteMomentComment, uploadImage } from '@/api/content'
+import { getMoments, likeMoment, favoriteMoment, commentMoment, deleteMoment, deleteMomentComment, uploadImage } from '@/api/content'
 import { getCards } from '@/api/cards'
 import { compressImage } from '@/utils/image'
 import { confirmDialog } from '@/utils/dialog'
@@ -469,6 +478,18 @@ async function toggleLike(m) {
   }
 }
 
+/* 收藏/取消收藏朋友圈：与点赞同列，收藏后发布者名字旁显示星星 */
+async function toggleFavorite(m) {
+  try {
+    const r = await favoriteMoment(m.id, 0)
+    m.favorited = r.favorited
+    menuOn.value = null
+    await load()
+  } catch (err) {
+    toast.pushToast({ title: '操作失败', text: err.message })
+  }
+}
+
 /* 打开评论框：点了某条评论就是回复那个人，没点就是直接评论 */
 /* 名字显示统一：我一律用朋友圈设置里的名字（没填就是「我」） */
 function displayName(contactId, fallback) {
@@ -710,6 +731,8 @@ html[data-theme='dark'] .cover::before { background: rgba(0, 0, 0, 0.4); }
 .post .p-avatar { border-radius: 10px; border: 1px solid var(--border); cursor: pointer; }
 .p-main { flex: 1 1 auto; min-width: 0; }
 .p-name { font-size: 15px; font-weight: 700; color: var(--accent); margin-bottom: 4px; }
+/* 收藏标识：发布者名字旁的星星，与文字基线对齐 */
+.p-fav-star { display: inline-block; vertical-align: -1px; margin-left: 3px; }
 .p-text { font-family: var(--font-serif); font-size: 14px; line-height: 1.7; margin-bottom: 8px; }
 .p-imgs { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 10px; }
 .p-imgs img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 6px; }

@@ -6,6 +6,7 @@ export {
   deleteMoment,
   createMoment,
   likeMoment,
+  favoriteMoment,
   commentMoment,
   deleteMomentComment,
   getLettersHub,
