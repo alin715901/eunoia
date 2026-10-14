@@ -330,13 +330,22 @@ const myAvatar = ref('')
 const chatCollapsed = ref(false)
 
 const contactList = computed(() => contactsStore.list || [])
-const chatMsgs = computed(() => {
-  const list = chatStore.messages(chatTarget.value.id) || []
-  return list.filter((m) => !m.recalled || m.sender !== 'me')
-})
+
+/* 当前陪看关系（影院 store 派生）：聊天室门控 / 状态条 / 计时器都依赖它。
+ * 必须声明在 watch(chatMsgs) 之前 —— watch 创建时会立即求值 computed，
+ * 而 chatMsgs → chatReady → watching 是一条链，晚声明会撞 TDZ */
+const watching = computed(() => cinemaStore.watching)
 
 /* 只有建立了陪看关系（我邀的被接受 / 我接受了 TA 的邀请）才能聊 */
 const chatReady = computed(() => !!watching.value || !!cinemaStore.myAccepted)
+
+/* 聊天室消息：没有邀请人时为空（不显示任何历史对话），
+ * 邀请成功后才显示当前陪看对象的聊天记录 */
+const chatMsgs = computed(() => {
+  if (!chatReady.value) return []
+  const list = chatStore.messages(chatTarget.value.id) || []
+  return list.filter((m) => !m.recalled || m.sender !== 'me')
+})
 
 /* 去掉 HTML 标签取纯文本（字卡消息的 text 是富文本，聊天室里要显示真实内容） */
 function stripHtml(html) {
@@ -353,11 +362,13 @@ function stripHtml(html) {
     .trim()
 }
 
-/* 消息文本摘要：文字直接显示，字卡显示卡片正文，其他类型显示占位 */
+/* 消息文本摘要：文字直接显示，字卡显示卡片正文，通话/提问解析 JSON，其他类型显示占位 */
 function msgText(m) {
   const t = m.content_type
   if (m.recalled) return '对方撤回了一条消息'
   if (t === 'card') return stripHtml(m.text) || '[图片字卡]'
+  if (t === 'call') return callRecordText(m)
+  if (t === 'question') return questionText(m)
   if (t === 'image') return '[图片]'
   if (t === 'sticker') return '[表情包]'
   if (t === 'voice') return '[语音]'
@@ -365,6 +376,32 @@ function msgText(m) {
   if (t === 'listen_invite') return '[一起听歌邀请]'
   if (t === 'cinema_invite') return '[一起观影邀请]'
   return m.text || ''
+}
+
+/* 通话记录：text 存的是 JSON {duration, result}，解析成人类文案
+ * （与主聊天气泡 callText 保持一致，否则聊天室里会露出原始 JSON） */
+function callRecordText(m) {
+  let meta = {}
+  try { meta = JSON.parse(m.text || '{}') } catch (e) { /* 忽略 */ }
+  const r = meta.result
+  if (r === 'rejected') return '对方拒绝通话'
+  if (r === 'declined') return '已拒绝通话'
+  if (r === 'missed') return '未接听'
+  if (r === 'cancelled') return '通话已取消'
+  return '通话时长 ' + fmtDur(Number(meta.duration) || 0)
+}
+function fmtDur(sec) {
+  const mm = String(Math.floor((Number(sec) || 0) / 60)).padStart(2, '0')
+  const ss = String((Number(sec) || 0) % 60).padStart(2, '0')
+  return `${mm}:${ss}`
+}
+
+/* 提问记录：text 存的是 JSON {type, question, options}，显示问题正文 */
+function questionText(m) {
+  try {
+    const meta = JSON.parse(m.text || '{}')
+    return meta.question || '[提问]'
+  } catch (e) { return '[提问]' }
 }
 
 /* 聊天室发送者名：我 / 群成员名 / 对方名 */
@@ -455,7 +492,6 @@ watch(() => player.show, async (v) => {
 })
 
 /* ── 一起观影 ── */
-const watching = computed(() => cinemaStore.watching)
 const watchClock = ref('00:00')
 let watchTimer = null
 

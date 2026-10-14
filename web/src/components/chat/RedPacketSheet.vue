@@ -9,13 +9,16 @@
         </div>
 
         <!-- 余额：单聊展示「我的余额」与「对方余额」；群聊只展示「我的余额」。
-             「我的余额」可直接编辑自定义（虚线下划线只在编辑中出现）；「对方余额」只读 -->
+             「我的余额」可直接编辑自定义（点金额进入编辑）；「对方余额」只读。
+             两行的 ¥ 符号与数字同字号；金额过长时向左伸展贴近标签，仍超长则省略尾部 -->
         <div v-if="wallet" class="rp-wallet">
           <div class="rp-bal">
             <span class="rp-bal-label">我的余额</span>
-            <span class="rp-bal-edit" :class="{ 'is-edit': balEditing }">
+            <!-- 编辑中：输入框（失焦/回车保存） -->
+            <span v-if="balEditing" class="rp-bal-edit is-edit">
               <span class="rp-bal-yen">¥</span>
               <input
+                ref="balInput"
                 v-model="myBalanceDraft"
                 class="rp-bal-input"
                 type="number"
@@ -24,12 +27,12 @@
                 step="0.01"
                 placeholder="0.00"
                 aria-label="我的余额，可自定义"
-                @focus="balEditing = true"
-                @blur="balEditing = false"
-                @change="saveMyBalance"
+                @blur="onBalBlur"
                 @keyup.enter="saveMyBalance"
               />
             </span>
+            <!-- 未编辑：纯文本展示，超长省略（与「对方余额」同一套省略规则） -->
+            <span v-else class="rp-bal-val rp-bal-tap" title="点此修改" @click="startBalEdit">¥{{ myBalanceText }}</span>
           </div>
           <div v-if="!isGroup" class="rp-bal">
             <span class="rp-bal-label">对方余额</span>
@@ -102,7 +105,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { getWallet, setMyBalance } from '@/api/chat'
 import { useNotificationsStore } from '@/stores/notifications'
 
@@ -128,8 +131,22 @@ const count = ref('1')
 
 /* 「我的余额」编辑草稿：打开面板/钱包加载后用当前值填充 */
 const myBalanceDraft = ref('0.00')
-/* 虚线下划线只在编辑时出现：聚焦显示、失焦收起 */
+/* 编辑态：点金额进入编辑（输入框 + 虚线下划线），失焦退出 */
 const balEditing = ref(false)
+/* 未编辑时展示的格式化金额（两位小数，与「对方余额」同规则） */
+const myBalanceText = computed(() => (wallet.value?.my_balance ?? 0).toFixed(2))
+const balInput = ref(null)
+/* 点金额进入编辑：草稿取当前值并聚焦输入框 */
+function startBalEdit() {
+  myBalanceDraft.value = myBalanceText.value
+  balEditing.value = true
+  nextTick(() => balInput.value?.focus())
+}
+/* 失焦即保存并退出编辑（saveMyBalance 内部对未变化的值会早退，不会重复弹提示） */
+function onBalBlur() {
+  balEditing.value = false
+  saveMyBalance()
+}
 
 watch(
   () => props.show,
@@ -255,23 +272,35 @@ function confirm() {
   background: linear-gradient(165deg, #fdf0e7 0%, #fbdfd2 100%);
   border-radius: 14px;
 }
-.rp-bal { display: flex; align-items: baseline; justify-content: space-between; }
-.rp-bal-label { font-size: 13px; color: #c98d75; }
-.rp-bal-val { font-size: 18px; font-weight: 800; color: #c05e45; }
-/* 我的余额：可直接输入自定义；虚线下划线只在编辑中出现（聚焦/修改时） */
+.rp-bal { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+/* 标签不收缩；金额区占满剩余空间，超长时向左伸展靠近标签，仍超长则省略尾部 */
+.rp-bal-label { font-size: 13px; color: #c98d75; flex: none; }
+.rp-bal-val {
+  font-size: 18px;
+  font-weight: 800;
+  color: #c05e45;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+/* 我的余额：编辑态才显示输入框（带虚线下划线示意可改）；未编辑是纯文本，点一下进入编辑 */
 .rp-bal-edit {
   display: inline-flex;
   align-items: baseline;
   gap: 1px;
-  border-bottom: 1px solid transparent;
+  flex: 1;
+  min-width: 0;
+  border-bottom: 1px dashed rgba(192, 94, 69, 0.45);
   padding: 0 2px;
-  transition: border-color 0.15s ease;
 }
-.rp-bal-edit.is-edit { border-bottom-color: rgba(192, 94, 69, 0.45); }
-.rp-bal-edit.is-edit:focus-within { border-bottom-color: #c05e45; }
-.rp-bal-yen { font-size: 14px; font-weight: 800; color: #c05e45; }
+.rp-bal-edit:focus-within { border-bottom-style: solid; border-bottom-color: #c05e45; }
+.rp-bal-tap { cursor: pointer; }
+/* ¥ 符号与对方余额保持一致：18px/800，不再小一号 */
+.rp-bal-yen { font-size: 18px; font-weight: 800; color: #c05e45; flex: none; }
 .rp-bal-input {
-  width: 84px;
+  width: 100%;
+  min-width: 0;
   border: none;
   outline: none;
   background: transparent;
@@ -279,6 +308,7 @@ function confirm() {
   font-weight: 800;
   color: #c05e45;
   text-align: right;
+  text-overflow: ellipsis;
   font-family: inherit;
   -moz-appearance: textfield;
 }
