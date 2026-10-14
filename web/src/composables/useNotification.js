@@ -19,12 +19,23 @@ export async function requestNotificationPermission() {
   }
 }
 
-export function notify(title, options) {
-  if (!notificationSupported() || Notification.permission !== 'granted') return null
+export async function notify(title, options) {
+  if (!notificationSupported() || Notification.permission !== 'granted') return false
   try {
-    return new Notification(title, options || {})
+    // 安卓 Chrome / 大部分手机浏览器不支持 `new Notification()` 构造器，
+    // 必须用 Service Worker 的 showNotification()，否则即使授权也不会弹出。
+    if ('serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.ready
+      if (reg && typeof reg.showNotification === 'function') {
+        await reg.showNotification(title, options || {})
+        return true
+      }
+    }
+    // 桌面端兜底：直接构造通知
+    new Notification(title, options || {})
+    return true
   } catch (e) {
-    return null
+    return false
   }
 }
 
