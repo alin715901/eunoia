@@ -51,6 +51,8 @@ export const useCinemaStore = defineStore('cinema', {
               playKind: inv.play_kind
             }
           }
+          /* 已进入陪看：清掉待接受状态，避免结束观影后还显示「等待对方接受邀请」 */
+          this.pendingOut = null
         } else {
           this.pendingOut = null
         }
@@ -115,9 +117,16 @@ export const useCinemaStore = defineStore('cinema', {
     async end(inviteId) {
       await api.endCinema(inviteId)
       this.watching = null
+      /* 结束即回到未陪看状态：清掉对应的待接受 / 已接受标记，
+         避免结束后还显示「等待对方接受邀请」或聊天输入框仍处于解锁态 */
+      if (this.pendingOut && this.pendingOut.inviteId === inviteId) this.pendingOut = null
+      if (this.myAccepted && this.myAccepted.inviteId === inviteId) this.myAccepted = null
     },
     clearWatching(inviteId) {
-      if (!inviteId || (this.watching && this.watching.inviteId === inviteId)) this.watching = null
+      if (!inviteId || (this.watching && this.watching.inviteId === inviteId)) {
+        this.watching = null
+        if (this.myAccepted && this.myAccepted.inviteId === inviteId) this.myAccepted = null
+      }
     },
     clearPendingOut(inviteId) {
       if (!inviteId || (this.pendingOut && this.pendingOut.inviteId === inviteId)) this.pendingOut = null
