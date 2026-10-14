@@ -36,8 +36,8 @@
           <div class="p-main">
             <div class="p-name">
               {{ authorName(m) }}
-              <!-- 收藏标识：收藏过的朋友圈在发布者名字旁显示星星 -->
-              <AppIcon v-if="m.favorited" name="star" :size="13" color="#f0b429" class="p-fav-star" />
+              <!-- 收藏标识：收藏过的朋友圈在发布者名字旁显示实心星星 -->
+              <AppIcon v-if="m.favorited" name="star" :size="13" color="#f0b429" :filled="true" class="p-fav-star" />
             </div>
             <div class="p-text" v-if="m.text">{{ m.text }}</div>
             <div class="p-imgs" v-if="m.images && m.images.length">

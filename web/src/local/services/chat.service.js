@@ -825,12 +825,14 @@ function groupMemberIds(d, groupId) {
     .map((r) => r.id);
 }
 
-/* 拼手气份额：在剩余里随机取一份，给后面每份至少留 1 分；最后一人拿全部剩余 */
+/* 拼手气份额：在剩余里随机取一份，给后面每份至少留 1 分；最后一人拿全部剩余。
+   份数只有 1 份时，领取即拿剩余全额（无需随机拆分）。 */
 function randomGrabShare(amount, count, grabbedCount, claimedAmount) {
   const remainC = Math.round((amount - claimedAmount) * 100);
   const remainN = count - grabbedCount;
   if (remainN <= 0 || remainC <= 0) return 0;
-  if (remainN === 1) return remainC / 100;
+  // 份数仅 1 份：领到的就是全额（已领到只剩最后一份时同样拿剩余全额）
+  if (count <= 1 || remainN === 1) return remainC / 100;
   const maxC = remainC - (remainN - 1);
   const v = Math.floor(Math.random() * maxC) + 1;
   return v / 100;
