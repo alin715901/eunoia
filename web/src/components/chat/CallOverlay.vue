@@ -10,7 +10,6 @@
         class="call-mini"
         :style="{ left: miniPos.x + 'px', top: miniPos.y + 'px' }"
         @pointerdown="onMiniDown"
-        @click="onMiniClick"
       >
         <AppAvatar :name="call.name" :avatar="call.avatar" :size="32" :style="avatarStyle" />
         <div class="call-mini-info">
@@ -131,7 +130,9 @@ const avatarStyle = computed(() => ({
 
 /* 悬浮小窗拖动：
  * 用 left/top 定位（而非 right/bottom），拖动时按视口边界钳制；
- * 位移超过 4px 算拖动——拖动结束后不再触发点击 restore（否则一拖就弹回全屏） */
+ * 位移超过 4px 算拖动——拖动结束后不再恢复全屏（否则一拖就弹回全屏）。
+ * 关键：setPointerCapture 让指针全程锁定到小窗，避免被文本选择/其他元素吞掉；
+ * 同时处理 pointercancel（手势被系统中断）并清理监听，防止状态残留导致失灵。 */
 const miniEl = ref(null)
 const miniPos = ref({ x: 14, y: 90 })
 let dragging = false
@@ -157,14 +158,18 @@ watch(() => call.minimized, (v) => {
   if (v) nextTick(ensureMiniPos)
 })
 function onMiniDown(e) {
+  // 按下挂断按钮不触发拖动（让按钮的 click 正常挂断）
+  if (e.target.closest && e.target.closest('.call-mini-hangup')) return
   dragging = true
   moved = false
   startX = e.clientX
   startY = e.clientY
   baseX = miniPos.value.x
   baseY = miniPos.value.y
+  try { miniEl.value.setPointerCapture(e.pointerId) } catch (_) {}
   window.addEventListener('pointermove', onMiniMove)
   window.addEventListener('pointerup', onMiniUp)
+  window.addEventListener('pointercancel', onMiniUp)
 }
 function onMiniMove(e) {
   if (!dragging) return
@@ -179,17 +184,14 @@ function onMiniMove(e) {
   miniPos.value.y = Math.min(Math.max(0, baseY + dy), Math.max(0, window.innerHeight - h))
 }
 function onMiniUp() {
+  if (!dragging) return
   dragging = false
   window.removeEventListener('pointermove', onMiniMove)
   window.removeEventListener('pointerup', onMiniUp)
-}
-/* 点按（未拖动）→ 恢复全屏通话；拖动结束的那次点击忽略 */
-function onMiniClick() {
-  if (moved) {
-    moved = false
-    return
-  }
-  call.restore()
+  window.removeEventListener('pointercancel', onMiniUp)
+  // 未移动（视为点按）→ 恢复全屏通话；拖动过则忽略
+  if (!moved) call.restore()
+  moved = false
 }
 </script>
 
@@ -325,6 +327,8 @@ function onMiniClick() {
   animation: call-in 0.2s ease;
   cursor: grab;
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 .call-mini:active { cursor: grabbing; }
 .call-mini-info { display: flex; flex-direction: column; }
