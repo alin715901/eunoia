@@ -24,12 +24,12 @@
           <span class="cv-sec-title">站点 {{ allSites.length }} 个</span>
           <button class="cv-add" @click="openAddSite"><AppIcon name="plus" :size="18" /> 添加</button>
         </div>
-        <p class="cv-sec-tip">点站点直接进去看；部分站点禁止应用内嵌，会自动让你在浏览器打开。</p>
+        <p class="cv-sec-tip">点站点在浏览器里打开观看（视频网站大多禁止在应用内嵌播放）。</p>
         <button
           v-for="s in allSites"
           :key="s.id"
           class="cv-card"
-          @click="openUrl(s.url, s.name)"
+          @click="openUrl(s.url)"
         >
           <span class="cv-card-ic"><AppIcon name="film" :size="18" color="var(--accent)" /></span>
           <span class="cv-card-main">
@@ -50,12 +50,12 @@
           <span class="cv-sec-title">片单 {{ linkList.length }} 条</span>
           <button class="cv-add" @click="openAddLink"><AppIcon name="plus" :size="18" /> 导入</button>
         </div>
-        <p class="cv-sec-tip">粘贴 B 站 / 爱奇艺 / 腾讯视频等播放页链接，给影片起个名，存起来随时看。</p>
+        <p class="cv-sec-tip">粘贴 B 站 / 爱奇艺 / 腾讯视频等播放页链接，给影片起个名，点卡片在浏览器里打开观看。</p>
         <button
           v-for="l in linkList"
           :key="l.id"
           class="cv-card"
-          @click="openUrl(l.body, l.title)"
+          @click="openUrl(l.body)"
         >
           <span class="cv-card-ic"><AppIcon name="link" :size="18" color="var(--accent)" /></span>
           <span class="cv-card-main">
@@ -107,17 +107,6 @@
         </div>
       </div>
     </div>
-
-    <!-- 应用内观看器 -->
-    <div v-if="viewer.show" class="cv-player">
-      <div class="cv-bar">
-        <button class="cv-bar-btn" @click="closeViewer" aria-label="关闭"><AppIcon name="close" :size="20" /></button>
-        <span class="cv-bar-title">{{ viewer.title }}</span>
-        <button class="cv-bar-open" @click="openExternal">浏览器打开</button>
-      </div>
-      <iframe class="cv-frame" :src="viewer.url" referrerpolicy="no-referrer" sandbox="allow-scripts allow-same-origin allow-forms allow-popups"></iframe>
-      <p class="cv-player-tip">若页面空白（部分站点禁止内嵌），点右上角「浏览器打开」。</p>
-    </div>
   </div>
 </template>
 
@@ -151,18 +140,9 @@ const linkList = computed(() =>
   (Array.isArray(links.items.value) ? links.items.value : []).filter((x) => x && x.body)
 )
 
-const viewer = reactive({ show: false, url: '', title: '' })
-function openUrl(url, title) {
-  viewer.url = url
-  viewer.title = title || url
-  viewer.show = true
-}
-function openExternal() {
-  if (viewer.url) window.open(viewer.url, '_blank', 'noopener')
-}
-function closeViewer() {
-  viewer.show = false
-  viewer.url = ''
+/* 点击站点 / 影片卡片：跳到系统浏览器打开（视频网站大多禁止在应用内嵌播放） */
+function openUrl(url) {
+  if (url) window.open(url, '_blank', 'noopener')
 }
 
 function hostOf(u) {
@@ -272,12 +252,4 @@ onMounted(async () => {
 .cv-btn { flex: 1; padding: 12px 0; border-radius: 12px; font-size: 15px; border: none; font-weight: 600; }
 .cv-btn.ghost { background: var(--bg-soft); color: var(--text); }
 .cv-btn.primary { background: var(--accent); color: #fff; }
-
-.cv-player { position: fixed; inset: 0; background: #000; display: flex; flex-direction: column; z-index: 60; }
-.cv-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: rgba(0, 0, 0, 0.85); color: #fff; }
-.cv-bar-btn { border: none; background: transparent; color: #fff; padding: 4px; display: inline-flex; }
-.cv-bar-title { flex: 1 1 auto; min-width: 0; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cv-bar-open { flex: 0 0 auto; border: none; background: rgba(255, 255, 255, 0.18); color: #fff; font-size: 13px; padding: 6px 12px; border-radius: 999px; }
-.cv-frame { flex: 1 1 auto; width: 100%; border: none; background: #fff; }
-.cv-player-tip { flex: 0 0 auto; margin: 0; font-size: 11px; color: rgba(255, 255, 255, 0.7); text-align: center; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); background: rgba(0, 0, 0, 0.85); }
 </style>
