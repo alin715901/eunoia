@@ -36,6 +36,8 @@ function effectiveMyAvatar(d, contactId) {
 
 function metaOf(inv, status) {
   const ci = effectiveContactInfo(db, inv.contact_id);
+  const isGroup = contactKind(inv.contact_id) === 'group';
+  const members = isGroup ? groupMembers(inv.contact_id) : [];
   return JSON.stringify({
     inviteId: inv.id,
     filmTitle: inv.film_title,
@@ -44,9 +46,57 @@ function metaOf(inv, status) {
     playKind: inv.play_kind,
     from: inv.from_side,
     status: status || inv.status,
+    isGroup,
+    groupMembers: members,
     contactName: ci.name,
     contactAvatar: ci.avatar,
     myAvatar: effectiveMyAvatar(db, inv.contact_id)
+  });
+}
+
+/* 联系人类型：person / group */
+function contactKind(contactId) {
+  const r = db.prepare('SELECT kind FROM contacts WHERE id = ?').get(contactId);
+  return (r && r.kind) || 'person';
+}
+
+/* 群成员列表（id/name/avatar） */
+function groupMembers(groupId) {
+  return db
+    .prepare(
+      `SELECT c.id, c.name, c.avatar FROM contact_members m
+       JOIN contacts c ON c.id = m.member_id WHERE m.group_id = ?`
+    )
+    .all(groupId)
+    .map((m) => ({ id: m.id, name: m.name || '成员', avatar: m.avatar || '' }));
+}
+
+/* 群观影：TA（群）接受后，模拟成员们陆续进房发言 */
+function membersJoinChat(contactId, invId) {
+  const members = groupMembers(contactId);
+  if (!members.length) return;
+  const lines = ['来啦来啦', '这部我早就想看了', '等着开场～', '占个沙发位置'];
+  const picked = members.slice(0, Math.min(members.length, 3));
+  picked.forEach((m, i) => {
+    setTimeout(() => {
+      const inv = db.prepare('SELECT * FROM cinema_together WHERE id = ?').get(invId);
+      if (!inv || inv.status !== 'accepted') return;
+      const seq = getNextSeq(db, contactId);
+      const info = db
+        .prepare(
+          `INSERT INTO chat_messages(contact_id, sender, author_member_id, content_type, text, read_receipt, read, seq, created_at)
+           VALUES(?, 'contact', ?, 'text', ?, 'read', 1, ?, ?)`
+        )
+        .run(contactId, m.id, lines[i % lines.length], seq, Math.floor(Date.now() / 1000));
+      const row = db.prepare('SELECT * FROM chat_messages WHERE id = ?').get(Number(info.lastInsertRowid));
+      const ci = effectiveContactInfo(db, contactId);
+      notification.broadcast('new_messages', {
+        contactId,
+        messages: [row],
+        avatar: m.avatar || ci.avatar,
+        name: m.name || '成员'
+      });
+    }, 1500 + i * 2600);
   });
 }
 
@@ -65,10 +115,13 @@ function updateStatus(d, inv, status) {
 
 function broadcastInvite(type, inv) {
   const ci = effectiveContactInfo(db, inv.contact_id);
+  const isGroup = contactKind(inv.contact_id) === 'group';
   const payload = {
     type,
     invite: {
       ...inv,
+      is_group: isGroup,
+      group_members: isGroup ? groupMembers(inv.contact_id) : [],
       contact_name: ci.name,
       contact_avatar: ci.avatar,
       my_avatar: effectiveMyAvatar(db, inv.contact_id)
@@ -115,6 +168,9 @@ function respondAsContact(inviteId) {
   if (!inv || inv.status !== 'pending') return;
   const accept = Math.random() < 0.85;
   updateStatus(db, inv, accept ? 'accepted' : 'rejected');
+  if (accept && contactKind(inv.contact_id) === 'group') {
+    membersJoinChat(inv.contact_id, inv.id);
+  }
   broadcastInvite(accept ? 'accepted' : 'rejected', { ...inv, status: accept ? 'accepted' : 'rejected' });
 }
 
@@ -129,8 +185,12 @@ function contactInvite(contactId, preset = {}) {
   // TA 邀我时带的片：优先 preset（我正在看的那部），否则从片单里随机挑一条
   let film = preset.film || {};
   if (!film.url) {
-    const row = db.prepare("SELECT title, body FROM app_items WHERE module = 'cinema_links' AND body != '' ORDER BY RANDOM() LIMIT 1").get();
-    if (row) film = { title: row.title, url: row.body };
+    const rows = db.prepare("SELECT title, body FROM app_items WHERE module = 'cinema_links' AND body != ''").all();
+    /* 优先挑应用内能播的（B站/腾讯/mp4 直链），保证接受后能直接进播放器 */
+    const playable = rows.filter((r) => /BV[0-9A-Za-z]{10}|av\d+|v\.qq\.com|\.(mp4|webm|ogg|mov|m4v|m3u8)(\?.*)?$/i.test(r.body || ''));
+    const pool = playable.length ? playable : rows;
+    const pick = pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
+    if (pick) film = { title: pick.title, url: pick.body };
   }
   if (!film.url) return null;
   const seq = getNextSeq(db, contactId);
@@ -168,16 +228,24 @@ function respond(inviteId, accept) {
   if (!inv || inv.from_side !== 'contact' || inv.status !== 'pending') return { error: '邀请已处理或不存在' };
   updateStatus(db, inv, accept ? 'accepted' : 'rejected');
   broadcastInvite(accept ? 'accepted' : 'rejected', { ...inv, status: accept ? 'accepted' : 'rejected' });
+  const isGroup = contactKind(inv.contact_id) === 'group';
+  if (accept && isGroup) membersJoinChat(inv.contact_id, inv.id);
+  const ci = effectiveContactInfo(db, inv.contact_id);
   return {
     ok: true,
     status: accept ? 'accepted' : 'rejected',
+    isGroup,
+    groupMembers: isGroup ? groupMembers(inv.contact_id) : [],
     film: {
       title: inv.film_title,
       url: inv.film_url,
       playSrc: inv.play_src,
       playKind: inv.play_kind
     },
-    contactId: inv.contact_id
+    contactId: inv.contact_id,
+    contactName: ci.name,
+    contactAvatar: ci.avatar,
+    myAvatar: effectiveMyAvatar(db, inv.contact_id)
   };
 }
 
@@ -212,6 +280,37 @@ function getActive(contactId) {
   return inv || null;
 }
 
+/* ═══ 每分钟：TA 小概率主动邀我观影 + 过期清理 + 超时自动结束 ═══ */
+function contactInviteTick() {
+  try {
+    const rows = db.prepare("SELECT id FROM contacts WHERE kind != 'group'").all();
+    const now = Math.floor(Date.now() / 1000);
+    for (const c of rows) {
+      const st = db.prepare('SELECT blocked FROM contact_settings WHERE contact_id = ?').get(c.id);
+      if (st && st.blocked) continue;
+      if (Math.random() < 0.004) contactInvite(c.id);
+    }
+    /* 过期清理：TA 邀我 10 分钟没处理 / 我邀 TA 2 分钟没响应（定时器丢失时兜底） */
+    const stale = db.prepare("SELECT * FROM cinema_together WHERE status = 'pending'").all();
+    for (const inv of stale) {
+      const age = now - Number(inv.created_at || 0);
+      if (inv.from_side === 'contact' && age > 600) updateStatus(db, inv, 'expired');
+      else if (inv.from_side === 'me' && age > 120) updateStatus(db, inv, 'expired');
+    }
+    /* 进行中的一起观影超过 2 小时自动结束（避免遗留会话一直显示计时条） */
+    const active = db.prepare("SELECT * FROM cinema_together WHERE status = 'accepted'").all();
+    for (const inv of active) {
+      const age = now - Number(inv.created_at || 0);
+      if (age > 7200) {
+        updateStatus(db, inv, 'ended');
+        broadcastInvite('ended', { ...inv, status: 'ended' });
+      }
+    }
+  } catch (e) {
+    console.error('[cinemaTick]', e.message);
+  }
+}
+
 /* 邀请列表（最近 limit 条） */
 function listInvites(limit = 50) {
   return db.prepare('SELECT * FROM cinema_together ORDER BY id DESC LIMIT ?').all(limit);
@@ -224,5 +323,6 @@ export {
   end,
   getActive,
   listInvites,
-  contactInvite
+  contactInvite,
+  contactInviteTick
 }

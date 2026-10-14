@@ -11,6 +11,8 @@ export const useCinemaStore = defineStore('cinema', {
     active: null,
     watching: null,
     pendingOut: null,
+    /* 我接受了 TA 的观影邀请（聊天卡片点「一起看」后）：同样解锁聊天 */
+    myAccepted: null,
     /* TA 邀我待处理（SSE incoming）：{inviteId, contactId, film...}，聊天卡片也会渲染，
        这里只做"有新邀请"的提示用途 */
     incoming: null
@@ -40,6 +42,8 @@ export const useCinemaStore = defineStore('cinema', {
             contactName: inv.contact_name || '',
             contactAvatar: inv.contact_avatar || '',
             myAvatar: inv.my_avatar || '',
+            isGroup: !!inv.is_group,
+            groupMembers: inv.group_members || [],
             film: {
               title: inv.film_title,
               url: inv.film_url,
@@ -75,6 +79,24 @@ export const useCinemaStore = defineStore('cinema', {
           inviteId: Number(inviteId),
           contactId: r.contactId,
           film: r.film
+        }
+        /* 我接受后同样进入"陪看中"：计时条、双人头像、结束按钮统一 */
+        this.watching = {
+          inviteId: Number(inviteId),
+          contactId: r.contactId,
+          contactName: r.contactName || '',
+          contactAvatar: r.contactAvatar || '',
+          myAvatar: r.myAvatar || '',
+          isGroup: !!r.isGroup,
+          groupMembers: r.groupMembers || [],
+          film: r.film
+        }
+        /* 记录"我已接受"：播放器据此解锁聊天（含群） */
+        this.myAccepted = {
+          inviteId: Number(inviteId),
+          contactId: r.contactId,
+          isGroup: !!r.isGroup,
+          groupMembers: r.groupMembers || []
         }
         this.incoming = null
       }

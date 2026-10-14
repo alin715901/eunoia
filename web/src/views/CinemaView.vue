@@ -109,7 +109,7 @@
       </div>
     </div>
 
-    <!-- 应用内播放器（iframe / video + 陪看聊天 + 邀请） -->
+    <!-- 应用内播放器：16:9 视频在上，计时条居中，聊天室固定高度，消息走弹幕 -->
     <div v-if="player.show" ref="playerWrap" class="cv-player">
       <div class="cv-bar">
         <button class="cv-bar-btn" @click="closePlayer" aria-label="关闭"><AppIcon name="close" :size="20" /></button>
@@ -122,16 +122,7 @@
         <button class="cv-bar-open" @click="openUrl(player.raw)">浏览器打开</button>
       </div>
 
-      <!-- 一起观影状态条：TA 接受邀请后显示 -->
-      <div v-if="watching" class="cv-with">
-        <span class="cv-with-ava">
-          <AppAvatar :name="watching.contactName || '对方'" :avatar="watching.contactAvatar" :size="22" />
-          <AppAvatar :name="'我'" :avatar="watching.myAvatar" :size="22" class="cv-with-me" />
-        </span>
-        <span class="cv-with-txt">{{ watching.contactName || 'TA' }} 正在陪你观影 · {{ watchClock }}</span>
-        <button class="cv-with-end" @click="endWatching">结束</button>
-      </div>
-
+      <!-- 视频区：竖屏固定 16:9；全屏时铺满 -->
       <div class="cv-stage">
         <iframe
           v-if="player.type === 'iframe'"
@@ -151,32 +142,62 @@
           webkit-playsinline
           :src="player.src"
         ></video>
+
+        <!-- 直播间式弹幕：消息从右往左飘过视频区 -->
+        <div class="cv-danmaku">
+          <div v-for="d in danmakus" :key="d.key" class="cv-dm" :style="{ top: d.top + '%' }">
+            <span class="cv-dm-name">{{ d.name }}</span>
+            <span class="cv-dm-text">{{ d.text }}</span>
+          </div>
+        </div>
+
+        <!-- 未建立陪看关系时的提示 -->
+        <div v-if="!chatReady" class="cv-lock">邀请一起看后即可聊天</div>
       </div>
 
-      <!-- 陪看聊天：和选中的联系人一边看一边聊 -->
-      <div class="cv-chat" :class="{ fold: !chatOpen }">
+      <!-- 正在观看计时条：视频下方、聊天室顶部 -->
+      <div v-if="watching" class="cv-with">
+        <span class="cv-with-ava">
+          <template v-if="watching.isGroup">
+            <AppAvatar
+              v-for="m in (watching.groupMembers || []).slice(0, 3)"
+              :key="m.id"
+              :name="m.name"
+              :avatar="m.avatar"
+              :size="22"
+              class="cv-with-me"
+            />
+          </template>
+          <template v-else>
+            <AppAvatar :name="watching.contactName || '对方'" :avatar="watching.contactAvatar" :size="22" />
+            <AppAvatar :name="'我'" :avatar="watching.myAvatar" :size="22" class="cv-with-me" />
+          </template>
+        </span>
+        <span class="cv-with-txt">
+          {{ watching.isGroup ? `${watching.contactName || '群'}的成员` : (watching.contactName || 'TA') }} 正在陪你观影 · {{ watchClock }}
+        </span>
+        <button class="cv-with-end" @click="endWatching">结束</button>
+      </div>
+
+      <!-- 聊天室：固定高度，消息以弹幕呈现，这里只放对象切换 + 输入 -->
+      <div class="cv-chat">
         <div class="cv-chat-hd">
           <button class="cv-chat-who" @click="pickerShow = true">
             <AppAvatar :name="chatTarget.name" :avatar="chatTarget.avatar" :size="22" />
-            <span>和 {{ chatTarget.name }} 聊</span>
-            <AppIcon name="next" :size="12" color="var(--text-soft)" />
+            <span>{{ chatReady ? `和 ${chatTarget.name} 聊` : `邀请 ${chatTarget.name} 一起看` }}</span>
+            <AppIcon name="chevron-down" :size="12" color="var(--text-soft)" />
           </button>
-          <button class="cv-chat-fold" @click="chatOpen = !chatOpen">{{ chatOpen ? '收起' : '展开' }}</button>
+          <span v-if="chatReady && watching" class="cv-chat-live">弹幕已开启</span>
         </div>
-        <div v-if="chatOpen" class="cv-chat-msgs" ref="chatListEl">
-          <div v-if="!chatMsgs.length" class="cv-chat-empty">边看边聊，说点什么吧～</div>
-          <div
-            v-for="m in chatMsgs"
-            :key="m.id"
-            class="cv-msg"
-            :class="m.sender === 'me' ? 'me' : 'ta'"
-          >
-            <span class="cv-msg-bubble">{{ m.recalled ? '对方撤回了一条消息' : msgText(m) }}</span>
-          </div>
-        </div>
-        <div v-if="chatOpen" class="cv-chat-input">
-          <input v-model="chatDraft" placeholder="说点什么…" maxlength="500" @keyup.enter="sendChat" />
-          <button @click="sendChat" aria-label="发送"><AppIcon name="send" :size="16" /></button>
+        <div class="cv-chat-input">
+          <input
+            v-model="chatDraft"
+            :placeholder="chatReady ? '发条弹幕…' : '邀请一起看后即可聊天'"
+            :disabled="!chatReady"
+            maxlength="100"
+            @keyup.enter="sendChat"
+          />
+          <button @click="sendChat" aria-label="发送" :disabled="!chatReady"><AppIcon name="send" :size="16" /></button>
         </div>
       </div>
       <p class="cv-player-tip">播放卡住或黑屏？点右上角「浏览器打开」。</p>
@@ -194,7 +215,7 @@
               @click="pickChatTarget(c)"
             >
               <AppAvatar :name="c.name" :avatar="c.avatar" :size="30" />
-              <span class="cv-pick-name">{{ c.name }}</span>
+              <span class="cv-pick-name">{{ c.name }}{{ c.kind === 'group' ? '（群）' : '' }}</span>
               <AppIcon v-if="chatTarget.id === c.id" name="check" :size="16" color="var(--accent)" />
             </button>
           </div>
@@ -205,7 +226,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
+import { ref, reactive, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import AppAvatar from '@/components/common/AppAvatar.vue'
@@ -216,6 +237,7 @@ import { useContactsStore } from '@/stores/contacts'
 import { useHomeStore } from '@/stores/home'
 import { useCinemaStore } from '@/stores/cinema'
 import { sendCinemaInvite } from '@/api/cinema'
+import { getContactMembers } from '@/api/contacts'
 import { confirmDialog } from '@/utils/dialog'
 
 const toast = useNotificationsStore()
@@ -264,6 +286,13 @@ function resolveVideo(url) {
 
 const player = reactive({ show: false, type: '', src: '', raw: '', title: '' })
 const playerWrap = ref(null)
+/* 打开播放器时记住当前最新消息 id：历史消息不上弹幕，只推之后的新消息 */
+function markDanmakuBaseline() {
+  const list = chatStore.messages(chatTarget.value.id) || []
+  let max = 0
+  for (const m of list) { const id = Number(m.id) || 0; if (id > max) max = id }
+  dmSeenId = max
+}
 function playLink(l) {
   const r = resolveVideo(l.body)
   if (r.type === 'external') {
@@ -275,31 +304,35 @@ function playLink(l) {
   player.raw = l.body
   player.title = l.title || ''
   player.show = true
+  markDanmakuBaseline()
 }
 function closePlayer() {
   player.show = false
   player.src = ''
   player.raw = ''
-  chatOpen.value = true
+  danmakus.value = []
 }
 
-/* ── 陪看聊天 ── */
+/* ── 陪看聊天（直播间式弹幕） ── */
 const chatStore = useChatStore()
 const contactsStore = useContactsStore()
 const homeStore = useHomeStore()
 const cinemaStore = useCinemaStore()
 
-const chatOpen = ref(true)
 const chatDraft = ref('')
-const chatListEl = ref(null)
 const pickerShow = ref(false)
 const chatTarget = ref({ id: 0, name: '对方', avatar: '' })
+/* 群成员的 id → 名字（弹幕前缀用） */
+const memberMap = ref({})
 
 const contactList = computed(() => contactsStore.list || [])
 const chatMsgs = computed(() => {
   const list = chatStore.messages(chatTarget.value.id) || []
   return list.filter((m) => !m.recalled || m.sender !== 'me')
 })
+
+/* 只有建立了陪看关系（我邀的被接受 / 我接受了 TA 的邀请）才能聊 */
+const chatReady = computed(() => !!watching.value || !!cinemaStore.myAccepted)
 
 /* 消息文本摘要：文字直接显示，其他类型显示占位 */
 function msgText(m) {
@@ -315,29 +348,76 @@ function msgText(m) {
   return m.text || ''
 }
 
-function pickChatTarget(c) {
+/* 弹幕发送者名：我 / 群成员名 / 对方名 */
+function senderName(m) {
+  if (m.sender === 'me') return '我'
+  if (m.author_member_id && memberMap.value[m.author_member_id]) return memberMap.value[m.author_member_id]
+  return chatTarget.value.name || 'TA'
+}
+
+async function pickChatTarget(c) {
   chatTarget.value = { id: c.id, name: c.name || '对方', avatar: c.avatar || '' }
   pickerShow.value = false
-  chatStore.load(c.id)
+  /* 群聊：加载成员名映射，弹幕前缀显示发言人 */
+  memberMap.value = {}
+  if (c.kind === 'group') {
+    try {
+      const members = await getContactMembers(c.id)
+      const map = {}
+      for (const m of members || []) map[m.id] = m.name || '成员'
+      memberMap.value = map
+    } catch (e) { /* 忽略 */ }
+  }
+  try { await chatStore.load(c.id) } catch (e) { /* 忽略 */ }
+  /* 切换对象后重新记基线：历史消息不上弹幕 */
+  markDanmakuBaseline()
 }
 
 async function sendChat() {
   const text = chatDraft.value.trim()
   if (!text || !chatTarget.value.id) return
+  if (!chatReady.value) {
+    toast.pushToast({ title: '先邀请一起看，才能开始聊' })
+    return
+  }
   chatDraft.value = ''
   try {
     await chatStore.send(chatTarget.value.id, text)
-    scrollChatBottom()
   } catch (e) { /* 忽略 */ }
 }
 
-function scrollChatBottom() {
-  nextTick(() => {
-    const el = chatListEl.value
-    if (el) el.scrollTop = el.scrollHeight
-  })
+/* ── 弹幕轨道：新消息变成从右往左飘过的弹幕，4 条轨道轮播 ── */
+const danmakus = ref([])
+let dmKey = 0
+let dmTrack = 0
+const DM_TRACKS = [7, 23, 39, 55]
+function pushDanmaku(m) {
+  /* 邀请卡是状态消息（顶栏/计时条已体现），不上弹幕，保持弹幕流干净 */
+  const t = m.content_type
+  if (t === 'cinema_invite' || t === 'listen_invite' || t === 'companion_invite') return
+  const item = {
+    key: ++dmKey,
+    name: senderName(m),
+    text: msgText(m),
+    top: DM_TRACKS[dmTrack++ % DM_TRACKS.length]
+  }
+  danmakus.value.push(item)
+  setTimeout(() => {
+    const i = danmakus.value.findIndex((d) => d.key === item.key)
+    if (i !== -1) danmakus.value.splice(i, 1)
+  }, 6800)
 }
-watch(chatMsgs, scrollChatBottom)
+/* 只把新增的消息上弹幕（打开播放器时的历史消息不上） */
+let dmSeenId = 0
+watch(chatMsgs, (list) => {
+  for (const m of list) {
+    const id = Number(m.id) || 0
+    if (id > dmSeenId) {
+      dmSeenId = id
+      if (!m.recalled) pushDanmaku(m)
+    }
+  }
+})
 
 /* ── 一起观影 ── */
 const watching = computed(() => cinemaStore.watching)
@@ -394,8 +474,9 @@ async function endWatching() {
   toast.pushToast({ title: '已结束一起观影' })
 }
 
-/* 我在聊天卡片点了「一起看」→ store.active 带上影片，自动打开播放器 */
-watch(() => cinemaStore.active, (a) => {
+/* 我在聊天卡片点了「一起看」→ store.active 带上影片，自动打开播放器。
+ * immediate：accept 时先写 active 再跳路由，CinemaView 挂载时值已存在，必须立即处理一次 */
+watch(() => cinemaStore.active, async (a) => {
   if (!a || !a.film || !a.film.url) return
   cinemaStore.consumeActive()
   const c = contactsStore.getById(a.contactId)
@@ -407,7 +488,20 @@ watch(() => cinemaStore.active, (a) => {
   player.raw = a.film.url
   player.title = a.film.title || ''
   player.show = true
-})
+  /* 先加载消息再记基线：历史消息不上弹幕，只推之后的新消息 */
+  try { await chatStore.load(a.contactId) } catch (e) { /* 忽略 */ }
+  markDanmakuBaseline()
+  /* 群邀请：加载成员名映射，弹幕前缀显示发言人 */
+  memberMap.value = {}
+  if (a.isGroup) {
+    try {
+      const members = await getContactMembers(a.contactId)
+      const map = {}
+      for (const m of members || []) map[m.id] = m.name || '成员'
+      memberMap.value = map
+    } catch (e) { /* 忽略 */ }
+  }
+}, { immediate: true })
 
 /* 全屏放大：对整个播放器容器请求全屏（iframe 随之铺满，等效「放大回原来的」） */
 function toggleFullscreen() {
@@ -484,7 +578,9 @@ async function removeLink(it) {
 
 onMounted(async () => {
   await Promise.all([sites.load(), links.load()])
-  /* 陪看聊天对象：默认取首页当前选中的联系人，没有则取第一个 */
+  /* 陪看聊天对象：默认取首页当前选中的联系人，没有则取第一个。
+   * 若 immediate 的 active 监听已设定对象（接受邀请自动进播放器），不覆盖 */
+  if (chatTarget.value.id) return
   try {
     await contactsStore.load()
     const id = homeStore.selectedId
@@ -553,31 +649,49 @@ onBeforeUnmount(stopWatchTimer)
 .cv-bar-chip { flex: 0 0 auto; border: none; background: rgba(255, 255, 255, 0.16); color: #fff; font-size: 12px; padding: 5px 10px; border-radius: 999px; }
 .cv-bar-chip.live { background: var(--accent); }
 
-/* 一起观影状态条 */
+/* 一起观影状态条：计时条，固定在视频下方、聊天室顶部 */
 .cv-with { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 8px 12px; background: rgba(255, 255, 255, 0.08); color: #fff; font-size: 12px; }
 .cv-with-ava { position: relative; display: inline-flex; }
 .cv-with-ava .cv-with-me { margin-left: -8px; }
 .cv-with-txt { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .cv-with-end { flex: 0 0 auto; border: none; background: rgba(255, 255, 255, 0.16); color: #fff; font-size: 12px; padding: 4px 10px; border-radius: 999px; }
 
-.cv-stage { flex: 1 1 auto; min-height: 0; display: flex; }
-.cv-frame { flex: 1 1 auto; width: 100%; border: none; background: #000; }
+/* 视频区：竖屏固定 16:9 置顶；横屏/全屏撑满剩余空间（iframe 内部自行黑边适配） */
+.cv-stage { position: relative; flex: 0 1 auto; width: 100%; aspect-ratio: 16 / 9; max-height: 100%; min-height: 0; background: #000; overflow: hidden; }
+.cv-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: none; background: #000; }
 
-/* 陪看聊天面板 */
-.cv-chat { flex: 0 0 auto; display: flex; flex-direction: column; background: #141418; border-top: 1px solid rgba(255, 255, 255, 0.1); max-height: 46%; }
+/* 全屏：视频铺满整个屏幕 */
+.cv-player:fullscreen .cv-stage { flex: 1 1 auto; aspect-ratio: auto; }
+.cv-player:fullscreen .cv-player-tip { display: none; }
+
+/* 直播间式弹幕：消息从右往左飘过视频区 */
+.cv-danmaku { position: absolute; inset: 0; z-index: 2; pointer-events: none; overflow: hidden; }
+.cv-dm { position: absolute; left: 100%; display: inline-flex; align-items: center; gap: 6px; max-width: 78%; padding: 3px 10px; border-radius: 999px; background: rgba(0, 0, 0, 0.32); white-space: nowrap; animation: cv-dm-fly 6.8s linear forwards; }
+.cv-dm-name { flex: 0 0 auto; font-size: 11px; font-weight: 600; color: #ffd76e; }
+.cv-dm-text { font-size: 13px; color: #fff; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.85); overflow: hidden; text-overflow: ellipsis; }
+@keyframes cv-dm-fly { from { transform: translateX(0); } to { transform: translateX(calc(-100vw - 100%)); } }
+
+/* 未建立陪看关系：视频区中央提示（不挡视频点击） */
+.cv-lock { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); z-index: 3; padding: 8px 16px; border-radius: 999px; background: rgba(0, 0, 0, 0.55); font-size: 13px; color: rgba(255, 255, 255, 0.92); pointer-events: none; }
+
+/* 陪看聊天室：固定高度（对象切换 + 弹幕输入），消息全部走视频区弹幕 */
+.cv-chat { flex: 0 0 auto; display: flex; flex-direction: column; background: #141418; border-top: 1px solid rgba(255, 255, 255, 0.1); }
 .cv-chat-hd { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; }
-.cv-chat-who { display: inline-flex; align-items: center; gap: 6px; border: none; background: transparent; color: #fff; font-size: 13px; padding: 0; }
-.cv-chat-fold { border: none; background: transparent; color: rgba(255, 255, 255, 0.6); font-size: 12px; padding: 2px 4px; }
-.cv-chat-msgs { flex: 1 1 auto; min-height: 90px; overflow-y: auto; padding: 4px 12px; display: flex; flex-direction: column; gap: 6px; }
-.cv-chat-empty { font-size: 12px; color: rgba(255, 255, 255, 0.45); text-align: center; padding: 14px 0; }
-.cv-msg { display: flex; }
-.cv-msg.me { justify-content: flex-end; }
-.cv-msg-bubble { max-width: 76%; font-size: 13px; line-height: 1.5; padding: 7px 11px; border-radius: 14px; background: rgba(255, 255, 255, 0.12); color: #fff; word-break: break-word; }
-.cv-msg.me .cv-msg-bubble { background: var(--accent); }
+.cv-chat-who { display: inline-flex; align-items: center; gap: 6px; border: none; background: transparent; color: #fff; font-size: 13px; padding: 0; min-width: 0; }
+.cv-chat-who span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-chat-live { flex: 0 0 auto; font-size: 11px; color: var(--accent); font-weight: 600; }
 .cv-chat-input { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); }
 .cv-chat-input input { flex: 1 1 auto; min-width: 0; border: none; background: rgba(255, 255, 255, 0.1); color: #fff; font-size: 13px; padding: 9px 12px; border-radius: 999px; }
+.cv-chat-input input:disabled { opacity: 0.5; }
 .cv-chat-input input::placeholder { color: rgba(255, 255, 255, 0.4); }
 .cv-chat-input button { flex: 0 0 auto; border: none; background: var(--accent); color: #fff; width: 34px; height: 34px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; }
+.cv-chat-input button:disabled { opacity: 0.5; }
+
+/* 横屏：视频区撑满剩余高度，隐藏底部提示，给视频让位 */
+@media (orientation: landscape) {
+  .cv-stage { flex: 1 1 auto; aspect-ratio: auto; }
+  .cv-player-tip { display: none; }
+}
 
 /* 联系人选择 */
 .cv-pick-list { display: flex; flex-direction: column; gap: 4px; max-height: 300px; overflow-y: auto; }
