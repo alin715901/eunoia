@@ -38,7 +38,7 @@
           <button class="seg-i" :class="{ on: commentSpeed === 'normal' }" @click="setSpeed('normal')">适中</button>
           <button class="seg-i" :class="{ on: commentSpeed === 'fast' }" @click="setSpeed('fast')">快</button>
         </div>
-        <p class="hint">对方给我朋友圈点赞 / 评论 / 回复的快慢。调慢后对方不会立刻反应，更自然。</p>
+        <p class="hint">对方给我朋友圈点赞 / 评论 / 回复的快慢。</p>
       </div>
 
       <p class="hint standalone">

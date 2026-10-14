@@ -49,6 +49,8 @@ const DEFAULT = {
     avatar: '',
     bg: ''
   },
+  /* 后台保活：防止浏览器清理 / 刷新 / 杀掉页面 */
+  keepAlive: false,
   /* 外观模式：light 浅色 / dark 深色 / system 跟随系统 */
   appearance: 'light'
 }
@@ -212,6 +214,7 @@ export const useSettingsStore = defineStore('settings', {
           notifications: { ...DEFAULT.notifications, ...(data.notifications || {}) },
           startup: { ...DEFAULT.startup, ...(data.startup || {}) },
           moments: { ...DEFAULT.moments, ...(data.moments || {}) },
+          keepAlive: data.keepAlive === true,
           appearance
         }
       } catch (e) {
@@ -230,6 +233,7 @@ export const useSettingsStore = defineStore('settings', {
           notifications: { ...DEFAULT.notifications, ...(data.notifications || {}) },
           startup: { ...DEFAULT.startup, ...(data.startup || {}) },
           moments: { ...DEFAULT.moments, ...(data.moments || {}) },
+          keepAlive: data.keepAlive === true,
           appearance: data.appearance === 'dark' || data.appearance === 'system' ? data.appearance : 'light'
         }
       }

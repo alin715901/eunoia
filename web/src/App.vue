@@ -77,6 +77,7 @@ import { useCompanionStore } from '@/stores/companion'
 import { useMusicStore } from '@/stores/music'
 import { useDesktopStore } from '@/stores/desktop'
 import { useUiStore } from '@/stores/ui'
+import { useKeepAlive } from '@/composables/useKeepAlive'
 
 const route = useRoute()
 const settings = useSettingsStore()
@@ -151,6 +152,10 @@ async function boot() {
     await contactsStore.load()
     useCompanionStore().init().catch(() => {})
     useMusicStore().initListen().catch(() => {})
+    /* 之前开启过后台保活则启动即恢复（无需进设置页） */
+    if (settings.global.keepAlive === true) {
+      useKeepAlive().setEnabled(true).catch(() => {})
+    }
     await desktop.ensureValid()
     await desktop.load()
   } catch (e) {
