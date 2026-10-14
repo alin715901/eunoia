@@ -50,12 +50,12 @@
           <span class="cv-sec-title">片单 {{ linkList.length }} 条</span>
           <button class="cv-add" @click="openAddLink"><AppIcon name="plus" :size="18" /> 导入</button>
         </div>
-        <p class="cv-sec-tip">粘贴 B 站 / 爱奇艺 / 腾讯视频等播放页链接，给影片起个名，点卡片在浏览器里打开观看。</p>
+        <p class="cv-sec-tip">支持 B 站 / 腾讯视频链接和 mp4 直链，导入后点卡片直接播放；其他平台点卡片在浏览器里打开。</p>
         <button
           v-for="l in linkList"
           :key="l.id"
           class="cv-card"
-          @click="openUrl(l.body)"
+          @click="playLink(l)"
         >
           <span class="cv-card-ic"><AppIcon name="link" :size="18" color="var(--accent)" /></span>
           <span class="cv-card-main">
@@ -99,13 +99,42 @@
         </div>
         <div class="cv-fld">
           <span class="cv-fld-label">视频链接</span>
-          <input v-model="linkSheet.url" class="cv-input" placeholder="https://..." />
+          <input v-model="linkSheet.url" class="cv-input" placeholder="B站/腾讯视频链接，或 mp4 直链" />
         </div>
+        <p class="cv-sheet-tip">B 站（BV/av）、腾讯视频链接可在应用内直接播放；mp4 直链走原生播放器；爱奇艺 / CCTV 等平台禁止内嵌，点卡片会在浏览器打开。</p>
         <div class="cv-actions">
           <button class="cv-btn ghost" @click="closeLinkSheet">取消</button>
           <button class="cv-btn primary" @click="saveLink">保存</button>
         </div>
       </div>
+    </div>
+
+    <!-- 应用内播放器（iframe / video） -->
+    <div v-if="player.show" class="cv-player">
+      <div class="cv-bar">
+        <button class="cv-bar-btn" @click="closePlayer" aria-label="关闭"><AppIcon name="close" :size="20" /></button>
+        <span class="cv-bar-title">{{ player.title }}</span>
+        <button class="cv-bar-open" @click="openUrl(player.raw)">浏览器打开</button>
+      </div>
+      <iframe
+        v-if="player.type === 'iframe'"
+        class="cv-frame"
+        :src="player.src"
+        scrolling="no"
+        frameborder="0"
+        allowfullscreen
+        allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+      ></iframe>
+      <video
+        v-else-if="player.type === 'video'"
+        class="cv-frame"
+        controls
+        autoplay
+        playsinline
+        webkit-playsinline
+        :src="player.src"
+      ></video>
+      <p class="cv-player-tip">播放卡住或黑屏？点右上角「浏览器打开」。</p>
     </div>
   </div>
 </template>
@@ -140,9 +169,45 @@ const linkList = computed(() =>
   (Array.isArray(links.items.value) ? links.items.value : []).filter((x) => x && x.body)
 )
 
-/* 点击站点 / 影片卡片：跳到系统浏览器打开（视频网站大多禁止在应用内嵌播放） */
+/* 点击站点卡片：跳到系统浏览器打开 */
 function openUrl(url) {
   if (url) window.open(url, '_blank', 'noopener')
+}
+
+/* 解析视频链接的播放方式：
+ *  - iframe   ：B站 / 腾讯视频官方嵌入播放器（这两家明确允许内嵌）
+ *  - video    ：mp4 等直链，走原生 video
+ *  - external ：爱奇艺 / CCTV 等禁嵌平台，只能浏览器打开
+ * 原理：大平台的普通观看页带 X-Frame-Options / 版权校验禁嵌，
+ * 但官方 iframe 嵌入播放器（player.bilibili.com / v.qq.com/txp/iframe）是放开的。 */
+function resolveVideo(url) {
+  const bv = /BV[0-9A-Za-z]{10}/.exec(url)
+  if (bv) return { type: 'iframe', src: `https://player.bilibili.com/player.html?bvid=${bv[0]}&page=1&high_quality=1&danmaku=0` }
+  const av = /av(\d+)/i.exec(url)
+  if (av) return { type: 'iframe', src: `https://player.bilibili.com/player.html?aid=${av[1]}&page=1&high_quality=1&danmaku=0` }
+  const qq = /v\.qq\.com\/x\/(?:cover\/[^/]+\/|page\/)?([0-9a-z]+)\.html/i.exec(url)
+  if (qq) return { type: 'iframe', src: `https://v.qq.com/txp/iframe/player.html?vid=${qq[1]}` }
+  if (/\.(mp4|webm|ogg|mov|m4v|m3u8)(\?.*)?$/i.test(url)) return { type: 'video', src: url }
+  return { type: 'external', src: url }
+}
+
+const player = reactive({ show: false, type: '', src: '', raw: '', title: '' })
+function playLink(l) {
+  const r = resolveVideo(l.body)
+  if (r.type === 'external') {
+    openUrl(l.body)
+    return
+  }
+  player.type = r.type
+  player.src = r.src
+  player.raw = l.body
+  player.title = l.title || ''
+  player.show = true
+}
+function closePlayer() {
+  player.show = false
+  player.src = ''
+  player.raw = ''
 }
 
 function hostOf(u) {
@@ -248,8 +313,17 @@ onMounted(async () => {
 .cv-fld { margin-bottom: 12px; }
 .cv-fld-label { display: block; font-size: 12px; color: var(--text-soft); margin-bottom: 6px; }
 .cv-input { width: 100%; padding: 11px 12px; font-size: 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-soft); color: var(--text); }
+.cv-sheet-tip { font-size: 11px; color: var(--text-soft); line-height: 1.6; margin: -4px 0 12px; }
 .cv-actions { display: flex; gap: 10px; margin-top: 6px; }
 .cv-btn { flex: 1; padding: 12px 0; border-radius: 12px; font-size: 15px; border: none; font-weight: 600; }
 .cv-btn.ghost { background: var(--bg-soft); color: var(--text); }
 .cv-btn.primary { background: var(--accent); color: #fff; }
+
+.cv-player { position: fixed; inset: 0; background: #000; display: flex; flex-direction: column; z-index: 60; }
+.cv-bar { flex: 0 0 auto; display: flex; align-items: center; gap: 10px; padding: 10px 12px; background: rgba(0, 0, 0, 0.85); color: #fff; }
+.cv-bar-btn { border: none; background: transparent; color: #fff; padding: 4px; display: inline-flex; }
+.cv-bar-title { flex: 1 1 auto; min-width: 0; font-size: 14px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cv-bar-open { flex: 0 0 auto; border: none; background: rgba(255, 255, 255, 0.18); color: #fff; font-size: 13px; padding: 6px 12px; border-radius: 999px; }
+.cv-frame { flex: 1 1 auto; width: 100%; border: none; background: #000; }
+.cv-player-tip { flex: 0 0 auto; margin: 0; font-size: 11px; color: rgba(255, 255, 255, 0.7); text-align: center; padding: 8px 12px calc(8px + env(safe-area-inset-bottom)); background: rgba(0, 0, 0, 0.85); }
 </style>
