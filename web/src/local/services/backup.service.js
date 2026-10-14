@@ -27,7 +27,7 @@ const EXPORT_TABLES = [
   'moments', 'moment_interactions', 'letters', 'divinations',
   'global_settings', 'proactive_jobs', 'group_member_settings',
   'anniversaries', 'songs', 'song_favs', 'companion_invites',
-  'listen_together', 'app_items', 'red_packet_grabs'
+  'listen_together', 'cinema_together', 'app_items', 'red_packet_grabs'
 ]
 
 /* 大板块 → 数据表（对齐桌面功能；感知 / 心迹为即时功能不落库，无需导出。
@@ -43,6 +43,7 @@ export const BACKUP_FEATURES = [
   { key: 'divinations', label: '占卜', tables: ['divinations'] },
   { key: 'companion', label: '陪伴邀请', tables: ['companion_invites'] },
   { key: 'listen', label: '一起听', tables: ['listen_together'] },
+  { key: 'cinema', label: '一起观影', tables: ['cinema_together'] },
   { key: 'modules', label: '模块记录', tables: ['app_items'] },
   { key: 'beautify', label: '桌面美化', tables: ['global_settings'] }
 ]
@@ -52,7 +53,7 @@ const ID_TABLES = {
   contacts: 'id', card_groups: 'id', cards: 'id', chat_messages: 'id',
   favorites: 'id', moments: 'id', moment_interactions: 'id', letters: 'id',
   divinations: 'id', proactive_jobs: 'id', anniversaries: 'id', songs: 'id',
-  companion_invites: 'id', listen_together: 'id', app_items: 'id',
+  companion_invites: 'id', listen_together: 'id', cinema_together: 'id', app_items: 'id',
   red_packet_grabs: 'id'
 }
 
@@ -78,6 +79,7 @@ const REFS = {
   song_favs: { song_id: 'songs', contact_id: 'contacts' },
   companion_invites: { contact_id: 'contacts', message_id: 'chat_messages' },
   listen_together: { contact_id: 'contacts', song_id: 'songs', message_id: 'chat_messages' },
+  cinema_together: { contact_id: 'contacts', message_id: 'chat_messages' },
   red_packet_grabs: { message_id: 'chat_messages' },
   app_items: { contact_id: 'contacts' }
 }
@@ -91,7 +93,7 @@ const LABELS = {
   moments: '朋友圈', moment_interactions: '朋友圈互动', letters: '信件', divinations: '占卜记录',
   global_settings: '全局设置', proactive_jobs: '主动消息任务', group_member_settings: '群成员设置',
   anniversaries: '纪念日', songs: '歌曲', song_favs: '歌曲收藏', companion_invites: '陪伴邀请',
-  listen_together: '一起听', app_items: '模块记录',
+  listen_together: '一起听', cinema_together: '一起观影', app_items: '模块记录',
   red_packet_grabs: '红包领取记录'
 }
 
@@ -174,6 +176,7 @@ function scopedContactTables(ids) {
     song_favs: q(`SELECT * FROM song_favs WHERE contact_id IN ${IN}`),
     companion_invites: q(`SELECT * FROM companion_invites WHERE contact_id IN ${IN}`),
     listen_together: q(`SELECT * FROM listen_together WHERE contact_id IN ${IN}`),
+    cinema_together: q(`SELECT * FROM cinema_together WHERE contact_id IN ${IN}`),
     moments: q(`SELECT * FROM moments WHERE contact_id IN ${IN} OR author_contact_id IN ${IN}`),
     moment_interactions: q(`SELECT * FROM moment_interactions WHERE contact_id IN ${IN} OR moment_id IN (SELECT id FROM moments WHERE contact_id IN ${IN} OR author_contact_id IN ${IN})`),
     group_member_settings: q(`SELECT * FROM group_member_settings WHERE group_id IN ${IN} OR member_id IN ${IN}`),
@@ -326,6 +329,7 @@ function scopedDelete(ids) {
   run(`DELETE FROM moments WHERE contact_id IN ${IN} OR author_contact_id IN ${IN}`)
   run(`DELETE FROM companion_invites WHERE contact_id IN ${IN}`)
   run(`DELETE FROM listen_together WHERE contact_id IN ${IN}`)
+  run(`DELETE FROM cinema_together WHERE contact_id IN ${IN}`)
   run(`DELETE FROM song_favs WHERE contact_id IN ${IN}`)
   run(`DELETE FROM letters WHERE contact_id IN ${IN}`)
   run(`DELETE FROM app_items WHERE contact_id IN ${IN}`)
@@ -503,7 +507,7 @@ function contactCounts() {
   for (const t of [
     'contact_settings', 'contact_desktop', 'wallets', 'chat_messages', 'favorites',
     'letters', 'divinations', 'proactive_jobs', 'anniversaries', 'app_items',
-    'song_favs', 'companion_invites', 'listen_together'
+    'song_favs', 'companion_invites', 'listen_together', 'cinema_together'
   ]) {
     group(`SELECT contact_id cid, COUNT(*) n FROM ${t} GROUP BY contact_id`)
   }

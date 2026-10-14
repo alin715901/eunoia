@@ -122,6 +122,26 @@
               <div v-else class="lpc-status">等待对方接受…</div>
             </div>
           </template>
+          <!-- 一起观影邀请：独立邀请卡片（无气泡底），TA 发来的未处理时可同意/拒绝 -->
+          <template v-else-if="message.content_type === 'cinema_invite'">
+            <div class="lp-card" :class="[ciMeta.status, side]">
+              <div class="lpc-head">
+                <div class="lpc-cover lpc-no"><AppIcon name="film" :size="20" color="var(--text)" /></div>
+                <div class="lpc-main">
+                  <div class="lpc-title">{{ ciFromMe ? `邀请${contactName}一起观影` : `邀请你一起观影` }}</div>
+                  <div class="lpc-song">《{{ ciMeta.filmTitle || '影片' }}》</div>
+                </div>
+              </div>
+              <div v-if="!ciFromMe && ciMeta.status === 'pending'" class="lpc-ops">
+                <button class="lpc-btn ghost" @click.stop="onCiRespond(false)">拒绝</button>
+                <button class="lpc-btn primary" @click.stop="onCiRespond(true)">一起看</button>
+              </div>
+              <div v-else-if="ciMeta.status === 'accepted' || ciMeta.status === 'rejected' || ciMeta.status === 'cancelled' || ciMeta.status === 'ended'" class="lpc-result" :class="ciMeta.status">
+                {{ ciStatusText }}
+              </div>
+              <div v-else class="lpc-status">等待对方接受…</div>
+            </div>
+          </template>
           <!-- 提问卡片：形式标签 + 问题 + 选项列表（选择题对方回复选项，问答题对方抽字卡） -->
           <template v-else-if="message.content_type === 'question'">
             <div class="q-card">
@@ -186,6 +206,8 @@ import { cssTextToStyle } from '@/utils/bubbleStyle'
 import { useChatStore } from '@/stores/chat'
 import { useCompanionStore } from '@/stores/companion'
 import { useMusicStore } from '@/stores/music'
+import { useCinemaStore } from '@/stores/cinema'
+import router from '@/router'
 
 const emit = defineEmits(['long-press', 'quote-tap', 'image-tap', 'open-redpacket'])
 
@@ -274,7 +296,7 @@ const meta = computed(() => {
 const bubbleExtraClass = computed(() => {
   const t = props.message.content_type
   if (t === 'image' || t === 'sticker' || t === 'redpacket') return 'bare'
-  if (t === 'voice' || t === 'companion_invite' || t === 'listen_invite') return 'bare'
+  if (t === 'voice' || t === 'companion_invite' || t === 'listen_invite' || t === 'cinema_invite') return 'bare'
   // 图片字卡（无文字）＝表情包：同样去掉气泡底
   if (t === 'card' && props.message.asset_path && !props.message.text) return 'bare'
   return ''
@@ -387,6 +409,32 @@ const lpStatusText = computed(() => {
 async function onLpRespond(accept) {
   try {
     await useMusicStore().respondListen(accept)
+  } catch (e) { /* 忽略 */ }
+}
+
+/* ── 一起观影邀请卡片 ── */
+const ciMeta = computed(() => {
+  try { return JSON.parse(props.message.text || '{}') } catch (e) { return {} }
+})
+const ciFromMe = computed(() => side.value === 'me')
+const ciStatusText = computed(() => {
+  const s = ciMeta.value.status
+  if (s === 'accepted') return '已一起看'
+  if (s === 'rejected') return '已拒绝'
+  if (s === 'cancelled') return '已取消'
+  if (s === 'ended') return '已结束'
+  return ''
+})
+async function onCiRespond(accept) {
+  try {
+    const cinema = useCinemaStore()
+    if (accept) {
+      const r = await cinema.accept(ciMeta.value.inviteId)
+      /* 接受成功：带上影片跳转影院，CinemaView 监听到 active 会自动打开播放器 */
+      if (r && r.ok) router.push('/cinema')
+    } else {
+      await cinema.reject(ciMeta.value.inviteId)
+    }
   } catch (e) { /* 忽略 */ }
 }
 

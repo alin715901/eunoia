@@ -159,6 +159,20 @@ export function migrate() {
     FOREIGN KEY (message_id) REFERENCES chat_messages(id) ON DELETE CASCADE
   )`)
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_rpg_msg_grabber ON red_packet_grabs(message_id, grabber)')
+  // 一起观影：我邀请联系人一起看某部影片 / TA 邀我。邀请落 cinema_together 表，
+  // 并在聊天里落一条 content_type='cinema_invite' 的卡片消息。
+  db.exec(`CREATE TABLE IF NOT EXISTS cinema_together (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    contact_id INTEGER NOT NULL,
+    from_side TEXT NOT NULL DEFAULT 'me',
+    film_title TEXT DEFAULT '',
+    film_url TEXT DEFAULT '',
+    play_src TEXT DEFAULT '',
+    play_kind TEXT DEFAULT 'iframe',
+    status TEXT NOT NULL DEFAULT 'pending',
+    message_id INTEGER,
+    created_at INTEGER
+  )`)
 
   // 一次性迁移标记表
   db.exec('CREATE TABLE IF NOT EXISTS _migrations(key TEXT PRIMARY KEY)')

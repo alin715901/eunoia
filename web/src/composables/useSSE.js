@@ -8,6 +8,7 @@ import { useContactSettingsStore } from '@/stores/contactSettings'
 import { useChatListStore } from '@/stores/chatList'
 import { useCompanionStore } from '@/stores/companion'
 import { useMusicStore } from '@/stores/music'
+import { useCinemaStore } from '@/stores/cinema'
 import { getContactSettings } from '@/api/contacts'
 import { notify, notificationPermission } from './useNotification'
 import router from '@/router'
@@ -38,6 +39,9 @@ function previewOf(m) {
   }
   if (t === 'listen_invite') {
     try { const mm = JSON.parse(m.text || '{}'); return mm.from === 'contact' ? `[一起听歌] 邀请你听《${mm.songTitle || ''}》` : '[一起听歌]' } catch (e) { return '[一起听歌]' }
+  }
+  if (t === 'cinema_invite') {
+    try { const mm = JSON.parse(m.text || '{}'); return mm.from === 'contact' ? `[一起观影] 邀你看《${mm.filmTitle || ''}》` : '[一起观影]' } catch (e) { return '[一起观影]' }
   }
   if (t === 'poke') return m.text || '拍了拍你'
   return m.text || '（一条卡片消息）'
@@ -302,6 +306,16 @@ export function connect() {
     try {
       const data = JSON.parse(e.data)
       useMusicStore().onListenSSE(data)
+    } catch (err) {
+      /* ignore */
+    }
+  })
+
+  /* 一起观影：TA 邀我 / TA 对我的邀请做出响应 → 影院 store 统一处理 */
+  source.addEventListener('cinema_together', (e) => {
+    try {
+      const data = JSON.parse(e.data)
+      useCinemaStore().onCinemaSSE(data)
     } catch (err) {
       /* ignore */
     }

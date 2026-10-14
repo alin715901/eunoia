@@ -15,6 +15,7 @@ import * as cardDrawService from './services/cardDraw.service'
 import * as momentService from './services/moment.service'
 import * as companionService from './services/companion.service'
 import * as listenService from './services/listen.service'
+import * as cinemaTogetherService from './services/cinema-together.service'
 import * as musicService from './services/music.service'
 import * as musicCache from './services/musicCache'
 import * as mochiService from './services/mochi.service'
@@ -65,6 +66,7 @@ export async function getChatList() {
       else if (r.lastType === 'sticker') r.lastText = '[表情包]'
       else if (r.lastType === 'companion_invite') r.lastText = '[陪伴邀请]'
       else if (r.lastType === 'listen_invite') r.lastText = '[一起听歌]'
+      else if (r.lastType === 'cinema_invite') r.lastText = '[一起观影]'
       else if (r.lastType === 'voice') r.lastText = '[语音]'
       else if (r.lastType === 'redpacket') r.lastText = '[红包]'
       else if (r.lastType === 'call') {
@@ -1146,7 +1148,7 @@ export async function getStorageStats() {
   const sumBytes = (keys) => keys.reduce((s, k) => s + bytesOf(k), 0)
   const sumCount = (keys) => keys.reduce((s, k) => s + count(k), 0)
   const CONTENT = ['songs', 'song_favs', 'cards', 'card_groups', 'letters', 'moments', 'moment_interactions',
-    'favorites', 'wallets', 'anniversaries', 'divinations', 'app_items', 'companion_invites', 'listen_together']
+    'favorites', 'wallets', 'anniversaries', 'divinations', 'app_items', 'companion_invites', 'listen_together', 'cinema_together']
   const SETTINGS = ['contacts', 'contact_members', 'contact_settings', 'contact_desktop',
     'global_settings', 'proactive_jobs', 'group_member_settings']
   return {
@@ -1209,6 +1211,47 @@ export async function endListen(id) {
 
 export async function getListenInvites(limit = 50) {
   return listenService.listInvites(limit)
+}
+
+/* ─────────── 一起观影 ─────────── */
+
+export async function sendCinemaInvite(contactId, film) {
+  if (!contactId) fail('缺少联系人')
+  const r = cinemaTogetherService.sendInvite(Number(contactId), film || {})
+  if (r.error) fail(r.error)
+  return r
+}
+
+export async function respondCinemaInvite(id, accept) {
+  const r = cinemaTogetherService.respond(Number(id), !!accept)
+  if (r.error) fail(r.error)
+  return r
+}
+
+export async function cancelCinemaInvite(id) {
+  const r = cinemaTogetherService.cancel(Number(id))
+  if (r.error) fail(r.error)
+  return r
+}
+
+export async function endCinema(id) {
+  const r = cinemaTogetherService.end(Number(id))
+  if (r.error) fail(r.error)
+  return r
+}
+
+export async function getCinemaInvites(limit = 50) {
+  return cinemaTogetherService.listInvites(limit)
+}
+
+/* 当前与某联系人进行中的一起观影 */
+export async function getActiveCinema(contactId) {
+  return cinemaTogetherService.getActive(Number(contactId))
+}
+
+/* TA 主动邀我（内部触发，无 HTTP 出口） */
+export function cinemaContactInvite(contactId, preset) {
+  return cinemaTogetherService.contactInvite(Number(contactId), preset || {})
 }
 
 /* ─────────── 陪伴邀请 ─────────── */
