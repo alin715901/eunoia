@@ -231,20 +231,20 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.cv-page { flex: 1; display: flex; flex-direction: column; min-height: 0; background: var(--bg-screen); }
+.cv-page { flex: 1; display: flex; flex-direction: column; min-height: 0; background: var(--bg-body); }
 .cv-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 14px; }
 
-.cv-summary { display: flex; align-items: center; gap: 12px; padding: 14px 12px; background: var(--bg); border-radius: 16px; }
+.cv-summary { display: flex; align-items: center; gap: 12px; padding: 14px 12px; background: var(--bg-screen); border: 1px solid var(--border); border-radius: 16px; box-shadow: var(--shadow); }
 .cv-sum-ic { flex: 0 0 auto; width: 44px; height: 44px; border-radius: 12px; background: var(--bg-soft); display: flex; align-items: center; justify-content: center; }
 .cv-sum-main { display: flex; flex-direction: column; gap: 2px; }
 .cv-sum-title { font-size: 15px; font-weight: 600; color: var(--text); }
 .cv-sum-sub { font-size: 12px; color: var(--text-soft); }
 
 .cv-tabs { display: flex; gap: 8px; }
-.cv-tab { flex: 1; padding: 10px 0; border: none; border-radius: 12px; background: var(--bg); color: var(--text-soft); font-size: 14px; font-weight: 600; }
-.cv-tab.on { background: var(--accent); color: #fff; }
+.cv-tab { flex: 1; padding: 10px 0; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-screen); color: var(--text-soft); font-size: 14px; font-weight: 600; }
+.cv-tab.on { background: var(--accent); color: #fff; border-color: var(--accent); }
 
-.cv-sec { background: var(--bg); border-radius: 16px; padding: 12px; }
+.cv-sec { background: var(--bg-screen); border: 1px solid var(--border); border-radius: 16px; padding: 12px; box-shadow: var(--shadow); }
 .cv-sec-head { display: flex; align-items: center; justify-content: space-between; }
 .cv-sec-title { font-size: 14px; font-weight: 600; color: var(--text); }
 .cv-add { display: inline-flex; align-items: center; gap: 3px; border: none; background: transparent; color: var(--accent); font-size: 13px; font-weight: 600; padding: 4px 6px; }
@@ -261,8 +261,9 @@ onMounted(async () => {
 
 .cv-empty { font-size: 12px; color: var(--text-soft); padding: 10px 4px; }
 
-.cv-mask { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); display: flex; align-items: flex-end; z-index: 50; }
-.cv-sheet { width: 100%; background: var(--bg); border-radius: 20px 20px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); }
+.cv-mask { position: fixed; inset: 0; background: rgba(60, 50, 56, 0.5); display: flex; align-items: center; justify-content: center; padding: 24px; z-index: 50; }
+.cv-sheet { width: 100%; max-width: 340px; background: var(--bg-screen); border: 1px solid var(--border); border-radius: 20px; padding: 18px 16px; box-shadow: var(--shadow); animation: cv-pop 0.18s ease; }
+@keyframes cv-pop { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 .cv-sheet-title { font-size: 16px; font-weight: 700; color: var(--text); margin: 0 0 14px; text-align: center; }
 .cv-fld { margin-bottom: 12px; }
 .cv-fld-label { display: block; font-size: 12px; color: var(--text-soft); margin-bottom: 6px; }
