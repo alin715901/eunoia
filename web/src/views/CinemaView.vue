@@ -7,15 +7,21 @@
       <div class="cv-summary">
         <span class="cv-sum-ic"><AppIcon name="film" :size="26" color="var(--accent)" /></span>
         <span class="cv-sum-main">
-          <span class="cv-sum-title">免费站点 {{ allSites.length }} 个 · 我的片单 {{ linkList.length }} 条</span>
+          <span class="cv-sum-title">站点 {{ allSites.length }} 个 · 片单 {{ linkList.length }} 条</span>
           <span class="cv-sum-sub">一起看过的，和想一起看的</span>
         </span>
       </div>
 
-      <!-- 免费观影站点 -->
-      <section class="cv-sec">
+      <!-- 站点 / 影片 切换 -->
+      <div class="cv-tabs">
+        <button class="cv-tab" :class="{ on: tab === 'sites' }" @click="tab = 'sites'">站点</button>
+        <button class="cv-tab" :class="{ on: tab === 'films' }" @click="tab = 'films'">影片</button>
+      </div>
+
+      <!-- 站点 -->
+      <section v-if="tab === 'sites'" class="cv-sec">
         <div class="cv-sec-head">
-          <span class="cv-sec-title">免费观影站点</span>
+          <span class="cv-sec-title">站点 {{ allSites.length }} 个</span>
           <button class="cv-add" @click="openAddSite"><AppIcon name="plus" :size="18" /> 添加</button>
         </div>
         <p class="cv-sec-tip">点站点直接进去看；部分站点禁止应用内嵌，会自动让你在浏览器打开。</p>
@@ -35,24 +41,16 @@
           </span>
           <AppIcon name="chevron-right" :size="16" color="var(--text-soft)" v-else />
         </button>
-        <p v-if="!allSites.length" class="cv-empty">还没有站点，点右上角「＋」添加。</p>
+        <p v-if="!allSites.length" class="cv-empty">还没有站点，点右上角「添加」。</p>
       </section>
 
-      <!-- 导入视频链接 -->
-      <section class="cv-sec">
+      <!-- 影片（片单） -->
+      <section v-else class="cv-sec">
         <div class="cv-sec-head">
-          <span class="cv-sec-title">导入视频链接</span>
+          <span class="cv-sec-title">片单 {{ linkList.length }} 条</span>
+          <button class="cv-add" @click="openAddLink"><AppIcon name="plus" :size="18" /> 导入</button>
         </div>
-        <p class="cv-sec-tip">粘贴 B 站 / 爱奇艺 / 腾讯视频等播放页链接，存起来随时看。</p>
-        <div class="cv-input-row">
-          <input
-            v-model="linkInput"
-            class="cv-input"
-            placeholder="https://..."
-            @keyup.enter="addLink"
-          />
-          <button class="cv-input-btn" @click="addLink">添加</button>
-        </div>
+        <p class="cv-sec-tip">粘贴 B 站 / 爱奇艺 / 腾讯视频等播放页链接，给影片起个名，存起来随时看。</p>
         <button
           v-for="l in linkList"
           :key="l.id"
@@ -68,7 +66,7 @@
             <button class="cv-op" @click="removeLink(l)" aria-label="删除"><AppIcon name="trash" :size="16" color="#c0576b" /></button>
           </span>
         </button>
-        <p v-if="!linkList.length" class="cv-empty">还没有导入的链接。</p>
+        <p v-if="!linkList.length" class="cv-empty">片单还是空的，点右上角「导入」添加一部。</p>
       </section>
     </div>
 
@@ -87,6 +85,25 @@
         <div class="cv-actions">
           <button class="cv-btn ghost" @click="closeSiteSheet">取消</button>
           <button class="cv-btn primary" @click="saveSite">保存</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 导入影片弹窗 -->
+    <div v-if="linkSheet.show" class="cv-mask" @click.self="closeLinkSheet">
+      <div class="cv-sheet">
+        <h3 class="cv-sheet-title">导入影片</h3>
+        <div class="cv-fld">
+          <span class="cv-fld-label">影片名称</span>
+          <input v-model="linkSheet.name" class="cv-input" placeholder="例如：你的名字" maxlength="40" />
+        </div>
+        <div class="cv-fld">
+          <span class="cv-fld-label">视频链接</span>
+          <input v-model="linkSheet.url" class="cv-input" placeholder="https://..." />
+        </div>
+        <div class="cv-actions">
+          <button class="cv-btn ghost" @click="closeLinkSheet">取消</button>
+          <button class="cv-btn primary" @click="saveLink">保存</button>
         </div>
       </div>
     </div>
@@ -124,10 +141,11 @@ const BUILTIN = [
   { id: 'cctv', name: 'CCTV 节目官网', url: 'https://tv.cctv.com', desc: '央视免费节目' }
 ]
 
+const tab = ref('sites')
+
 const allSites = computed(() =>
   [...BUILTIN, ...sites.items.value.map((it) => ({ id: it.id, name: it.title, url: it.body, desc: '自定义站点', custom: true }))]
 )
-
 /* 过滤出有效链接，避免空数据渲染出空卡片 */
 const linkList = computed(() =>
   (Array.isArray(links.items.value) ? links.items.value : []).filter((x) => x && x.body)
@@ -183,20 +201,27 @@ async function removeSite(it) {
   await sites.remove(it.id)
 }
 
-/* 导入链接 */
-const linkInput = ref('')
-async function addLink() {
-  const url = linkInput.value.trim()
+/* 导入影片（片单） */
+const linkSheet = reactive({ show: false, name: '', url: '' })
+function openAddLink() {
+  Object.assign(linkSheet, { show: true, name: '', url: '' })
+}
+function closeLinkSheet() {
+  linkSheet.show = false
+}
+async function saveLink() {
+  const url = linkSheet.url.trim()
   if (!/^https?:\/\//i.test(url)) {
     toast.pushToast({ title: '请输入 http(s) 开头的链接' })
     return
   }
-  linkInput.value = ''
-  await links.add({ title: hostOf(url), body: url, extra: {} })
-  toast.pushToast({ title: '已添加链接' })
+  const name = linkSheet.name.trim() || hostOf(url)
+  closeLinkSheet()
+  await links.add({ title: name, body: url, extra: {} })
+  toast.pushToast({ title: '已加入片单' })
 }
 async function removeLink(it) {
-  if (!(await confirmDialog({ title: '删除该链接？', danger: true }))) return
+  if (!(await confirmDialog({ title: '删除该影片？', danger: true }))) return
   await links.remove(it.id)
 }
 
@@ -215,6 +240,10 @@ onMounted(async () => {
 .cv-sum-title { font-size: 15px; font-weight: 600; color: var(--text); }
 .cv-sum-sub { font-size: 12px; color: var(--text-soft); }
 
+.cv-tabs { display: flex; gap: 8px; }
+.cv-tab { flex: 1; padding: 10px 0; border: none; border-radius: 12px; background: var(--bg); color: var(--text-soft); font-size: 14px; font-weight: 600; }
+.cv-tab.on { background: var(--accent); color: #fff; }
+
 .cv-sec { background: var(--bg); border-radius: 16px; padding: 12px; }
 .cv-sec-head { display: flex; align-items: center; justify-content: space-between; }
 .cv-sec-title { font-size: 14px; font-weight: 600; color: var(--text); }
@@ -232,15 +261,12 @@ onMounted(async () => {
 
 .cv-empty { font-size: 12px; color: var(--text-soft); padding: 10px 4px; }
 
-.cv-input-row { display: flex; gap: 8px; margin-bottom: 10px; }
-.cv-input { flex: 1 1 auto; width: 100%; padding: 11px 12px; font-size: 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-soft); color: var(--text); }
-.cv-input-btn { flex: 0 0 auto; padding: 0 18px; border: none; border-radius: 12px; background: var(--accent); color: #fff; font-size: 14px; font-weight: 600; }
-
 .cv-mask { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); display: flex; align-items: flex-end; z-index: 50; }
 .cv-sheet { width: 100%; background: var(--bg); border-radius: 20px 20px 0 0; padding: 18px 16px calc(18px + env(safe-area-inset-bottom)); }
 .cv-sheet-title { font-size: 16px; font-weight: 700; color: var(--text); margin: 0 0 14px; text-align: center; }
 .cv-fld { margin-bottom: 12px; }
 .cv-fld-label { display: block; font-size: 12px; color: var(--text-soft); margin-bottom: 6px; }
+.cv-input { width: 100%; padding: 11px 12px; font-size: 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-soft); color: var(--text); }
 .cv-actions { display: flex; gap: 10px; margin-top: 6px; }
 .cv-btn { flex: 1; padding: 12px 0; border-radius: 12px; font-size: 15px; border: none; font-weight: 600; }
 .cv-btn.ghost { background: var(--bg-soft); color: var(--text); }
