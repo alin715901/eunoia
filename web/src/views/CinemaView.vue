@@ -914,6 +914,9 @@ onBeforeUnmount(() => {
     transform: rotate(90deg) translateY(-100vw);
     transform-origin: top left;
   }
+  /* 旋转后横屏视角的右上角 = 物理右下角，把 × 挪过去（× 图标四向对称，不用转） */
+  .cv-stage:fullscreen .cv-stage-fs,
+  .cv-stage:-webkit-full-screen .cv-stage-fs { top: auto; bottom: 8px; }
   /* 应用级兜底（真全屏失败）：stage 不是全屏元素，可直接旋转 */
   .cv-player.is-fs.force-rotate .cv-stage {
     position: fixed; top: 0; left: 0;
