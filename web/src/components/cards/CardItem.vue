@@ -265,18 +265,24 @@ onBeforeUnmount(() => {
 .ci-tile {
   position: relative;
   padding: 0;
-  aspect-ratio: 1;
   border-radius: 14px;
   overflow: hidden;
   background: var(--bg-soft);
   border: 1px solid var(--border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
+}
+/* 正方形瓦片：用 padding-top 撑高，不用 aspect-ratio ——
+   部分安卓 WebView（旧 Chromium 内核）对 grid 内 aspect-ratio 的行高计算有偏差，
+   会让瓦片塌成图片原始高度、行线错位、底部图片叠在一起；padding-top 所有内核一致 */
+.ci-tile::before {
+  content: '';
+  display: block;
+  padding-top: 100%;
 }
 .ci-tile.selectable { cursor: pointer; }
 .ci-tile.selected { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
 .ci-img-full {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -284,16 +290,17 @@ onBeforeUnmount(() => {
 }
 .ci-tile.blocked .ci-img-full { filter: grayscale(1); opacity: 0.6; }
 .ci-tile-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   padding: 8px 6px;
   font-size: 13px;
   line-height: 1.5;
   color: var(--text);
   text-align: center;
-  max-height: 100%;
   overflow: hidden;
-  display: -webkit-box;
-  -webkit-line-clamp: 4;
-  -webkit-box-orient: vertical;
   word-break: break-all;
 }
 .ci-line { text-decoration: line-through; color: var(--text-soft); }
