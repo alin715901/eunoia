@@ -37,10 +37,6 @@ export function listPokes({ includeBlocked = false } = {}) {
   return db.prepare(sql).all().map(shape)
 }
 
-export function pokeCount() {
-  return db.prepare('SELECT COUNT(*) AS n FROM poke_library WHERE blocked = 0').get().n
-}
-
 export function createPoke(content) {
   const c = String(content == null ? '' : content).trim()
   if (!c) return null
@@ -91,11 +87,5 @@ export function updatePoke(id, fields = {}) {
 
 export function deletePoke(id) {
   db.prepare('DELETE FROM poke_library WHERE id = ?').run(id - POKE_ID_OFFSET)
-  return true
-}
-
-export function seedPokes(list = []) {
-  if (pokeCount() > 0) return false
-  createPokes(list)
   return true
 }

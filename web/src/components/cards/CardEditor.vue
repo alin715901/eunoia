@@ -9,8 +9,8 @@
         placeholder="在此粘贴内容，每行一条…"
       ></textarea>
       <div class="ce-count">{{ lineCount }} 条</div>
-      <!-- 添加到分组：应用内下拉弹层（彩色圆点 + 名称） -->
-      <div class="ce-group" :class="{ open: groupOpen }">
+      <!-- 添加到分组：应用内下拉弹层（彩色圆点 + 名称）；拍一拍库无分组概念，不展示 -->
+      <div v-if="!isPoke" class="ce-group" :class="{ open: groupOpen }">
         <button class="ce-group-btn" type="button" @click="groupOpen = !groupOpen">
           <span class="ce-group-ico"><AppIcon name="folder" :size="16" /></span>
           <span class="ce-group-label" :class="{ ph: !picked }">
@@ -60,8 +60,8 @@
       </p>
       <input ref="mediaEl" type="file" accept="image/*" multiple hidden @change="onPickFiles" />
       <div class="ce-count">{{ files.length }} 个</div>
-      <!-- 添加到分组：应用内下拉弹层（彩色圆点 + 名称） -->
-      <div class="ce-group" :class="{ open: groupOpen }">
+      <!-- 添加到分组：应用内下拉弹层（彩色圆点 + 名称）；拍一拍库无分组概念，不展示 -->
+      <div v-if="!isPoke" class="ce-group" :class="{ open: groupOpen }">
         <button class="ce-group-btn" type="button" @click="groupOpen = !groupOpen">
           <span class="ce-group-ico"><AppIcon name="folder" :size="16" /></span>
           <span class="ce-group-label" :class="{ ph: !picked }">
@@ -105,8 +105,8 @@
       </button>
       <input ref="mediaEl" type="file" accept="audio/*" multiple hidden @change="onPickFiles" />
       <div class="ce-count">{{ files.length }} 个</div>
-      <!-- 添加到分组：应用内下拉弹层（彩色圆点 + 名称） -->
-      <div class="ce-group" :class="{ open: groupOpen }">
+      <!-- 添加到分组：应用内下拉弹层（彩色圆点 + 名称）；拍一拍库无分组概念，不展示 -->
+      <div v-if="!isPoke" class="ce-group" :class="{ open: groupOpen }">
         <button class="ce-group-btn" type="button" @click="groupOpen = !groupOpen">
           <span class="ce-group-ico"><AppIcon name="folder" :size="16" /></span>
           <span class="ce-group-label" :class="{ ph: !picked }">
@@ -211,6 +211,9 @@ const isMedia = computed(() => ['image', 'sticker'].includes(props.category))
 const files = ref([])
 const mediaEl = ref(null)
 
+/* 拍一拍分类：独立成库后没有分组概念，添加弹窗不展示分组选择 */
+const isPoke = computed(() => props.category === 'poke')
+
 /* 语音字卡：两步流程 pick（选音频）→ edit（逐个编辑对应文字） */
 const isVoice = computed(() => props.category === 'voice')
 const voiceStep = ref('pick')
@@ -220,6 +223,7 @@ const voiceIdx = ref(0)
 const title = computed(() => {
   if (props.initial) return '修改字卡'
   if (isVoice.value && voiceStep.value === 'edit') return '编辑语音文字'
+  if (isPoke.value) return '添加拍一拍'
   return '添加字卡'
 })
 

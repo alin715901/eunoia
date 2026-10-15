@@ -491,27 +491,11 @@ async function onSendQuestion(payload) {
 
 /* ── 拍一拍：双击对方头像唤起 ──
    选一条 → 发送「我拍了拍对方的X」（sender='me' 的居中系统提示，不触发对方回复）。
-   拍一拍库即通用库 category='poke' 的字卡（内容存「被拍对象」，如「脑袋」）；
-   库为空时首次打开自动填入几个默认短语，方便直接试。 */
+   拍一拍库是独立的 poke_library 表（与字卡库完全分离），初始为空，由用户自行添加。 */
 const showPokeSheet = ref(false)
 const pokeList = ref([])
 const showPokeEditor = ref(false)
-let pokeSeeded = false
-const POKE_DEFAULTS = ['脑袋', '肩膀', '头', '脸', '手']
 
-async function ensurePokeSeed() {
-  if (pokeSeeded) return
-  pokeSeeded = true
-  try {
-    const existing = await getCards({ scope: 'general', category: 'poke' })
-    if (!existing.length && !localStorage.getItem('eunoia_poke_seeded_v1')) {
-      await createCardsBatch(
-        POKE_DEFAULTS.map((c) => ({ category: 'poke', scope: 'general', content: c }))
-      )
-      localStorage.setItem('eunoia_poke_seeded_v1', '1')
-    }
-  } catch (e) { /* ignore */ }
-}
 async function loadPokeList() {
   try {
     const cards = await getCards({ scope: 'general', category: 'poke' })
@@ -519,7 +503,6 @@ async function loadPokeList() {
   } catch (e) { pokeList.value = [] }
 }
 async function onAvatarPoke() {
-  await ensurePokeSeed()
   await loadPokeList()
   showPokeSheet.value = true
 }

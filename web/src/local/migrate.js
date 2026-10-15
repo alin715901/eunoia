@@ -199,6 +199,13 @@ export function migrate() {
     db.prepare("INSERT OR IGNORE INTO _migrations(key) VALUES('poke_separate_v1')").run()
   }
 
+  // 一次性迁移：拍一拍独立成库后，库内条目全部清空（不再预置默认短语，由用户自行添加）
+  const pokeWipe = db.prepare("SELECT 1 FROM _migrations WHERE key = 'poke_wipe_v1'").get()
+  if (!pokeWipe) {
+    db.exec('DELETE FROM poke_library')
+    db.prepare("INSERT OR IGNORE INTO _migrations(key) VALUES('poke_wipe_v1')").run()
+  }
+
   // 一次性迁移：清空旧音乐设计（app_items 里 module='music' 的「正在听」标记数据）
   const musicReset = db.prepare("SELECT 1 FROM _migrations WHERE key = 'music_rebuild_v1'").get()
   if (!musicReset) {

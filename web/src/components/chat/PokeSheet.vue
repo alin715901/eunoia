@@ -9,7 +9,6 @@
               <AppIcon name="close" :size="18" />
             </button>
           </div>
-          <p class="poke-tip">双击对方头像也能唤起这里 · 选一条即「我拍了拍对方的…」</p>
           <div class="poke-items">
             <button
               v-for="it in items"
@@ -93,11 +92,6 @@ function onMaskClick() {
   background: transparent;
   color: var(--text-soft);
   padding: 2px;
-}
-.poke-tip {
-  margin: 4px 0 8px;
-  font-size: 11px;
-  color: var(--text-soft);
 }
 .poke-items {
   overflow-y: auto;

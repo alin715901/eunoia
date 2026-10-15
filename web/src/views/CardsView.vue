@@ -93,7 +93,7 @@
           <button class="tb-btn" title="导出" @click="exportJson">
             <AppIcon name="upload" :size="18" />
           </button>
-          <button class="tb-btn" title="添加字卡" @click="openEditor">
+          <button class="tb-btn" :title="category === 'poke' ? '添加拍一拍' : '添加字卡'" @click="openEditor">
             <AppIcon name="plus" :size="18" />
           </button>
         </div>
