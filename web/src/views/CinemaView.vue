@@ -128,7 +128,9 @@
           scrolling="no"
           frameborder="0"
           allowfullscreen
-          allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
+          webkitallowfullscreen
+          mozallowfullscreen
+          allow="autoplay *; fullscreen *; encrypted-media *; picture-in-picture *"
         ></iframe>
         <video
           v-else-if="player.type === 'video'"
