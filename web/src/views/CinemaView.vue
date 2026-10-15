@@ -101,7 +101,8 @@
           <span class="cv-fld-label">视频链接</span>
           <input v-model="linkSheet.url" class="cv-input" placeholder="B站/腾讯视频链接，或 mp4 直链" />
         </div>
-        <p class="cv-sheet-tip">B 站（BV/av）、腾讯视频链接可在应用内直接播放；mp4 直链走原生播放器；爱奇艺 / CCTV 等平台禁止内嵌，点卡片会在浏览器打开。</p>
+        <p class="cv-sheet-tip">B 站（BV/av、含分享链接）、腾讯视频（vid、含分享链接）、mp4/m3u8 直链可在应用内直接播放；爱奇艺 / 芒果 / 人人等禁止内嵌，点卡片会在浏览器打开。</p>
+        <p v-if="linkPreview" class="cv-link-preview" :class="linkPreview.ok ? 'ok' : 'ext'">{{ linkPreview.text }}</p>
         <div class="cv-actions">
           <button class="cv-btn ghost" @click="closeLinkSheet">取消</button>
           <button class="cv-btn primary" @click="saveLink">保存</button>
@@ -277,20 +278,50 @@ function openUrl(url) {
 
 /* 解析视频链接的播放方式：
  *  - iframe   ：B站 / 腾讯视频官方嵌入播放器（这两家明确允许内嵌）
- *  - video    ：mp4 等直链，走原生 video
- *  - external ：爱奇艺 / CCTV 等禁嵌平台，只能浏览器打开
- * 原理：大平台的普通观看页带 X-Frame-Options / 版权校验禁嵌，
- * 但官方 iframe 嵌入播放器（player.bilibili.com / v.qq.com/txp/iframe）是放开的。 */
-function resolveVideo(url) {
+ *  - video    ：mp4 / m3u8 等直链，走原生播放器
+ *  - external ：爱奇艺 / 芒果 / 人人等禁嵌平台，只能浏览器打开
+ * 识别尽量覆盖常见写法：路径里的 BV/av、分享链接里的 ?bvid=/?aid=/?vid= 参数、
+ * 以及腾讯 cover/page 路径里的 vid（含大写字母）。 */
+function resolveVideo(raw) {
+  const url = (raw || '').trim()
+  if (!url) return { type: 'external', src: '' }
+  // 腾讯视频：分享 / 嵌入链接常带 ?vid= 参数（最稳）
+  const qqVid = /[?&]vid=([0-9A-Za-z]+)/i.exec(url)
+  if (qqVid) return { type: 'iframe', src: `https://v.qq.com/txp/iframe/player.html?vid=${qqVid[1]}` }
+  // 腾讯视频：路径 /x/cover/{cid}/{vid}.html
+  const qqCover = /v\.qq\.com\/(?:x\/)?cover\/[^/?#]+\/([0-9A-Za-z]+)/i.exec(url)
+  if (qqCover) return { type: 'iframe', src: `https://v.qq.com/txp/iframe/player.html?vid=${qqCover[1]}` }
+  // 腾讯视频：路径 /x/page/{vid}.html
+  const qqPage = /v\.qq\.com\/(?:x\/)?page\/([0-9A-Za-z]+)/i.exec(url)
+  if (qqPage) return { type: 'iframe', src: `https://v.qq.com/txp/iframe/player.html?vid=${qqPage[1]}` }
+  // B站：分享链接里的 ?bvid= 参数
+  const bvParam = /[?&]bvid=(BV[0-9A-Za-z]{10})/i.exec(url)
+  if (bvParam) return { type: 'iframe', src: `https://player.bilibili.com/player.html?bvid=${bvParam[1]}&page=1&high_quality=1&danmaku=0` }
+  // B站：路径 / 正文里的 BV 号
   const bv = /BV[0-9A-Za-z]{10}/.exec(url)
   if (bv) return { type: 'iframe', src: `https://player.bilibili.com/player.html?bvid=${bv[0]}&page=1&high_quality=1&danmaku=0` }
+  // B站：?aid= 参数或路径里的 av 号
+  const avParam = /[?&]aid=(\d+)/i.exec(url)
+  if (avParam) return { type: 'iframe', src: `https://player.bilibili.com/player.html?aid=${avParam[1]}&page=1&high_quality=1&danmaku=0` }
   const av = /av(\d+)/i.exec(url)
   if (av) return { type: 'iframe', src: `https://player.bilibili.com/player.html?aid=${av[1]}&page=1&high_quality=1&danmaku=0` }
-  const qq = /v\.qq\.com\/x\/(?:cover\/[^/]+\/|page\/)?([0-9a-z]+)\.html/i.exec(url)
-  if (qq) return { type: 'iframe', src: `https://v.qq.com/txp/iframe/player.html?vid=${qq[1]}` }
+  // 直链
   if (/\.(mp4|webm|ogg|mov|m4v|m3u8)(\?.*)?$/i.test(url)) return { type: 'video', src: url }
   return { type: 'external', src: url }
 }
+
+/* 导入弹窗实时识别：粘贴链接即提示将如何播放（站内内嵌 / 跳转原站） */
+const linkPreview = computed(() => {
+  const url = (linkSheet.url || '').trim()
+  if (!/^https?:\/\//i.test(url)) return null
+  const r = resolveVideo(url)
+  if (r.type === 'iframe') {
+    const isBili = /bilibili/i.test(r.src)
+    return { ok: true, text: isBili ? '✓ 可在应用内播放（哔哩哔哩）' : '✓ 可在应用内播放（腾讯视频）' }
+  }
+  if (r.type === 'video') return { ok: true, text: '✓ 可在应用内播放（直链）' }
+  return { ok: false, text: '↗ 该平台禁止内嵌，点开将在浏览器跳转原站观看' }
+})
 
 const player = reactive({ show: false, type: '', src: '', raw: '', title: '' })
 function playLink(l) {
@@ -671,10 +702,12 @@ async function saveLink() {
     toast.pushToast({ title: '请输入 http(s) 开头的链接' })
     return
   }
+  const r = resolveVideo(url)
   const name = linkSheet.name.trim() || hostOf(url)
   closeLinkSheet()
   await links.add({ title: name, body: url, extra: {} })
-  toast.pushToast({ title: '已加入片单' })
+  if (r.type === 'external') toast.pushToast({ title: '已加入片单（将跳转原站观看）' })
+  else toast.pushToast({ title: '已加入片单（应用内可播放）' })
 }
 async function removeLink(it) {
   if (!(await confirmDialog({ title: '删除该影片？', danger: true }))) return
@@ -744,7 +777,10 @@ onBeforeUnmount(() => {
 .cv-fld { margin-bottom: 12px; }
 .cv-fld-label { display: block; font-size: 12px; color: var(--text-soft); margin-bottom: 6px; }
 .cv-input { width: 100%; padding: 11px 12px; font-size: 14px; border-radius: 12px; border: 1px solid var(--border); background: var(--bg-soft); color: var(--text); }
-.cv-sheet-tip { font-size: 11px; color: var(--text-soft); line-height: 1.6; margin: -4px 0 12px; }
+.cv-sheet-tip { font-size: 11px; color: var(--text-soft); line-height: 1.6; margin: -4px 0 8px; }
+.cv-link-preview { font-size: 12px; line-height: 1.5; margin: 0 0 12px; padding: 8px 10px; border-radius: 10px; font-weight: 600; }
+.cv-link-preview.ok { color: #1a7f37; background: rgba(26, 127, 55, 0.1); }
+.cv-link-preview.ext { color: #b06a00; background: rgba(176, 106, 0, 0.1); }
 .cv-actions { display: flex; gap: 10px; margin-top: 6px; }
 .cv-btn { flex: 1; padding: 12px 0; border-radius: 12px; font-size: 15px; border: none; font-weight: 600; }
 .cv-btn.ghost { background: var(--bg-soft); color: var(--text); }
