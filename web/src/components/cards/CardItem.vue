@@ -270,9 +270,11 @@ onBeforeUnmount(() => {
   background: var(--bg-soft);
   border: 1px solid var(--border);
 }
-/* 正方形瓦片：用 padding-top 撑高，不用 aspect-ratio ——
-   部分安卓 WebView（旧 Chromium 内核）对 grid 内 aspect-ratio 的行高计算有偏差，
-   会让瓦片塌成图片原始高度、行线错位、底部图片叠在一起；padding-top 所有内核一致 */
+/* 正方形瓦片：高度由 CardsView 的 v-square-grid 指令实测列宽后以像素写入 --cell，
+ * 宽高同源保证相等 —— 某些安卓 WebView 对 grid 内 aspect-ratio、padding-top 百分比
+ * 的计算都有偏差（实测渲染成 0.87 比例长方形），像素定高是唯一跨内核一致的做法；
+ * --cell 缺失时（如组件被单独复用）回退 padding-top 撑高 */
+.ci-tile { height: var(--cell, auto); }
 .ci-tile::before {
   content: '';
   display: block;

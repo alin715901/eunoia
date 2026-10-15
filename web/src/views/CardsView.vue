@@ -131,7 +131,7 @@
           {{ keyword ? '没有匹配的字卡' : '这里还没有字卡，点上方「＋」添加' }}
         </div>
         <!-- 全部：按分组分区展示，可收起展开（参考图三）；图片/表情包为缩略图网格 -->
-        <div v-else-if="chip === 'all'" class="card-grid" :class="{ media: isMediaCat }">
+        <div v-else-if="chip === 'all'" v-square-grid class="card-grid" :class="{ media: isMediaCat }">
           <template v-for="sec in groupedSections" :key="sec.key">
             <div class="sec-head" @click="selecting ? toggleSecSel(sec) : toggleCollapse(sec.key)">
               <!-- 多选态：分区头出现勾选圈，点击整组选中/取消（不折叠） -->
@@ -173,7 +173,7 @@
           </template>
         </div>
         <!-- 具体分组 / 未分组：平铺 -->
-        <div v-else class="card-grid" :class="{ media: isMediaCat }">
+        <div v-else v-square-grid class="card-grid" :class="{ media: isMediaCat }">
           <CardItem
             v-for="c in visibleCards"
             :key="c.id"
@@ -401,6 +401,25 @@ import { useNotificationsStore } from '@/stores/notifications'
 import { confirmDialog } from '@/utils/dialog'
 import { useUiStore } from '@/stores/ui'
 import { uploadFile } from '@/api/settings'
+
+/* 媒体网格正方形格子：实测容器宽度后用像素值直接定高。
+ * 部分安卓 WebView 对 aspect-ratio 和 padding-top 百分比在 grid 内的计算都有偏差
+ * （实测瓦片渲染成 0.87 比例的长方形），唯有「JS 量宽 → 写 CSS 变量 → 像素定高」跨内核一致。
+ * 瓦片高度 = 列宽 = (内容宽 - 2×8px gap) / 3，宽高由同一来源保证相等 */
+const vSquareGrid = {
+  mounted(el) {
+    const update = () => {
+      /* 不判断 media 类：网格可能在挂载后才切换到 media（chip/分类变化复用同一元素），
+       * 且 --cell 写在非 media 网格上无害（瓦片只出现在 media 网格） */
+      const w = el.clientWidth - 2 /* padding-right: 2px */
+      if (w > 0) el.style.setProperty('--cell', (w - 16) / 3 + 'px') /* 2 列间隙 × 8px */
+    }
+    update()
+    el._sqRO = new ResizeObserver(update)
+    el._sqRO.observe(el)
+  },
+  unmounted(el) { el._sqRO && el._sqRO.disconnect() },
+}
 import * as cardsApi from '@/api/cards'
 import { compressImage } from '@/utils/image'
 
