@@ -160,9 +160,9 @@ function continueTalk(dbRef, contactId) {
   }
   const cards = memberId ? drawCardsForMember(d, contactId, memberId, 1) : drawCards(d, contactId, 1);
   const card = cards[0] || null;
-  // 拍一拍：内定 5% 概率（点"继续说"也算对方主动发，同样触发）。命中且库里有字卡时不显示"正在输入"，
+  // 拍一拍：内定 3% 概率（点"继续说"也算对方主动发，同样触发）。命中且库里有字卡时不显示"正在输入"，
   // 走独立的短延时（约 0.8~1.6 秒），不跟随普通回复时长
-  if (Math.random() < 0.05 && drawPokeCard(d)) {
+  if (Math.random() < 0.03 && drawPokeCard(d)) {
     setTimeout(
       guard(() => {
         if (emitPoke(d, contactId)) maybeContactFavorite(d, contactId);
@@ -267,9 +267,9 @@ function scheduleReply(dbRef, contactId) {
   const group = isGroup(d, contactId);
   const members = group ? groupMembersWithRules(d, contactId) : [];
 
-  /* 拍一拍：单聊内定 5% 概率。命中且库里有字卡时，对方不发话、直接拍一拍——
+  /* 拍一拍：单聊内定 3% 概率。命中且库里有字卡时，对方不发话、直接拍一拍——
      不显示"正在输入"，走独立短延时（约 0.8~1.6 秒），不跟随普通回复时长。 */
-  if (!group && Math.random() < 0.05 && drawPokeCard(d)) {
+  if (!group && Math.random() < 0.03 && drawPokeCard(d)) {
     setTimeout(
       guard(() => {
         if (emitPoke(d, contactId)) maybeContactFavorite(d, contactId);
