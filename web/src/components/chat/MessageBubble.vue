@@ -254,6 +254,9 @@ function fireAvatarPoke() {
   const now = Date.now()
   if (now < avatarPokeCooldown) return
   avatarPokeCooldown = now + 400
+  /* 双击发生在头像上，手指/鼠标的 touchstart 会冒泡触发气泡的长按计时器；
+     这里主动取消，否则约 500ms 后长按菜单又会弹出，与拍一拍面板叠在一起「闪」 */
+  clearTimeout(pressTimer)
   emit('avatar-dblclick')
 }
 function onAvatarDblClick() {
