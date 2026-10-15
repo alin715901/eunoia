@@ -159,6 +159,8 @@ export const useCallStore = defineStore('call', {
       const { groupId, contactId, name, avatar, memberName, isGroup } = invite || {}
       const sessionId = isGroup ? groupId : contactId
       this.pending = null
+      // 兜底：如果已经接通或结束，不再写未接听记录
+      if (!this.active || this.phase === 'connected') return
       const stillRinging =
         this.active && this.phase === 'incoming' && String(this.contactId) === String(sessionId)
       if (stillRinging) {
@@ -227,6 +229,9 @@ export const useCallStore = defineStore('call', {
 
     /* 接通：进入通话中，启动计时 + 对方挂断调度 */
     connect() {
+      // 接听/接通时立即清掉来电超时器，避免 15 秒后被误标为“未接听”
+      clearTimeout(inviteTimer)
+      inviteTimer = null
       this.phase = 'connected'
       this.seconds = 0
       this.connectStart = Date.now()
