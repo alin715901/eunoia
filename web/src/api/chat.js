@@ -17,6 +17,7 @@ export {
   getFavorites,
   clearMessages,
   sendImage,
+  sendPoke,
   sendRedPacket,
   sendCallRecord,
   sendQuestion,

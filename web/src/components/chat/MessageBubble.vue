@@ -2,7 +2,12 @@
   <div class="msg-wrap" :class="{ 'has-receipt': hasReceipt }" :style="wrapStyle">
     <div v-if="showTime" class="time-stamp">{{ timeLabel }}</div>
     <div class="msg-row" :class="side" :style="rowAlignStyle">
-      <div class="ava-col">
+      <div
+        class="ava-col"
+        :class="{ 'ava-pokeable': enablePoke && side === 'contact' }"
+        @dblclick="onAvatarDblClick"
+        @touchstart.passive="onAvatarTouch"
+      >
         <AppAvatar :name="displayName" :avatar="displayAvatar" :size="avatarSize" :style="avatarStyle" />
         <!-- 群聊：在头像下方显示发言人昵称（显示昵称开关关闭时不显示） -->
         <span v-if="showMemberName" class="member-name">{{ displayName }}</span>
@@ -209,7 +214,7 @@ import { useMusicStore } from '@/stores/music'
 import { useCinemaStore } from '@/stores/cinema'
 import router from '@/router'
 
-const emit = defineEmits(['long-press', 'quote-tap', 'image-tap', 'open-redpacket'])
+const emit = defineEmits(['long-press', 'quote-tap', 'image-tap', 'open-redpacket', 'avatar-dblclick'])
 
 const props = defineProps({
   message: { type: Object, required: true },
@@ -236,8 +241,34 @@ const props = defineProps({
   // 标识样式：text=「已读」文字 check=对勾
   readReceiptStyle: { type: String, default: 'text' },
   // 是否显示昵称（群成员昵称等；关闭后气泡旁不显示名字）
-  showNames: { type: Boolean, default: true }
+  showNames: { type: Boolean, default: true },
+  // 是否允许双击头像触发「拍一拍」（仅单聊、且仅对方头像；群聊传 false）
+  enablePoke: { type: Boolean, default: false }
 })
+
+/* 双击 / 双触 对方头像 → 触发拍一拍弹窗（仅 enablePoke 且对方消息）
+   桌面用 dblclick；移动端 dblclick 不可靠，这里手动做 320ms 内的双触判定 */
+let lastAvatarTap = 0
+let avatarPokeCooldown = 0
+function fireAvatarPoke() {
+  const now = Date.now()
+  if (now < avatarPokeCooldown) return
+  avatarPokeCooldown = now + 400
+  emit('avatar-dblclick')
+}
+function onAvatarDblClick() {
+  if (props.enablePoke && side.value === 'contact') fireAvatarPoke()
+}
+function onAvatarTouch() {
+  if (!props.enablePoke || side.value !== 'contact') return
+  const now = Date.now()
+  if (now - lastAvatarTap < 320) {
+    lastAvatarTap = 0
+    fireAvatarPoke()
+  } else {
+    lastAvatarTap = now
+  }
+}
 
 const side = computed(() => (props.message.sender === 'me' ? 'me' : 'contact'))
 
@@ -589,6 +620,14 @@ function onRedpacketTap() {
   flex-direction: column;
   align-items: center;
   gap: 3px;
+}
+/* 可拍一拍的头像：给出可点反馈（移动端双击也不会触发页面缩放） */
+.ava-pokeable {
+  cursor: pointer;
+  touch-action: manipulation;
+}
+.ava-pokeable:active {
+  opacity: 0.7;
 }
 .member-name {
   font-size: 10px;

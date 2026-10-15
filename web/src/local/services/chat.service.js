@@ -1,5 +1,6 @@
 import db from '../db'
 import { drawCards, drawCardsForMember, drawPokeCard } from './cardDraw.service'
+import { composePoke } from '../../utils/poke'
 import * as notification from './notification.service'
 import * as settingsRepo from '../repositories/settings.repo'
 import * as chatRepo from '../repositories/chat.repo'
@@ -219,6 +220,21 @@ function sendUserMessage(dbRef, contactId, text, quoteId = null) {
   const msg = d.prepare('SELECT * FROM chat_messages WHERE id = ?').get(info.lastInsertRowid);
 
   scheduleReply(d, contactId);
+  return msg;
+}
+
+/* 我拍对方（双击头像触发）：插入一条 sender='me' 的拍一拍系统提示。
+   拍一拍是轻量手势，不触发对方自动回复（参考微信：拍一拍不会引出一个回合的对话）。 */
+export function sendPokeMessage(dbRef, contactId, text) {
+  const d = dbRef || db;
+  const seq = getNextSeq(contactId);
+  const info = d
+    .prepare(
+      `INSERT INTO chat_messages(contact_id, sender, content_type, text, read_receipt, read, seq, created_at)
+       VALUES(?, 'me', 'poke', ?, 'read', 1, ?, ?)`
+    )
+    .run(contactId, text, seq, Math.floor(Date.now() / 1000));
+  const msg = d.prepare('SELECT * FROM chat_messages WHERE id = ?').get(info.lastInsertRowid);
   return msg;
 }
 
@@ -499,6 +515,7 @@ function emitPoke(dbRef, contactId) {
     "UPDATE chat_messages SET read = 1, read_receipt = 'read' WHERE contact_id = ? AND sender = 'me' AND read_receipt != 'read'"
   ).run(contactId);
   const seq = getNextSeq(contactId);
+  const text = composePoke(card.content, 'in');
   const info = d
     .prepare(
       `INSERT INTO chat_messages(contact_id, sender, content_type, card_id, text, asset_path, duration, author_member_id, is_proactive, read_receipt, read, seq, created_at, quote_id, quote_text, quote_image)
@@ -507,7 +524,7 @@ function emitPoke(dbRef, contactId) {
     .run(
       contactId,
       card.id,
-      card.content,
+      text,
       card.asset_path || '',
       card.duration || null,
       seq,

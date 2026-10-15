@@ -163,6 +163,12 @@ export async function sendImage(contactId, assetPath, contentType = 'image') {
   return chatService.sendImageMessage(db, Number(contactId), assetPath, contentType)
 }
 
+// 发送拍一拍（我拍对方）：居中系统提示，不触发对方自动回复
+export async function sendPoke(contactId, text) {
+  if (!text) fail('text required')
+  return chatService.sendPokeMessage(db, Number(contactId), text)
+}
+
 // 发送红包（单聊走原逻辑；群聊走群红包：amount + count 份，成员随机领取）
 export async function sendRedPacket(contactId, amount, note = '', count = 1) {
   const cid = Number(contactId)

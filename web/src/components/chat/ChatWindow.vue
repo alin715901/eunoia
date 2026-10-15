@@ -37,8 +37,11 @@
         <div :id="'m-' + m.id" :class="{ 'msg-hl': m.id === hlId }">
           <!-- 撤回：居中系统提示（参考微信；按撤回方区分文案） -->
           <div v-if="m.recalled" class="recalled-note">{{ m.sender === 'me' ? '我撤回了一条消息' : (name + '撤回了一条消息') }}</div>
-          <!-- 拍一拍：居中系统提示（格式：联系人 + 拍一拍库字卡内容），与撤回提示同一风格 -->
-          <div v-else-if="m.content_type === 'poke'" class="recalled-note">{{ name }} {{ m.text }}</div>
+          <!-- 拍一拍：居中系统提示（格式：发送方 + 拍一拍文本）。我拍对方显示「我」，对方拍我显示对方昵称 -->
+          <div v-else-if="m.content_type === 'poke'" class="recalled-note poke-note">
+            <AppIcon name="poke" :size="13" />
+            <span>{{ m.sender === 'me' ? (myName || '我') : name }} {{ m.text }}</span>
+          </div>
           <MessageBubble
             v-else
             :message="m"
@@ -57,10 +60,12 @@
             :show-read-receipt="showReadReceipt"
             :read-receipt-style="readReceiptStyle"
             :show-names="showNames"
+            :enable-poke="!isGroup"
             @long-press="onLongPress"
             @quote-tap="onQuoteTap"
             @image-tap="viewerSrc = $event"
             @open-redpacket="onOpenRedPacket"
+            @avatar-dblclick="onAvatarPoke"
           />
         </div>
       </template>
@@ -127,6 +132,17 @@
     <!-- 提问面板（单选/多选/问答） -->
     <QuestionSheet :show="showQuestion" @close="showQuestion = false" @send="onSendQuestion" />
 
+    <!-- 拍一拍面板：双击对方头像弹出，选一条即「我拍了拍对方的X」（居中显示） -->
+    <PokeSheet
+      :show="showPokeSheet"
+      :items="pokeList"
+      @close="showPokeSheet = false"
+      @pick="doSendPoke"
+      @add="openPokeEditor"
+    />
+    <!-- 拍一拍库：聊天内直接添加（复用通用字卡编辑器，固定 category='poke'） -->
+    <CardEditor :show="showPokeEditor" :category="'poke'" @close="showPokeEditor = false" @save="onPokeSave" />
+
     <!-- 长按气泡操作菜单（引用/收藏/撤回/删除）+ 背景遮罩，挂到 body 避免被聊天区 overflow 裁切 -->
     <Teleport to="body">
       <div v-if="menu.show" class="ctx-backdrop" @click="closeMenu" @contextmenu.prevent="closeMenu"></div>
@@ -157,9 +173,13 @@ import RedPacketSheet from './RedPacketSheet.vue'
 import GroupRedPacketSheet from './GroupRedPacketSheet.vue'
 import RedPacketClaimSheet from './RedPacketClaimSheet.vue'
 import QuestionSheet from './QuestionSheet.vue'
+import PokeSheet from './PokeSheet.vue'
+import CardEditor from '@/components/cards/CardEditor.vue'
 import { useChatStore } from '@/stores/chat'
 import { favoriteMessage, recallMessage, deleteMessage, sendImage, sendRedPacket, sendQuestion, continueTalk, searchMessages, claimRedPacket, returnRedPacket } from '@/api/chat'
-import { getCards } from '@/api/cards'
+import { getCards, createCard, createCardsBatch } from '@/api/cards'
+import { composePoke } from '@/utils/poke'
+import AppIcon from '@/components/common/AppIcon.vue'
 import { uploadFile } from '@/api/settings'
 import { useSettingsStore } from '@/stores/settings'
 import { compressImage } from '@/utils/image'
@@ -465,6 +485,71 @@ async function onSendQuestion(payload) {
     chat.push(props.contactId, msg)
   } catch (e) {
     toast.pushToast({ title: '发送失败', text: e?.message || '提问发送失败，请重试', type: 'message' })
+  }
+}
+
+/* ── 拍一拍：双击对方头像唤起 ──
+   选一条 → 发送「我拍了拍对方的X」（sender='me' 的居中系统提示，不触发对方回复）。
+   拍一拍库即通用库 category='poke' 的字卡（内容存「被拍对象」，如「脑袋」）；
+   库为空时首次打开自动填入几个默认短语，方便直接试。 */
+const showPokeSheet = ref(false)
+const pokeList = ref([])
+const showPokeEditor = ref(false)
+let pokeSeeded = false
+const POKE_DEFAULTS = ['脑袋', '肩膀', '头', '脸', '手']
+
+async function ensurePokeSeed() {
+  if (pokeSeeded) return
+  pokeSeeded = true
+  try {
+    const existing = await getCards({ scope: 'general', category: 'poke' })
+    if (!existing.length && !localStorage.getItem('eunoia_poke_seeded_v1')) {
+      await createCardsBatch(
+        POKE_DEFAULTS.map((c) => ({ category: 'poke', scope: 'general', content: c }))
+      )
+      localStorage.setItem('eunoia_poke_seeded_v1', '1')
+    }
+  } catch (e) { /* ignore */ }
+}
+async function loadPokeList() {
+  try {
+    const cards = await getCards({ scope: 'general', category: 'poke' })
+    pokeList.value = cards.map((c) => ({ id: c.id, raw: c.content, text: composePoke(c.content, 'out') }))
+  } catch (e) { pokeList.value = [] }
+}
+async function onAvatarPoke() {
+  await ensurePokeSeed()
+  await loadPokeList()
+  showPokeSheet.value = true
+}
+async function doSendPoke(it) {
+  showPokeSheet.value = false
+  try {
+    await chat.sendPoke(props.contactId, it.raw)
+    await nextTick()
+    scrollToBottom()
+  } catch (e) {
+    toast.pushToast({ title: '发送失败', text: e?.message || '请重试', type: 'message' })
+  }
+}
+function openPokeEditor() {
+  showPokeEditor.value = true
+}
+async function onPokeSave(payload) {
+  showPokeEditor.value = false
+  try {
+    if (payload && Array.isArray(payload.lines)) {
+      const items = payload.lines.map((l) => String(l).trim()).filter(Boolean)
+      if (items.length) {
+        await createCardsBatch(items.map((c) => ({ category: 'poke', scope: 'general', content: c })))
+      }
+    } else if (payload && String(payload.content || '').trim()) {
+      await createCard({ category: 'poke', scope: 'general', content: String(payload.content).trim() })
+    }
+    await loadPokeList()
+    toast.pushToast({ title: '已添加拍一拍' })
+  } catch (e) {
+    toast.pushToast({ title: '添加失败', text: e?.message || '请重试', type: 'message' })
   }
 }
 
@@ -914,6 +999,14 @@ onActivated(() => {
   font-size: 13px;
   color: var(--text-soft);
 }
+/* 拍一拍：居中系统提示，图标 + 文本横向居中 */
+.poke-note {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+.poke-note :deep(svg) { flex: 0 0 auto; opacity: 0.8; }
 </style>
 
 <!-- 长按菜单（横向横条，微信式深色底）与遮罩通过 Teleport 挂到 body，需用全局样式（scoped 不生效） -->
