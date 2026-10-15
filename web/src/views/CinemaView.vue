@@ -24,7 +24,7 @@
           <span class="cv-sec-title">站点 {{ allSites.length }} 个</span>
           <button class="cv-add" @click="openAddSite"><AppIcon name="plus" :size="18" /> 添加</button>
         </div>
-        <p class="cv-sec-tip">点击跳转浏览器里打开观看（视频网站大多禁止在应用内嵌播放）。</p>
+        <p class="cv-sec-tip">点击跳转浏览器里打开观看（视频网站大多禁止在应用内嵌播放）</p>
         <button
           v-for="s in allSites"
           :key="s.id"
