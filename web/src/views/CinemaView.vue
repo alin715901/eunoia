@@ -398,8 +398,13 @@ async function enterFs() {
   } else if (root.webkitRequestFullscreen) {
     try { root.webkitRequestFullscreen(); ok = true } catch (e) { /* 忽略 */ }
   }
-  if (ok && screen.orientation && screen.orientation.lock) {
-    try { await screen.orientation.lock('landscape').catch(() => {}) } catch (e) { /* 忽略 */ }
+  // 进入系统全屏后（Android / 桌面）尝试锁定横屏；
+  // 部分浏览器要求已处于全屏态，故在 fullscreenchange 里再补一次
+  if (ok) lockLandscape()
+}
+function lockLandscape() {
+  if (screen.orientation && screen.orientation.lock) {
+    try { screen.orientation.lock('landscape').catch(() => {}) } catch (e) { /* 忽略 */ }
   }
 }
 function exitFs() {
@@ -413,7 +418,10 @@ function exitFs() {
   }
 }
 function onFsChange() {
-  if (!(document.fullscreenElement || document.webkitFullscreenElement)) {
+  if (document.fullscreenElement || document.webkitFullscreenElement) {
+    // 真·进入系统全屏（Android / 桌面）：补锁横屏，规避手势竞态
+    lockLandscape()
+  } else {
     fsActive.value = false
   }
 }
