@@ -24,7 +24,7 @@
           <span class="cv-sec-title">站点 {{ allSites.length }} 个</span>
           <button class="cv-add" @click="openAddSite"><AppIcon name="plus" :size="18" /> 添加</button>
         </div>
-        <p class="cv-sec-tip">点站点在浏览器里打开观看（视频网站大多禁止在应用内嵌播放）。</p>
+        <p class="cv-sec-tip">点击跳转浏览器里打开观看（视频网站大多禁止在应用内嵌播放）。</p>
         <button
           v-for="s in allSites"
           :key="s.id"
@@ -50,7 +50,7 @@
           <span class="cv-sec-title">片单 {{ linkList.length }} 条</span>
           <button class="cv-add" @click="openAddLink"><AppIcon name="plus" :size="18" /> 导入</button>
         </div>
-        <p class="cv-sec-tip">支持 B 站 / 腾讯视频链接和 mp4 直链，导入后点卡片直接播放；其他平台点卡片在浏览器里打开。</p>
+        <p class="cv-sec-tip">支持b站/腾讯视频链接和 mp4 直链，导入后直接播放；其他平台链接跳转浏览器里打开。（b站的分享链接需要在浏览器打开后，再复制链接才可以导入）</p>
         <button
           v-for="l in linkList"
           :key="l.id"
@@ -101,7 +101,7 @@
           <span class="cv-fld-label">视频链接</span>
           <input v-model="linkSheet.url" class="cv-input" placeholder="B站/腾讯视频链接，或 mp4 直链" />
         </div>
-        <p class="cv-sheet-tip">B 站（BV/av、含分享链接）、腾讯视频（vid、含分享链接）、mp4/m3u8 直链可在应用内直接播放；爱奇艺 / 芒果 / 人人等禁止内嵌，点卡片会在浏览器打开。</p>
+        <p class="cv-sheet-tip">b站、腾讯视频（vid、含分享链接）、mp4/m3u8 直链可在应用内直接播放（b站的分享链接需要在浏览器打开后，再复制链接才可以导入）</p>
         <p v-if="linkPreview" class="cv-link-preview" :class="linkPreview.ok ? 'ok' : 'ext'">{{ linkPreview.text }}</p>
         <div class="cv-actions">
           <button class="cv-btn ghost" @click="closeLinkSheet">取消</button>
