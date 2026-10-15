@@ -111,7 +111,7 @@
     </div>
 
     <!-- 应用内播放器：16:9 视频在上，视频下方是陪看聊天室 -->
-    <div v-if="player.show" class="cv-player">
+    <div v-if="player.show" ref="playerRoot" class="cv-player" :class="{ 'is-fs': fsActive }">
       <div class="cv-bar">
         <button class="cv-bar-btn" @click="closePlayer" aria-label="关闭"><AppIcon name="close" :size="20" /></button>
         <span class="cv-bar-title">{{ player.title }}</span>
@@ -120,7 +120,7 @@
 
       <div class="cv-main" :class="{ 'chat-collapsed': chatCollapsed }">
       <!-- 视频区：竖屏固定 16:9；聊天室收起 / 横屏时撑满剩余空间 -->
-      <div class="cv-stage">
+      <div ref="stageEl" class="cv-stage">
         <iframe
           v-if="player.type === 'iframe'"
           class="cv-frame"
@@ -141,6 +141,14 @@
           webkit-playsinline
           :src="player.src"
         ></video>
+        <button
+          class="cv-stage-fs"
+          :class="{ active: fsActive }"
+          @click="toggleFs"
+          :aria-label="fsActive ? '退出全屏' : '全屏'"
+        >
+          <AppIcon :name="fsActive ? 'close' : 'expand'" :size="18" />
+        </button>
       </div>
 
       <!-- 视频下方：陪看状态 + 邀请操作 -->
@@ -361,6 +369,54 @@ const chatListEl = ref(null)
 const myAvatar = ref('')
 /* 聊天室收起：只留顶部细条，视频区撑满 */
 const chatCollapsed = ref(false)
+
+/* 应用级全屏：隐藏所有 chrome，让视频区填满视口；原生视频优先调用系统全屏以真正横屏 */
+const playerRoot = ref(null)
+const stageEl = ref(null)
+const fsActive = ref(false)
+
+function toggleFs() {
+  if (fsActive.value) exitFs()
+  else enterFs()
+}
+async function enterFs() {
+  fsActive.value = true
+  await nextTick()
+  const v = stageEl.value && stageEl.value.querySelector('video')
+  if (v && v.webkitEnterFullscreen) {
+    try {
+      v.addEventListener('webkitendfullscreen', () => { fsActive.value = false }, { once: true })
+      v.webkitEnterFullscreen()
+      return
+    } catch (e) { /* 忽略 */ }
+  }
+  const root = playerRoot.value
+  if (!root) return
+  let ok = false
+  if (root.requestFullscreen) {
+    try { await root.requestFullscreen(); ok = true } catch (e) { /* 忽略 */ }
+  } else if (root.webkitRequestFullscreen) {
+    try { root.webkitRequestFullscreen(); ok = true } catch (e) { /* 忽略 */ }
+  }
+  if (ok && screen.orientation && screen.orientation.lock) {
+    try { await screen.orientation.lock('landscape').catch(() => {}) } catch (e) { /* 忽略 */ }
+  }
+}
+function exitFs() {
+  fsActive.value = false
+  const doc = document
+  if (doc.fullscreenElement || doc.webkitFullscreenElement) {
+    try {
+      if (doc.exitFullscreen) doc.exitFullscreen()
+      else if (doc.webkitExitFullscreen) doc.webkitExitFullscreen()
+    } catch (e) { /* 忽略 */ }
+  }
+}
+function onFsChange() {
+  if (!(document.fullscreenElement || document.webkitFullscreenElement)) {
+    fsActive.value = false
+  }
+}
 
 const contactList = computed(() => contactsStore.list || [])
 
@@ -717,6 +773,8 @@ async function removeLink(it) {
 }
 
 onMounted(async () => {
+  document.addEventListener('fullscreenchange', onFsChange)
+  document.addEventListener('webkitfullscreenchange', onFsChange)
   await Promise.all([sites.load(), links.load()])
   loadWatchTotal()
   /* 陪看聊天对象：默认取首页当前选中的联系人，没有则取第一个。
@@ -735,6 +793,8 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  document.removeEventListener('fullscreenchange', onFsChange)
+  document.removeEventListener('webkitfullscreenchange', onFsChange)
   stopWatchTimer()
   cinemaStore.setPlayerOpen(false)
 })
@@ -807,6 +867,23 @@ onBeforeUnmount(() => {
    横屏 / 聊天室收起时撑满剩余空间（iframe 内部自行黑边适配） */
 .cv-stage { position: relative; flex: 0 0 auto; width: 100%; aspect-ratio: 16 / 9; max-height: 100%; min-height: 0; background: #000; overflow: hidden; }
 .cv-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: none; background: #000; }
+
+/* 全屏按钮：浮在视频右上角，默认半透明避免遮挡 */
+.cv-stage-fs {
+  position: absolute; top: 8px; right: 8px; z-index: 5;
+  width: 34px; height: 34px; border-radius: 50%;
+  border: none; background: rgba(0, 0, 0, 0.45); color: #fff;
+  display: inline-flex; align-items: center; justify-content: center;
+  opacity: 0.85; pointer-events: auto;
+}
+.cv-stage-fs.active { opacity: 1; background: rgba(0, 0, 0, 0.7); }
+
+/* 应用级全屏：隐藏所有 chrome，视频区撑满整个视口 */
+.cv-player.is-fs .cv-bar,
+.cv-player.is-fs .cv-with,
+.cv-player.is-fs .cv-chat { display: none; }
+.cv-player.is-fs .cv-main { flex: 1 1 auto; min-height: 0; }
+.cv-player.is-fs .cv-stage { flex: 1 1 auto; aspect-ratio: auto; width: 100%; height: 100%; }
 
 /* 视频下方整体：状态条 + 聊天室，聊天室占满剩余区域 */
 .cv-main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
