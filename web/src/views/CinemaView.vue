@@ -111,7 +111,7 @@
     </div>
 
     <!-- 应用内播放器：16:9 视频在上，视频下方是陪看聊天室 -->
-    <div v-if="player.show" ref="playerRoot" class="cv-player" :class="{ 'is-fs': fsActive }">
+    <div v-if="player.show" ref="playerRoot" class="cv-player" :class="{ 'is-fs': fsActive, 'force-rotate': forceRotate }">
       <div class="cv-bar">
         <button class="cv-bar-btn" @click="closePlayer" aria-label="关闭"><AppIcon name="close" :size="20" /></button>
         <span class="cv-bar-title">{{ player.title }}</span>
@@ -374,6 +374,8 @@ const chatCollapsed = ref(false)
 const playerRoot = ref(null)
 const stageEl = ref(null)
 const fsActive = ref(false)
+/* 真全屏失败时的兜底标记：竖屏下用 CSS 把视频区旋转 90° 强制横屏 */
+const forceRotate = ref(false)
 
 function toggleFs() {
   if (fsActive.value) exitFs()
@@ -390,17 +392,24 @@ async function enterFs() {
       return
     } catch (e) { /* 忽略 */ }
   }
-  const root = playerRoot.value
-  if (!root) return
-  let ok = false
-  if (root.requestFullscreen) {
-    try { await root.requestFullscreen(); ok = true } catch (e) { /* 忽略 */ }
-  } else if (root.webkitRequestFullscreen) {
-    try { root.webkitRequestFullscreen(); ok = true } catch (e) { /* 忽略 */ }
+  /* 优先让视频区本身成为全屏元素（B 站播放器随之铺满，我们的 × 按钮也随行显示）；
+     失败再退回整个播放器容器；都不行则走应用级全屏（is-fs 撑满视口） */
+  let real = false
+  for (const el of [stageEl.value, playerRoot.value]) {
+    if (!el || real) continue
+    if (el.requestFullscreen) {
+      try { await el.requestFullscreen(); real = true } catch (e) { /* 忽略 */ }
+    }
+    if (!real && el.webkitRequestFullscreen) {
+      try { el.webkitRequestFullscreen(); real = true } catch (e) { /* 忽略 */ }
+    }
   }
-  // 进入系统全屏后（Android / 桌面）尝试锁定横屏；
-  // 部分浏览器要求已处于全屏态，故在 fullscreenchange 里再补一次
-  if (ok) lockLandscape()
+  /* 真全屏失败 → 应用级兜底并标记 force-rotate：
+     竖屏下 CSS 旋转 90° 强制横屏（若锁横屏成功，媒体查询自动失效、不旋转） */
+  forceRotate.value = !real
+  /* 进入系统全屏后（Android / 桌面）尝试锁定横屏；
+   * 部分浏览器要求已处于全屏态，故在 fullscreenchange 里再补一次 */
+  lockLandscape()
 }
 function lockLandscape() {
   if (screen.orientation && screen.orientation.lock) {
@@ -409,6 +418,7 @@ function lockLandscape() {
 }
 function exitFs() {
   fsActive.value = false
+  forceRotate.value = false
   const doc = document
   if (doc.fullscreenElement || doc.webkitFullscreenElement) {
     try {
@@ -419,10 +429,11 @@ function exitFs() {
 }
 function onFsChange() {
   if (document.fullscreenElement || document.webkitFullscreenElement) {
-    // 真·进入系统全屏（Android / 桌面）：补锁横屏，规避手势竞态
+    // 真·进入系统全屏（含 B 站自带按钮在 iframe 内触发的全屏）：锁横屏
     lockLandscape()
   } else {
     fsActive.value = false
+    forceRotate.value = false
   }
 }
 
@@ -876,15 +887,15 @@ onBeforeUnmount(() => {
 .cv-stage { position: relative; flex: 0 0 auto; width: 100%; aspect-ratio: 16 / 9; max-height: 100%; min-height: 0; background: #000; overflow: hidden; }
 .cv-frame { position: absolute; inset: 0; width: 100%; height: 100%; border: none; background: #000; }
 
-/* 全屏按钮：浮在视频右上角，默认半透明避免遮挡 */
+/* 全屏按钮：浮在视频右上角，保证在黑色画面上清晰可见 */
 .cv-stage-fs {
   position: absolute; top: 8px; right: 8px; z-index: 5;
-  width: 34px; height: 34px; border-radius: 50%;
-  border: none; background: rgba(0, 0, 0, 0.45); color: #fff;
+  width: 36px; height: 36px; border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.35); background: rgba(20, 20, 20, 0.65); color: #fff;
   display: inline-flex; align-items: center; justify-content: center;
-  opacity: 0.85; pointer-events: auto;
+  pointer-events: auto;
 }
-.cv-stage-fs.active { opacity: 1; background: rgba(0, 0, 0, 0.7); }
+.cv-stage-fs.active { background: rgba(0, 0, 0, 0.8); }
 
 /* 应用级全屏：隐藏所有 chrome，视频区撑满整个视口 */
 .cv-player.is-fs .cv-bar,
@@ -892,6 +903,25 @@ onBeforeUnmount(() => {
 .cv-player.is-fs .cv-chat { display: none; }
 .cv-player.is-fs .cv-main { flex: 1 1 auto; min-height: 0; }
 .cv-player.is-fs .cv-stage { flex: 1 1 auto; aspect-ratio: auto; width: 100%; height: 100%; }
+
+/* 真·系统全屏：铺满由 UA 处理。注意 UA 对全屏元素本身强制 transform:none，
+   因此竖屏旋转要加在内部视频帧（.cv-frame）上，而不是全屏元素上 */
+@media (orientation: portrait) {
+  /* 视频区成为全屏元素（我们的按钮）：旋转其内部 iframe/video */
+  .cv-stage:fullscreen .cv-frame,
+  .cv-stage:-webkit-full-screen .cv-frame {
+    width: 100vh; height: 100vw;
+    transform: rotate(90deg) translateY(-100vw);
+    transform-origin: top left;
+  }
+  /* 应用级兜底（真全屏失败）：stage 不是全屏元素，可直接旋转 */
+  .cv-player.is-fs.force-rotate .cv-stage {
+    position: fixed; top: 0; left: 0;
+    width: 100vh; height: 100vw;
+    transform: rotate(90deg) translateY(-100vw);
+    transform-origin: top left;
+  }
+}
 
 /* 视频下方整体：状态条 + 聊天室，聊天室占满剩余区域 */
 .cv-main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
