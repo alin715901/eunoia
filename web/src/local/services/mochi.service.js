@@ -1,4 +1,4 @@
-import * as createCardsBatch from '../repositories/cards.repo'
+import { createCardsBatch } from '../repositories/cards.repo'
 
 /**
  * mochi 字卡全量备份（app === 'mochi-ccfull'）导入。

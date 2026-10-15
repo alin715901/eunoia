@@ -27,7 +27,8 @@ const EXPORT_TABLES = [
   'moments', 'moment_interactions', 'letters', 'divinations',
   'global_settings', 'proactive_jobs', 'group_member_settings',
   'anniversaries', 'songs', 'song_favs', 'companion_invites',
-  'listen_together', 'cinema_together', 'app_items', 'red_packet_grabs'
+  'listen_together', 'cinema_together', 'app_items', 'red_packet_grabs',
+  'poke_library'
 ]
 
 /* 大板块 → 数据表（对齐桌面功能；感知 / 心迹为即时功能不落库，无需导出。
@@ -45,16 +46,17 @@ export const BACKUP_FEATURES = [
   { key: 'listen', label: '一起听', tables: ['listen_together'] },
   { key: 'cinema', label: '一起观影', tables: ['cinema_together'] },
   { key: 'modules', label: '模块记录', tables: ['app_items'] },
-  { key: 'beautify', label: '桌面美化', tables: ['global_settings'] }
+  { key: 'beautify', label: '桌面美化', tables: ['global_settings'] },
+  { key: 'poke', label: '拍一拍', tables: ['poke_library'] }
 ]
 
 /* 表 → 自增主键列（合并时重映射；无自增 id 的表不在此列） */
 const ID_TABLES = {
   contacts: 'id', card_groups: 'id', cards: 'id', chat_messages: 'id',
   favorites: 'id', moments: 'id', moment_interactions: 'id', letters: 'id',
-  divinations: 'id', proactive_jobs: 'id', anniversaries: 'id', songs: 'id',
+  divinations: 'id', proactive_jobs: 'id',   anniversaries: 'id', songs: 'id',
   companion_invites: 'id', listen_together: 'id', cinema_together: 'id', app_items: 'id',
-  red_packet_grabs: 'id'
+  red_packet_grabs: 'id', poke_library: 'id'
 }
 
 /* 表 → 外键列 → 目标表（导出时按此自动带入关联行，导入时按此重映射 / 断开） */
@@ -81,7 +83,8 @@ const REFS = {
   listen_together: { contact_id: 'contacts', song_id: 'songs', message_id: 'chat_messages' },
   cinema_together: { contact_id: 'contacts', message_id: 'chat_messages' },
   red_packet_grabs: { message_id: 'chat_messages' },
-  app_items: { contact_id: 'contacts' }
+  app_items: { contact_id: 'contacts' },
+  poke_library: {}
 }
 
 /* 可被自动带入的「叶子表」：它们自身的外键也只指向叶子表，不会无限展开 */
@@ -94,7 +97,7 @@ const LABELS = {
   global_settings: '全局设置', proactive_jobs: '主动消息任务', group_member_settings: '群成员设置',
   anniversaries: '纪念日', songs: '歌曲', song_favs: '歌曲收藏', companion_invites: '陪伴邀请',
   listen_together: '一起听', cinema_together: '一起观影', app_items: '模块记录',
-  red_packet_grabs: '红包领取记录'
+  red_packet_grabs: '红包领取记录', poke_library: '拍一拍'
 }
 
 /* 表名 → 中文名（设置页展示用） */

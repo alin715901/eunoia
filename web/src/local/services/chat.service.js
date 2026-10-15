@@ -519,14 +519,11 @@ function emitPoke(dbRef, contactId) {
   const info = d
     .prepare(
       `INSERT INTO chat_messages(contact_id, sender, content_type, card_id, text, asset_path, duration, author_member_id, is_proactive, read_receipt, read, seq, created_at, quote_id, quote_text, quote_image)
-       VALUES(?, 'contact', 'poke', ?, ?, ?, ?, NULL, 0, 'delivered', 1, ?, ?, NULL, '', '')`
+       VALUES(?, 'contact', 'poke', NULL, ?, '', NULL, NULL, 0, 'delivered', 1, ?, ?, NULL, '', '')`
     )
     .run(
       contactId,
-      card.id,
       text,
-      card.asset_path || '',
-      card.duration || null,
       seq,
       Math.floor(Date.now() / 1000)
     );

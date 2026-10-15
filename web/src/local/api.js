@@ -389,6 +389,8 @@ export async function uploadMusicFile(formData) {
 /* ─────────── 字卡 ─────────── */
 
 export async function getCardGroups({ scope, contactId, category } = {}) {
+  // 拍一拍已独立成库且无分组概念，专区里不返回任何分组
+  if (category === 'poke') return []
   return cardsRepo.listGroups({
     scope: scope || undefined,
     contactId: contactId ? Number(contactId) : undefined,

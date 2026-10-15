@@ -73,13 +73,13 @@ function onMaskClick() {
 }
 .poke-dialog {
   width: 100%;
-  max-width: 340px;
-  max-height: 76vh;
+  max-width: 320px;
+  max-height: 56vh;
   display: flex;
   flex-direction: column;
   background: var(--bg-screen);
   border-radius: 16px;
-  padding: 16px 16px 14px;
+  padding: 14px 14px 12px;
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
 }
 .poke-head {
@@ -87,23 +87,23 @@ function onMaskClick() {
   align-items: center;
   justify-content: space-between;
 }
-.poke-title { font-size: 16px; font-weight: 700; color: var(--text); }
+.poke-title { font-size: 15px; font-weight: 700; color: var(--text); }
 .poke-x {
   border: none;
   background: transparent;
   color: var(--text-soft);
-  padding: 4px;
+  padding: 2px;
 }
 .poke-tip {
-  margin: 6px 0 10px;
-  font-size: 12px;
+  margin: 4px 0 8px;
+  font-size: 11px;
   color: var(--text-soft);
 }
 .poke-items {
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
   padding-right: 2px;
 }
 .poke-item {
@@ -112,19 +112,19 @@ function onMaskClick() {
   border: 1px solid var(--border);
   background: var(--bg-soft);
   color: var(--text);
-  border-radius: 12px;
-  padding: 12px 14px;
-  font-size: 15px;
+  border-radius: 10px;
+  padding: 9px 12px;
+  font-size: 14px;
 }
 .poke-item:active { background: var(--accent-soft); }
 .poke-empty {
   text-align: center;
   color: var(--text-soft);
   font-size: 13px;
-  padding: 18px 0;
+  padding: 16px 0;
 }
 .poke-add {
-  margin-top: 12px;
+  margin-top: 10px;
   flex: 0 0 auto;
   display: flex;
   align-items: center;
@@ -133,9 +133,9 @@ function onMaskClick() {
   border: none;
   background: var(--accent);
   color: #fff;
-  border-radius: 12px;
-  padding: 12px;
-  font-size: 15px;
+  border-radius: 10px;
+  padding: 10px;
+  font-size: 14px;
   font-weight: 600;
 }
 .poke-add:active { opacity: 0.9; }

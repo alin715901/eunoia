@@ -177,6 +177,28 @@ export function migrate() {
   // 一次性迁移标记表
   db.exec('CREATE TABLE IF NOT EXISTS _migrations(key TEXT PRIMARY KEY)')
 
+  // ─── 拍一拍独立成库 ───
+  db.exec(`CREATE TABLE IF NOT EXISTS poke_library (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    content TEXT NOT NULL,
+    weight REAL DEFAULT 1,
+    blocked INTEGER DEFAULT 0,
+    created_at INTEGER
+  )`)
+  // 一次性迁移：把历史 cards 表里 category='poke' 的字卡搬到独立的 poke_library，
+  // 让「拍一拍库」与「字卡库」彻底分开（保留用户已有的拍一拍短语）。
+  const pokeMig = db.prepare("SELECT 1 FROM _migrations WHERE key = 'poke_separate_v1'").get()
+  if (!pokeMig) {
+    db.exec(
+      `INSERT INTO poke_library(content, weight, created_at)
+       SELECT content, COALESCE(weight, 1), COALESCE(created_at, CAST(strftime('%s','now') AS INTEGER))
+       FROM cards WHERE category = 'poke'`
+    )
+    db.exec("DELETE FROM cards WHERE category = 'poke'")
+    db.exec("DELETE FROM card_groups WHERE category = 'poke' AND id NOT IN (SELECT group_id FROM cards WHERE group_id IS NOT NULL)")
+    db.prepare("INSERT OR IGNORE INTO _migrations(key) VALUES('poke_separate_v1')").run()
+  }
+
   // 一次性迁移：清空旧音乐设计（app_items 里 module='music' 的「正在听」标记数据）
   const musicReset = db.prepare("SELECT 1 FROM _migrations WHERE key = 'music_rebuild_v1'").get()
   if (!musicReset) {
