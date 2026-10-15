@@ -101,7 +101,7 @@
           <span class="cv-fld-label">视频链接</span>
           <input v-model="linkSheet.url" class="cv-input" placeholder="B站/腾讯视频链接，或 mp4 直链" />
         </div>
-        <p class="cv-sheet-tip">b站、腾讯视频（vid、含分享链接）、mp4/m3u8 直链可在应用内直接播放（b站的分享链接需要在浏览器打开后，再复制链接才可以导入）</p>
+        <p class="cv-sheet-tip">b站、腾讯视频、mp4/m3u8 直链可在应用内直接播放（b站的分享链接需要在浏览器打开后，再复制链接才可以导入）</p>
         <p v-if="linkPreview" class="cv-link-preview" :class="linkPreview.ok ? 'ok' : 'ext'">{{ linkPreview.text }}</p>
         <div class="cv-actions">
           <button class="cv-btn ghost" @click="closeLinkSheet">取消</button>

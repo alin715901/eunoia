@@ -4,6 +4,7 @@ import {
   sendCompanionInvite, respondCompanionInvite, cancelCompanionInvite, getCompanionInvites
 } from '@/api/companion'
 import { useNotificationsStore } from '@/stores/notifications'
+import { useContactsStore } from '@/stores/contacts'
 
 const ACTIVITIES = [
   { key: 'eat', name: '吃饭', icon: 'meal' },
@@ -198,10 +199,14 @@ export const useCompanionStore = defineStore('companion', () => {
       const inv = data.invite || {}
       incoming.value = [...incoming.value.filter((i) => Number(i.id) !== Number(inv.id)), inv]
       const act = ACTIVITIES.find((a) => a.key === inv.activity)
+      /* 弹窗带联系人头像：优先 SSE 数据，其次本地联系人资料 */
+      const contacts = useContactsStore()
+      const contact = contacts.getById(inv.contact_id ?? inv.contactId)
       toast.pushToast({
         title: `${inv.contact_name || '对方'}邀请你陪伴`,
         text: `一起${act?.name || '陪伴'}${inv.mode === 'down' ? `（倒计时 ${Math.round((inv.duration_sec || 0) / 60)} 分钟）` : ''}`,
         type: 'message',
+        avatar: inv.contact_avatar || contact?.avatar || '',
         duration: 5000,
         route: '/archive'
       })
