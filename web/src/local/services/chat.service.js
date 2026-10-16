@@ -1,6 +1,5 @@
 import db from '../db'
 import { drawCards, drawCardsForMember, drawPokeCard } from './cardDraw.service'
-import { composePoke } from '../../utils/poke'
 import * as notification from './notification.service'
 import * as settingsRepo from '../repositories/settings.repo'
 import * as chatRepo from '../repositories/chat.repo'
@@ -515,7 +514,8 @@ function emitPoke(dbRef, contactId) {
     "UPDATE chat_messages SET read = 1, read_receipt = 'read' WHERE contact_id = ? AND sender = 'me' AND read_receipt != 'read'"
   ).run(contactId);
   const seq = getNextSeq(contactId);
-  const text = composePoke(card.content, 'in');
+  // 拍一拍内容完全由用户自行添加，原样发送（格式：{联系人} {字卡内容}），不做任何拼接
+  const text = card.content;
   const info = d
     .prepare(
       `INSERT INTO chat_messages(contact_id, sender, content_type, card_id, text, asset_path, duration, author_member_id, is_proactive, read_receipt, read, seq, created_at, quote_id, quote_text, quote_image)
