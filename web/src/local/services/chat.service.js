@@ -223,7 +223,7 @@ function sendUserMessage(dbRef, contactId, text, quoteId = null) {
 }
 
 /* 我拍对方（双击头像触发）：插入一条 sender='me' 的拍一拍系统提示。
-   拍一拍是轻量手势，不触发对方自动回复（参考微信：拍一拍不会引出一个回合的对话）。 */
+   拍一拍算作我发出的一条消息，按对方的回复设置触发自动回复（延迟/条数/内容均跟随设置）。 */
 export function sendPokeMessage(dbRef, contactId, text) {
   const d = dbRef || db;
   const seq = getNextSeq(contactId);
@@ -234,6 +234,8 @@ export function sendPokeMessage(dbRef, contactId, text) {
     )
     .run(contactId, text, seq, Math.floor(Date.now() / 1000));
   const msg = d.prepare('SELECT * FROM chat_messages WHERE id = ?').get(info.lastInsertRowid);
+
+  scheduleReply(d, contactId);
   return msg;
 }
 

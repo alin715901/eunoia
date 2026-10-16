@@ -163,7 +163,7 @@ export async function sendImage(contactId, assetPath, contentType = 'image') {
   return chatService.sendImageMessage(db, Number(contactId), assetPath, contentType)
 }
 
-// 发送拍一拍（我拍对方）：居中系统提示，不触发对方自动回复
+// 发送拍一拍（我拍对方）：居中系统提示，算作一条消息，按回复设置触发对方自动回复
 export async function sendPoke(contactId, text) {
   if (!text) fail('text required')
   return chatService.sendPokeMessage(db, Number(contactId), text)

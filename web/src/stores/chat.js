@@ -89,7 +89,8 @@ export const useChatStore = defineStore('chat', {
       return msg
     },
     /* 我拍对方（双击头像触发）：拍一拍内容完全由用户自定义，原样发送，
-       插一条 sender='me' 的拍一拍系统提示（居中显示），不触发对方自动回复 */
+       插一条 sender='me' 的拍一拍系统提示（居中显示）；
+       拍一拍算作我发出的一条消息，会按对方的回复设置触发自动回复 */
     async sendPoke(contactId, text) {
       const msg = await api.sendPoke(contactId, String(text || '').trim())
       this.messagesByContact[contactId] = dedupe(this.messagesByContact[contactId] || [], [msg])

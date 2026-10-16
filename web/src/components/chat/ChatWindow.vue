@@ -489,7 +489,8 @@ async function onSendQuestion(payload) {
 }
 
 /* ── 拍一拍：双击对方头像唤起 ──
-   选一条 → 原样发送（sender='me' 的居中系统提示，不触发对方回复）。
+   选一条 → 原样发送（sender='me' 的居中系统提示）；
+   拍一拍算作我发出的一条消息，会按对方的回复设置触发自动回复（速度/条数/内容跟随设置）。
    拍一拍库是独立的 poke_library 表（与字卡库完全分离），初始为空；
    内容完全由用户自行添加，不自动拼接任何前缀。 */
 const showPokeSheet = ref(false)
