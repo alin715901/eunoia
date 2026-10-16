@@ -199,11 +199,31 @@ export function migrate() {
     db.prepare("INSERT OR IGNORE INTO _migrations(key) VALUES('poke_separate_v1')").run()
   }
 
-  // 一次性迁移：拍一拍独立成库后，库内条目全部清空（不再预置默认短语，由用户自行添加）
+  // 一次性迁移：撤掉双击拍一拍功能早期自动播种的 5 条默认短语（脑袋/肩膀/头/脸/手），
+  // 「我」的拍一拍库此后由用户自行添加、初始为空。
+  // 注意：只清这批播种默认值——字卡库拍一拍专区（category='poke'）是用户自己的数据，
+  // 当年被误并进 poke_library，由下面的 poke_split_v2 原样迁回，绝不清用户数据。
   const pokeWipe = db.prepare("SELECT 1 FROM _migrations WHERE key = 'poke_wipe_v1'").get()
   if (!pokeWipe) {
-    db.exec('DELETE FROM poke_library')
+    db.exec("DELETE FROM poke_library WHERE content IN ('脑袋','肩膀','头','脸','手')")
     db.prepare("INSERT OR IGNORE INTO _migrations(key) VALUES('poke_wipe_v1')").run()
+  }
+
+  // 一次性迁移：拍一拍一分为二（修正早期把两个库合并的误操作）
+  //   字卡库 category='poke' 专区 = 「对方」拍我用的（有分组，走 cards 表，恢复原状）
+  //   poke_library            = 「我」的拍一拍库（聊天双击头像弹窗用，无分组）
+  // 早期版本曾把字卡库的拍一拍并入 poke_library 并清空；这里把其后用户在拍一拍库里
+  // 添加的条目迁回字卡库（category='poke'，归入未分组），再把「我」的库清空，
+  // 两个库从此各走各的表、互不相通。
+  const pokeSplit = db.prepare("SELECT 1 FROM _migrations WHERE key = 'poke_split_v2'").get()
+  if (!pokeSplit) {
+    db.exec(
+      `INSERT INTO cards(scope, owner_contact_id, group_id, category, content, asset_path, duration, weight, blocked, created_at)
+       SELECT 'general', NULL, NULL, 'poke', content, NULL, NULL, COALESCE(weight, 1), COALESCE(blocked, 0), COALESCE(created_at, CAST(strftime('%s','now') AS INTEGER))
+       FROM poke_library`
+    )
+    db.exec('DELETE FROM poke_library')
+    db.prepare("INSERT OR IGNORE INTO _migrations(key) VALUES('poke_split_v2')").run()
   }
 
   // 一次性迁移：清空旧音乐设计（app_items 里 module='music' 的「正在听」标记数据）

@@ -85,8 +85,9 @@ CREATE TABLE IF NOT EXISTS cards (
   FOREIGN KEY (group_id) REFERENCES card_groups(id) ON DELETE CASCADE
 );
 
-/* 拍一拍库：与字卡库完全独立的一张表（不再借 cards 表的 category='poke'）。
-   内容只存「被拍对象」（如「脑袋」），按方向由前端/服务拼成完整提示文本。 */
+/* 「我」的拍一拍库：聊天里双击对方头像弹出的拍一拍面板专用，无分组概念。
+   与字卡库里的拍一拍专区（cards 表 category='poke'，「对方」拍我用的，有分组）
+   是两张互不相通的库；内容由用户自行添加，发送时原样呈现、不拼接前后缀。 */
 CREATE TABLE IF NOT EXISTS poke_library (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   content TEXT NOT NULL,

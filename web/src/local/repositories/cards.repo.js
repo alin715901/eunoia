@@ -1,12 +1,4 @@
 import db from '../db'
-import {
-  POKE_ID_OFFSET,
-  listPokes as listPokeLibrary,
-  createPoke as createPokeLibrary,
-  createPokes as createPokesLibrary,
-  updatePoke as updatePokeLibrary,
-  deletePoke as deletePokeLibrary,
-} from './poke.repo'
 
 function now() {
   return Math.floor(Date.now() / 1000);
@@ -49,8 +41,11 @@ function statsByScope() {
          SELECT scope, owner_contact_id, 0 AS group_count, COUNT(*) AS card_count, 0 AS poke_count, 0 AS poke_group_count
          FROM cards GROUP BY scope, owner_contact_id
          UNION ALL
-         SELECT 'general', NULL, 0 AS group_count, 0 AS card_count, COUNT(*) AS poke_count, 0 AS poke_group_count
-         FROM poke_library WHERE blocked = 0
+         SELECT scope, owner_contact_id, 0 AS group_count, 0 AS card_count, COUNT(*) AS poke_count, 0 AS poke_group_count
+         FROM cards WHERE category = 'poke' GROUP BY scope, owner_contact_id
+         UNION ALL
+         SELECT scope, owner_contact_id, 0 AS group_count, 0 AS card_count, 0 AS poke_count, COUNT(*) AS poke_group_count
+         FROM card_groups WHERE category = 'poke' GROUP BY scope, owner_contact_id
        )
        GROUP BY scope, owner_contact_id`
     )
@@ -99,10 +94,6 @@ function deleteGroup(id) {
 }
 
 function listCards({ groupId, category, scope, contactId, includeBlocked = false } = {}) {
-  // 拍一拍已独立成库：category='poke' 直接走 poke_library（与 cards 表无关）
-  if (category === 'poke') {
-    return listPokeLibrary({ includeBlocked })
-  }
   // LEFT JOIN：未分组（group_id = NULL）的卡片也要在管理界面显示（归入「未分组」）
   let sql =
     'SELECT c.* FROM cards c LEFT JOIN card_groups g ON c.group_id = g.id WHERE 1=1';
@@ -142,10 +133,6 @@ function createCard({
   duration = null,
   weight = 1,
 } = {}) {
-  // 拍一拍独立成库
-  if (category === 'poke') {
-    return createPokeLibrary(content)
-  }
   // groupId 可为空：不归属任何分组的字卡 group_id = NULL，归入「未分组」
   const g = groupId ? db.prepare('SELECT * FROM card_groups WHERE id = ?').get(groupId) : null;
   const cat = category != null ? category : (g ? g.category : null);
@@ -164,25 +151,8 @@ function createCard({
 // 自动去重：同库(scope+owner) + 同分类 + 同内容 + 同资源路径 视为重复，跳过不插入
 // （既拦住「库里已存在」的卡，也拦住「同一份文件里互相重复」的卡）
 // items = [{ groupId, category, scope, ownerContactId, content, asset_path, duration, weight }]
-// 注意：category='poke' 的条目会路由到独立的 poke_library（拍一拍库），与普通字卡分离。
 function createCardsBatch(items = []) {
   if (!Array.isArray(items) || !items.length) return { inserted: 0, skipped: 0 };
-  const pokeItems = items.filter((i) => i && i.category === 'poke');
-  const cardItems = items.filter((i) => !(i && i.category === 'poke'));
-  let inserted = 0;
-  let skipped = 0;
-  if (pokeItems.length) {
-    inserted += createPokesLibrary(pokeItems.map((i) => i.content)).length;
-  }
-  if (cardItems.length) {
-    const r = createCardsBatchCore(cardItems);
-    inserted += r.inserted;
-    skipped += r.skipped;
-  }
-  return { inserted, skipped };
-}
-
-function createCardsBatchCore(items = []) {
   const getGroupStmt = db.prepare('SELECT * FROM card_groups WHERE id = ?');
   const groupCache = new Map();
   const existStmt = db.prepare(
@@ -228,10 +198,6 @@ function createCardsBatchCore(items = []) {
 }
 
 function updateCard(id, fields = {}) {
-  // 拍一拍独立成库（id 带偏移量）
-  if (id >= POKE_ID_OFFSET) {
-    return updatePokeLibrary(id, fields)
-  }
   const allowed = [
     'group_id', 'category', 'content', 'scope', 'owner_contact_id',
     'asset_path', 'duration', 'blocked', 'weight',
@@ -260,10 +226,6 @@ function updateCard(id, fields = {}) {
 }
 
 function deleteCard(id) {
-  // 拍一拍独立成库（id 带偏移量）
-  if (id >= POKE_ID_OFFSET) {
-    return deletePokeLibrary(id);
-  }
   db.prepare('DELETE FROM cards WHERE id = ?').run(id);
   return true;
 }

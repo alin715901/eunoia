@@ -11,6 +11,7 @@ import * as walletRepo from './repositories/wallet.repo'
 import * as settingsRepo from './repositories/settings.repo'
 import * as desktopRepo from './repositories/desktop.repo'
 import * as cardsRepo from './repositories/cards.repo'
+import * as pokeRepo from './repositories/poke.repo'
 import * as cardDrawService from './services/cardDraw.service'
 import * as momentService from './services/moment.service'
 import * as companionService from './services/companion.service'
@@ -161,6 +162,28 @@ export async function getFavorites() {
 export async function sendImage(contactId, assetPath, contentType = 'image') {
   if (!assetPath) fail('assetPath required')
   return chatService.sendImageMessage(db, Number(contactId), assetPath, contentType)
+}
+
+/* ─────────── 我的拍一拍（聊天双击头像弹窗专用库，与字卡库的拍一拍完全分离） ─────────── */
+
+export async function listMyPokes() {
+  return pokeRepo.listPokes()
+}
+
+export async function createMyPokes(items = []) {
+  const contents = (Array.isArray(items) ? items : [items])
+    .map((it) => String((it && typeof it === 'object' ? it.content : it) ?? '').trim())
+    .filter(Boolean)
+  if (!contents.length) return []
+  return pokeRepo.createPokes(contents)
+}
+
+export async function updateMyPoke(id, fields = {}) {
+  return pokeRepo.updatePoke(Number(id), fields)
+}
+
+export async function deleteMyPoke(id) {
+  return pokeRepo.deletePoke(Number(id))
 }
 
 // 发送拍一拍（我拍对方）：居中系统提示，算作一条消息，按回复设置触发对方自动回复
@@ -389,8 +412,6 @@ export async function uploadMusicFile(formData) {
 /* ─────────── 字卡 ─────────── */
 
 export async function getCardGroups({ scope, contactId, category } = {}) {
-  // 拍一拍已独立成库且无分组概念，专区里不返回任何分组
-  if (category === 'poke') return []
   return cardsRepo.listGroups({
     scope: scope || undefined,
     contactId: contactId ? Number(contactId) : undefined,

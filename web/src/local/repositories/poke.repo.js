@@ -1,5 +1,6 @@
-/* 拍一拍库：与字卡库（cards 表）完全独立的存储。
- * 前端/服务统一通过这里读写，不再借用 cards 表的 category='poke'。
+/* 「我」的拍一拍库：聊天里双击对方头像弹出的拍一拍面板专用存储。
+ * 与字卡库的拍一拍专区（cards 表 category='poke'，「对方」拍我用的，有分组）
+ * 是完全分离的两个库，互不相通；这里只服务「我」发出去的拍一拍。
  *
  * id 偏移量：poke_library 与 cards 都用 AUTOINCREMENT，id 可能撞车；
  * 对外暴露的拍一拍 id = 真实 id + POKE_ID_OFFSET（1000000），写回时再减去，
@@ -12,7 +13,7 @@ function now() {
   return Math.floor(Date.now() / 1000)
 }
 
-/* 把 poke_library 行整形成与 cards 行同构的对象（前端/字卡库复用同一套渲染） */
+/* 把 poke_library 行整形成与 cards 行同构的对象（便于前端复用同一套渲染/交互） */
 function shape(r) {
   if (!r) return null
   return {
@@ -49,12 +50,14 @@ export function createPoke(content) {
 export function createPokes(items = []) {
   const t = now()
   const insert = db.prepare('INSERT INTO poke_library(content, weight, created_at) VALUES(?, 1, ?)')
+  const exist = db.prepare('SELECT 1 FROM poke_library WHERE content = ?')
   const out = []
   db.exec('BEGIN')
   try {
     for (const it of items) {
       const c = String((it && typeof it === 'object' ? it.content : it) == null ? '' : (it && typeof it === 'object' ? it.content : it)).trim()
       if (!c) continue
+      if (exist.get(c)) continue // 库内已有相同内容，跳过（面板不出现重复条目）
       const info = insert.run(c, t)
       out.push(shape(db.prepare('SELECT * FROM poke_library WHERE id = ?').get(info.lastInsertRowid)))
     }

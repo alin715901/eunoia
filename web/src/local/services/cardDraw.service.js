@@ -84,10 +84,17 @@ function fallbackAny(contactId) {
     .all(contactId);
 }
 
-// 拍一拍抽卡：从独立的 poke_library 表里按权重随机取一条（与字卡库完全分离）。
+// 拍一拍抽卡：从通用库 category='poke' 的未屏蔽字卡里按权重随机取一条。
+// 用 LEFT JOIN 兼容「未分组」的拍一拍字卡（group_id 为 NULL）。
 function drawPokeCard(dbRef) {
   const d = dbRef || db;
-  const rows = d.prepare('SELECT * FROM poke_library WHERE blocked = 0').all();
+  const rows = d
+    .prepare(
+      `SELECT c.* FROM cards c LEFT JOIN card_groups g ON c.group_id = g.id
+       WHERE c.category = 'poke' AND c.scope = 'general' AND c.blocked = 0
+         AND (c.group_id IS NULL OR g.blocked = 0)`
+    )
+    .all();
   return randomPick(rows);
 }
 

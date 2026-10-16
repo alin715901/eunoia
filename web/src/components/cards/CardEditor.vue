@@ -2,15 +2,15 @@
   <Modal :show="show" :title="title" @close="$emit('close')">
     <!-- ═══ 添加模式：文本类 → 批量粘贴；图片/表情包 → 批量选文件；语音 → 两步上传 ═══ -->
     <template v-if="!initial && !isMedia && !isVoice">
-      <p class="ce-sub">{{ isPoke ? '每行一条，点选即按原文发送' : '每行一条，自动去重' }}</p>
+      <p class="ce-sub">{{ pokeMine ? '每行一条，点选即按原文发送' : '每行一条，自动去重' }}</p>
       <textarea
         v-model="content"
         class="ce-batch"
         placeholder="在此粘贴内容，每行一条…"
       ></textarea>
       <div class="ce-count">{{ lineCount }} 条</div>
-      <!-- 添加到分组：应用内下拉弹层（彩色圆点 + 名称）；拍一拍库无分组概念，不展示 -->
-      <div v-if="!isPoke" class="ce-group" :class="{ open: groupOpen }">
+      <!-- 添加到分组：应用内下拉弹层（彩色圆点 + 名称）；「我的拍一拍」库无分组概念，不展示 -->
+      <div v-if="!pokeMine" class="ce-group" :class="{ open: groupOpen }">
         <button class="ce-group-btn" type="button" @click="groupOpen = !groupOpen">
           <span class="ce-group-ico"><AppIcon name="folder" :size="16" /></span>
           <span class="ce-group-label" :class="{ ph: !picked }">
@@ -60,8 +60,8 @@
       </p>
       <input ref="mediaEl" type="file" accept="image/*" multiple hidden @change="onPickFiles" />
       <div class="ce-count">{{ files.length }} 个</div>
-      <!-- 添加到分组：应用内下拉弹层（彩色圆点 + 名称）；拍一拍库无分组概念，不展示 -->
-      <div v-if="!isPoke" class="ce-group" :class="{ open: groupOpen }">
+      <!-- 添加到分组：应用内下拉弹层（彩色圆点 + 名称）；「我的拍一拍」库无分组概念，不展示 -->
+      <div v-if="!pokeMine" class="ce-group" :class="{ open: groupOpen }">
         <button class="ce-group-btn" type="button" @click="groupOpen = !groupOpen">
           <span class="ce-group-ico"><AppIcon name="folder" :size="16" /></span>
           <span class="ce-group-label" :class="{ ph: !picked }">
@@ -105,8 +105,8 @@
       </button>
       <input ref="mediaEl" type="file" accept="audio/*" multiple hidden @change="onPickFiles" />
       <div class="ce-count">{{ files.length }} 个</div>
-      <!-- 添加到分组：应用内下拉弹层（彩色圆点 + 名称）；拍一拍库无分组概念，不展示 -->
-      <div v-if="!isPoke" class="ce-group" :class="{ open: groupOpen }">
+      <!-- 添加到分组：应用内下拉弹层（彩色圆点 + 名称）；「我的拍一拍」库无分组概念，不展示 -->
+      <div v-if="!pokeMine" class="ce-group" :class="{ open: groupOpen }">
         <button class="ce-group-btn" type="button" @click="groupOpen = !groupOpen">
           <span class="ce-group-ico"><AppIcon name="folder" :size="16" /></span>
           <span class="ce-group-label" :class="{ ph: !picked }">
@@ -196,7 +196,10 @@ const props = defineProps({
   /* 可选分组列表（添加模式下展示「添加到分组」下拉） */
   groups: { type: Array, default: () => [] },
   /* 当前分类：图片 / 表情包板块走「批量添加图片或文件」 */
-  category: { type: String, default: 'main' }
+  category: { type: String, default: 'main' },
+  /* 「我的拍一拍」模式（聊天双击头像弹窗的添加入口）：独立小库、无分组概念，
+     标题/副标题特化；字卡库（含对方的拍一拍专区）走普通字卡逻辑，分组选择照常 */
+  pokeMine: { type: Boolean, default: false }
 })
 const emit = defineEmits(['close', 'save'])
 
@@ -211,8 +214,8 @@ const isMedia = computed(() => ['image', 'sticker'].includes(props.category))
 const files = ref([])
 const mediaEl = ref(null)
 
-/* 拍一拍分类：独立成库后没有分组概念，添加弹窗不展示分组选择 */
-const isPoke = computed(() => props.category === 'poke')
+/* 「我的拍一拍」：聊天里双击头像弹出的拍一拍面板专用库，没有分组概念 */
+const pokeMine = computed(() => props.pokeMine)
 
 /* 语音字卡：两步流程 pick（选音频）→ edit（逐个编辑对应文字） */
 const isVoice = computed(() => props.category === 'voice')
@@ -223,7 +226,7 @@ const voiceIdx = ref(0)
 const title = computed(() => {
   if (props.initial) return '修改字卡'
   if (isVoice.value && voiceStep.value === 'edit') return '编辑语音文字'
-  if (isPoke.value) return '添加拍一拍'
+  if (pokeMine.value) return '添加拍一拍'
   return '添加字卡'
 })
 

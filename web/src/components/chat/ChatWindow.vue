@@ -141,8 +141,8 @@
       @pick="doSendPoke"
       @add="openPokeEditor"
     />
-    <!-- 拍一拍库：聊天内直接添加（复用通用字卡编辑器，固定 category='poke'） -->
-    <CardEditor :show="showPokeEditor" :category="'poke'" @close="showPokeEditor = false" @save="onPokeSave" />
+    <!-- 我的拍一拍库：聊天内直接添加（复用字卡编辑器，pokeMine 模式：无分组、标题特化） -->
+    <CardEditor :show="showPokeEditor" poke-mine @close="showPokeEditor = false" @save="onPokeSave" />
 
     <!-- 长按气泡操作菜单（引用/收藏/撤回/删除）+ 背景遮罩，挂到 body 避免被聊天区 overflow 裁切 -->
     <Teleport to="body">
@@ -178,7 +178,7 @@ import PokeSheet from './PokeSheet.vue'
 import CardEditor from '@/components/cards/CardEditor.vue'
 import { useChatStore } from '@/stores/chat'
 import { favoriteMessage, recallMessage, deleteMessage, sendImage, sendRedPacket, sendQuestion, continueTalk, searchMessages, claimRedPacket, returnRedPacket } from '@/api/chat'
-import { getCards, createCard, createCardsBatch } from '@/api/cards'
+import { getCards, listMyPokes, createMyPokes } from '@/api/cards'
 import AppIcon from '@/components/common/AppIcon.vue'
 import { uploadFile } from '@/api/settings'
 import { useSettingsStore } from '@/stores/settings'
@@ -488,10 +488,11 @@ async function onSendQuestion(payload) {
   }
 }
 
-/* ── 拍一拍：双击对方头像唤起 ──
+/* ── 我的拍一拍：双击对方头像唤起 ──
    选一条 → 原样发送（sender='me' 的居中系统提示）；
    拍一拍算作我发出的一条消息，会按对方的回复设置触发自动回复（速度/条数/内容跟随设置）。
-   拍一拍库是独立的 poke_library 表（与字卡库完全分离），初始为空；
+   这是「我」的拍一拍库（独立 poke_library 表），与字卡库里的拍一拍专区
+   （那是「对方」拍我用的，走字卡 category='poke'，有分组）完全分离、互不相通；
    内容完全由用户自行添加，不自动拼接任何前缀。 */
 const showPokeSheet = ref(false)
 const pokeList = ref([])
@@ -499,8 +500,8 @@ const showPokeEditor = ref(false)
 
 async function loadPokeList() {
   try {
-    const cards = await getCards({ scope: 'general', category: 'poke' })
-    pokeList.value = cards.map((c) => ({ id: c.id, raw: c.content }))
+    const pokes = await listMyPokes()
+    pokeList.value = pokes.map((c) => ({ id: c.id, raw: c.content }))
   } catch (e) { pokeList.value = [] }
 }
 async function onAvatarPoke() {
@@ -526,10 +527,10 @@ async function onPokeSave(payload) {
     if (payload && Array.isArray(payload.lines)) {
       const items = payload.lines.map((l) => String(l).trim()).filter(Boolean)
       if (items.length) {
-        await createCardsBatch(items.map((c) => ({ category: 'poke', scope: 'general', content: c })))
+        await createMyPokes(items)
       }
     } else if (payload && String(payload.content || '').trim()) {
-      await createCard({ category: 'poke', scope: 'general', content: String(payload.content).trim() })
+      await createMyPokes([String(payload.content).trim()])
     }
     await loadPokeList()
     toast.pushToast({ title: '已添加拍一拍' })

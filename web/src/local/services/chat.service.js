@@ -504,7 +504,9 @@ function scheduleReply(dbRef, contactId) {
 }
 
 /* 拍一拍：对方不说话，而是"拍了拍我"。
-   从通用库拍一拍字卡里抽一条，作为居中系统提示（格式：{联系人} {字卡内容}）。
+   从字卡库通用分类 category='poke' 的拍一拍字卡里抽一条（即「字卡库 → 拍一拍」专区，
+   由用户自行管理，与聊天里「我」的拍一拍库完全分离），
+   作为居中系统提示（格式：{联系人} {字卡内容}）。
    没有拍一拍字卡时返回 false，由调用方回落到普通回复。
    模块级函数，供 scheduleReply（发消息后回复）与 continueTalk（点"继续说"）共用。 */
 function emitPoke(dbRef, contactId) {
@@ -521,11 +523,14 @@ function emitPoke(dbRef, contactId) {
   const info = d
     .prepare(
       `INSERT INTO chat_messages(contact_id, sender, content_type, card_id, text, asset_path, duration, author_member_id, is_proactive, read_receipt, read, seq, created_at, quote_id, quote_text, quote_image)
-       VALUES(?, 'contact', 'poke', NULL, ?, '', NULL, NULL, 0, 'delivered', 1, ?, ?, NULL, '', '')`
+       VALUES(?, 'contact', 'poke', ?, ?, ?, ?, NULL, 0, 'delivered', 1, ?, ?, NULL, '', '')`
     )
     .run(
       contactId,
+      card.id,
       text,
+      card.asset_path || '',
+      card.duration || null,
       seq,
       Math.floor(Date.now() / 1000)
     );
