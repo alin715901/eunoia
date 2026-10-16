@@ -65,7 +65,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onActivated, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppAvatar from '@/components/common/AppAvatar.vue'
@@ -162,6 +162,15 @@ onMounted(async () => {
   if (!contactsStore.list || !contactsStore.list.length) {
     try { await contactsStore.load() } catch (e) { /* ignore */ }
   }
+})
+
+/* 邀请页被 keep-alive 缓存：每次进入都重置为选人态，
+   保证「退出对局后再选一起玩」是全新的邀请流程 */
+onActivated(() => {
+  stopPoll()
+  phase.value = 'pick'
+  inviteId.value = 0
+  pickedId.value = 0
 })
 
 onBeforeUnmount(stopPoll)

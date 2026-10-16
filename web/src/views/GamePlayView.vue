@@ -10,20 +10,19 @@
         </div>
         <span class="gp-op-tag">{{ kindTag }}</span>
       </div>
-
-      <component :is="comp" :key="roundKey" :opponent="opponent" :my-avatar="myAvatar" @over="onOver" />
+      <component :is="comp" :key="roundKey" :opponent="opponent" :my-avatar="myAvatar" :together="isMemoryTogether" @over="onOver" />
     </div>
 
     <!-- 结算弹窗 -->
     <div v-if="result" class="gp-mask" @click.self="result = null">
       <div class="gp-result">
-        <div class="gp-res-emoji">{{ result.solo ? '🎉' : result.tie ? '🤝' : result.win ? '🎉' : '😵' }}</div>
+        <div class="gp-res-emoji">{{ (result.solo || result.noVs) ? '🎉' : result.tie ? '🤝' : result.win ? '🎉' : '😵' }}</div>
         <h3 class="gp-res-title">{{ resultTitle }}</h3>
         <p v-if="result.detail" class="gp-res-detail">{{ result.detail }}</p>
-        <p v-if="!result.solo" class="gp-res-react">{{ reaction }}</p>
+        <p v-if="!result.solo && !result.noVs" class="gp-res-react">{{ reaction }}</p>
         <div class="gp-res-btns">
           <button class="md-btn primary" @click="again">再来一局</button>
-          <button class="md-btn ghost" @click="back">返回大厅</button>
+          <button class="md-btn ghost" @click="exitGame">退出游戏</button>
         </div>
       </div>
     </div>
@@ -32,12 +31,13 @@
 
 <script setup>
 import { ref, computed, onMounted, onActivated, onBeforeUnmount, defineAsyncComponent, watch } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppAvatar from '@/components/common/AppAvatar.vue'
 import { useContactsStore } from '@/stores/contacts'
 import { getDesktop, getContacts } from '@/api/contacts'
 import { getGameName, getActiveGame, endGame } from '@/api/games'
+import { confirmDialog } from '@/utils/dialog'
 import { useGameRecords } from '@/composables/useGameRecords'
 
 const COMPONENTS = {
@@ -63,14 +63,19 @@ const kindTag = computed(() => {
 })
 const comp = computed(() => COMPONENTS[kind.value] || COMPONENTS.memory)
 
-/* 默契翻牌是单人计时局：不显示对手行，对方不参与 */
-const showOpponent = computed(() => kind.value !== 'memory')
+/* 默契翻牌是单人计时局：不显示对手行、对方不参与；
+   受邀一起玩（带 contactId）时进入双人模式：显示对手行，双方轮流每人翻两张 */
+const showOpponent = computed(() => kind.value !== 'memory' || isMemoryTogether.value)
+const isMemoryTogether = computed(() => kind.value === 'memory' && !!route.query.contactId)
 
 const opponent = ref({ id: 0, name: '对方', avatar: '' })
 const myAvatar = ref('')
 const fromInvite = ref(false)
 const result = ref(null)
 const roundKey = ref(0)
+
+/* 退出确认进行中的标记：确认后重定向到入口页时放行守卫，避免二次弹窗 */
+let leaving = false
 
 /* 路由变化（换游戏/换对手）时重开一局，避免停留在上一局的终局状态 */
 watch(() => route.fullPath, () => {
@@ -80,8 +85,10 @@ watch(() => route.fullPath, () => {
 })
 
 /* 对局页被 keep-alive 缓存：从大厅/聊天再次进入时 onMounted 不重跑，
-   靠 onActivated 重新开局 + 重载对手（含邀请对局的 contactId 场景） */
+   靠 onActivated 重新开局 + 重载对手（含邀请对局的 contactId 场景）；
+   同时复位退出标记，保证再次进入对局时返回仍会弹确认 */
 onActivated(() => {
+  leaving = false
   result.value = null
   roundKey.value += 1
   loadOpponent()
@@ -89,7 +96,7 @@ onActivated(() => {
 
 const resultTitle = computed(() => {
   if (!result.value) return ''
-  if (result.value.solo) return result.value.title || '完成'
+  if (result.value.solo || result.value.noVs) return result.value.title || '完成'
   if (result.value.tie) return '平局'
   return result.value.win ? '你赢了' : '你输了'
 })
@@ -125,18 +132,14 @@ async function loadOpponent() {
 }
 
 onBeforeUnmount(() => {
-  /* 离开对局页时把已接受的对局邀请标记为已结束（聊天卡片显示「已结束」） */
-  if (fromInvite.value && opponent.value.id) {
-    getActiveGame(opponent.value.id)
-      .then((inv) => { if (inv) return endGame(inv.id).catch(() => {}) })
-      .catch(() => {})
-  }
+  /* 组件真正销毁时兜底：把已接受的对局邀请标记为已结束（聊天卡片显示「已结束」） */
+  endInviteIfAny()
 })
 
 async function onOver(r) {
   result.value = r || { win: false }
-  /* 单人休闲局（默契翻牌）没有对手反应语 */
-  if (r?.solo) {
+  /* 单人休闲局 / 双人无输赢局（默契翻牌）：没有对手反应语，不记胜场 */
+  if (r?.solo || r?.noVs) {
     reaction.value = ''
     return
   }
@@ -155,9 +158,41 @@ function again() {
   roundKey.value += 1
 }
 
-function back() {
-  router.push('/game')
+/* 结束当前邀请对局（聊天卡片同步「已结束」），再选一起玩需重新邀请 */
+async function endInviteIfAny() {
+  if (!fromInvite.value || !opponent.value.id) return
+  try {
+    const inv = await getActiveGame(opponent.value.id)
+    if (inv) await endGame(inv.id)
+  } catch (e) { /* ignore */ }
 }
+
+/* 退出游戏：结束邀请对局 → 回到游戏入口页（自己玩 / 一起玩） */
+async function exitGame() {
+  leaving = true
+  await endInviteIfAny()
+  router.replace(`/game/entry/${kind.value}`)
+}
+
+/* 对局中返回（返回键 / 系统返回）：弹确认，退出回入口页，继续留在对局 */
+onBeforeRouteLeave(async (to, from, next) => {
+  if (leaving) return next()
+  const ok = await confirmDialog({
+    title: '退出游戏？',
+    text: '退出后回到游戏选择页，邀请的对局需要重新邀请',
+    okText: '退出',
+    cancelText: '继续'
+  })
+  if (!ok) return next(false)
+  leaving = true
+  await endInviteIfAny()
+  /* 先取消当前导航，下一个 tick 再 replace 到入口页：
+     守卫内直接 next(路径) 会与外部导航竞争导致 URL 错乱 */
+  next(false)
+  setTimeout(() => {
+    router.replace(`/game/entry/${kind.value}`)
+  }, 0)
+})
 </script>
 
 <style scoped>

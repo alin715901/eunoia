@@ -30,7 +30,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, onActivated } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import { getGameMeta, getGameName } from '@/api/games'
@@ -53,6 +53,10 @@ const bestText = computed(() => {
 })
 
 onMounted(() => {
+  try { load() } catch (e) { /* ignore */ }
+})
+/* 入口页被 keep-alive 缓存：再次进入时刷新最佳纪录 */
+onActivated(() => {
   try { load() } catch (e) { /* ignore */ }
 })
 
