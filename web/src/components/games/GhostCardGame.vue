@@ -248,7 +248,7 @@ build()
 .gh-row { display: flex; flex-wrap: wrap; gap: 6px; min-height: 52px; }
 .gh-card {
   width: 38px; height: 52px; border-radius: 8px; border: 1px solid var(--border);
-  background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center;
+  background: var(--bg-screen); display: flex; flex-direction: column; align-items: center; justify-content: center;
   font-size: 13px; color: var(--text); padding: 0;
 }
 .gh-card b { font-size: 13px; line-height: 1.1; }

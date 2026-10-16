@@ -8,10 +8,10 @@
     <p class="ap-status">{{ statusText }}</p>
 
     <div class="ap-track">
-      <span v-for="n in TRACK" :key="n" class="ap-cell" :class="{ start: n === 0, goal: n === TRACK }">
+      <span v-for="n in cellNums" :key="n" class="ap-cell" :class="{ start: n === 0, goal: n === TRACK }">
         <i v-if="myPos === n" class="ap-plane me">✈️</i>
-        <i v-else-if="aiPos === n" class="ap-plane ai">✈️</i>
-        <em v-else>{{ n }}</em>
+        <i v-if="aiPos === n" class="ap-plane ai">✈️</i>
+        <em v-if="myPos !== n && aiPos !== n">{{ n }}</em>
       </span>
     </div>
 
@@ -32,6 +32,8 @@ import AppAvatar from '@/components/common/AppAvatar.vue'
    落到对方所在格把对方撞回起点重新起飞。 */
 const TRACK = 40
 const DICE_FACES = ['⚀', '⚁', '⚂', '⚃', '⚄', '⚅']
+/* 赛道格号 0（起点）→ 40（终点），共 41 格 */
+const cellNums = Array.from({ length: TRACK + 1 }, (_, i) => i)
 
 const props = defineProps({
   opponent: { type: Object, default: () => ({ name: '对方', avatar: '' }) },
@@ -88,42 +90,37 @@ function roll() {
 function move(v, who) {
   const isMe = who === 'me'
   const pos = isMe ? myPos.value : aiPos.value
+  let extra = false /* 掷到 6 奖励再走一步 */
   if (pos === 0) {
     if (v === 6) {
       setPos(isMe, 6)
       logText.value = isMe ? '起飞成功，直接落到第 6 格！' : '对方起飞了，落到第 6 格'
       checkCrash(isMe)
-      if (!over.value && v === 6) {
-        /* 掷 6 再掷一次 */
-        if (isMe) return // 保持我的回合
-        return aiTurn()
-      }
+      extra = true
     } else {
       logText.value = isMe ? '没掷到 6，无法起飞' : '对方没掷到 6，原地待命'
-      if (isMe) { turn.value = 'ai'; aiTurn() }
-      return
     }
-    if (isMe) { turn.value = 'ai'; aiTurn() }
-    return
+  } else {
+    const target = pos + v
+    if (target > TRACK) {
+      logText.value = isMe ? `掷出 ${v} 点，超出终点，原地不动` : `对方掷出 ${v} 点，超出终点`
+    } else if (target === TRACK) {
+      setPos(isMe, TRACK)
+      return finish(isMe)
+    } else {
+      setPos(isMe, target)
+      checkCrash(isMe)
+      logText.value = isMe ? `你前进到第 ${target} 格` : `对方前进到第 ${target} 格`
+      if (v === 6) extra = true
+    }
   }
-  const target = pos + v
-  if (target > TRACK) {
-    logText.value = isMe ? `掷出 ${v} 点，超出终点，原地不动` : `对方掷出 ${v} 点，超出终点`
-    if (isMe) { turn.value = 'ai'; aiTurn() }
-    return
-  }
-  if (target === TRACK) {
-    setPos(isMe, TRACK)
-    return finish(isMe)
-  }
-  setPos(isMe, target)
-  checkCrash(isMe)
-  logText.value = isMe ? `你前进到第 ${target} 格` : `对方前进到第 ${target} 格`
-  if (v === 6) {
-    if (isMe) return // 我再掷一次
+  /* 回合交接：奖励回合同方继续，否则换手；AI 走完必须把回合还给对方 */
+  if (extra) {
+    if (isMe) return
     return aiTurn()
   }
   if (isMe) { turn.value = 'ai'; aiTurn() }
+  else { turn.value = 'me' }
 }
 
 function setPos(isMe, v) {

@@ -244,6 +244,24 @@ export function migrate() {
     db.prepare("INSERT OR IGNORE INTO _migrations(key) VALUES('music_rebuild_v1')").run()
   }
 
+  // 一次性迁移：默契翻牌改为单人计时局后，旧版纪录（title='best' 存 {steps, seconds}）
+  // 并入新的 best_<kind> 纪录体系（title='best_memory' 存 {value: 最少步数}）
+  const memRec = db.prepare("SELECT 1 FROM _migrations WHERE key = 'game_record_memory_v1'").get()
+  if (!memRec) {
+    const old = db.prepare("SELECT id, extra FROM app_items WHERE module = 'game' AND title = 'best'").get()
+    if (old) {
+      let steps = 0
+      try { steps = Number(JSON.parse(old.extra || '{}').steps) || 0 } catch (e) { /* ignore */ }
+      if (steps > 0) {
+        db.prepare(
+          "INSERT OR IGNORE INTO app_items(module, title, extra, created_at) VALUES('game', 'best_memory', ?, ?)"
+        ).run(JSON.stringify({ value: steps }), Math.floor(Date.now() / 1000))
+      }
+      db.prepare('DELETE FROM app_items WHERE id = ?').run(old.id)
+    }
+    db.prepare("INSERT OR IGNORE INTO _migrations(key) VALUES('game_record_memory_v1')").run()
+  }
+
   // 一次性迁移：存量联系人「主动消息」默认开启
   const migrated = db.prepare("SELECT 1 FROM _migrations WHERE key = 'proactive_default_on'").get()
   if (!migrated) {

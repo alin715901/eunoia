@@ -25,48 +25,19 @@
         </div>
       </div>
     </div>
-
-    <!-- 邀请单人联系人参加游戏 -->
-    <div v-if="pickerShow" class="gl-mask" @click.self="pickerShow = false">
-      <div class="gl-sheet">
-        <h3 class="gl-sheet-title">邀请谁一起玩{{ pickingGame?.name }}</h3>
-        <p class="gl-sheet-sub">邀请会发到对方的聊天里</p>
-        <div class="gl-pick-list">
-          <button
-            v-for="c in personContacts"
-            :key="c.id"
-            class="gl-pick"
-            :class="{ on: pickedId === c.id }"
-            @click="pickedId = c.id"
-          >
-            <AppAvatar :name="c.name" :avatar="c.avatar" :size="30" />
-            <span class="gl-pick-name">{{ c.name }}</span>
-            <AppIcon v-if="pickedId === c.id" name="check" :size="16" color="var(--accent)" />
-          </button>
-          <p v-if="!personContacts.length" class="gl-empty">还没有可邀请的联系人</p>
-        </div>
-        <div class="gl-sheet-btns">
-          <button class="md-btn ghost" @click="pickerShow = false">取消</button>
-          <button class="md-btn primary" :disabled="!pickedId" @click="sendInvite">发送邀请</button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onActivated } from 'vue'
 import { useRouter } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
-import AppAvatar from '@/components/common/AppAvatar.vue'
 import { useContactsStore } from '@/stores/contacts'
-import { useNotificationsStore } from '@/stores/notifications'
 import { useGameRecords } from '@/composables/useGameRecords'
-import { sendGameInvite } from '@/api/games'
 
 const GAMES = [
-  { kind: 'memory', name: '默契翻牌', emoji: '🃏', desc: '轮流翻牌配对，配对多者胜' },
+  { kind: 'memory', name: '默契翻牌', emoji: '🃏', desc: '单人休闲计时局，翻完所有配对' },
   { kind: 'ghost', name: '抽鬼牌', emoji: '👻', desc: '轮流抽牌，抽到小王者输' },
   { kind: 'gomoku', name: '五子棋', emoji: '⚫', desc: '五子连珠即获胜' },
   { kind: 'go', name: '围棋', emoji: '⚪', desc: '9 路棋盘，吃子数地' },
@@ -77,21 +48,15 @@ const GAMES = [
 
 const router = useRouter()
 const contactsStore = useContactsStore()
-const toast = useNotificationsStore()
 const { items, load } = useGameRecords()
 
 const games = GAMES
-const pickerShow = ref(false)
-const pickingGame = ref(null)
-const pickedId = ref(0)
-
-const personContacts = computed(() => (contactsStore.list || []).filter((c) => c.kind !== 'group'))
 
 function bestText(kind) {
   const row = items.value.find((x) => x.title === `best_${kind}`)
   if (!row) return ''
   const e = row.extra || {}
-  if (kind === 'memory') return e.value ? `最佳：${e.value} 回合通关` : ''
+  if (kind === 'memory') return e.value ? `最佳：${e.value} 步通关` : ''
   if (kind === 'guess') return e.value ? `最佳：${e.value} 次猜中` : ''
   return e.wins ? `累计胜 ${e.wins} 场` : ''
 }
@@ -100,29 +65,22 @@ function start(kind) {
   router.push(`/game/play/${kind}`)
 }
 
+/* 邀请走整页选择器（不再用底部弹窗） */
 function invite(g) {
-  pickingGame.value = g
-  pickedId.value = 0
-  pickerShow.value = true
+  router.push(`/game/invite/${g.kind}`)
 }
 
-async function sendInvite() {
-  if (!pickedId.value || !pickingGame.value) return
-  try {
-    await sendGameInvite(pickedId.value, pickingGame.value.kind)
-    toast.pushToast({ title: '邀请已发送到聊天' })
-  } catch (e) {
-    toast.pushToast({ title: e?.message || '邀请发送失败' })
-  }
-  pickerShow.value = false
-}
-
-onMounted(async () => {
+async function loadAll() {
   if (!contactsStore.list || !contactsStore.list.length) {
     try { await contactsStore.load() } catch (e) { /* ignore */ }
   }
   try { await load() } catch (e) { /* ignore */ }
-})
+}
+
+onMounted(loadAll)
+/* /game 被 keep-alive 缓存：从对局页/邀请页返回时 onMounted 不重跑，
+   靠 onActivated 重新拉纪录，保证大厅最佳成绩实时刷新 */
+onActivated(loadAll)
 </script>
 
 <style scoped>
@@ -131,7 +89,7 @@ onMounted(async () => {
   display: flex; align-items: center; gap: 12px; background: var(--bg-soft);
   border: 1px solid var(--border); border-radius: 16px; padding: 12px;
 }
-.gl-emoji { font-size: 30px; line-height: 1; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: var(--bg); border-radius: 12px; border: 1px solid var(--border); }
+.gl-emoji { font-size: 30px; line-height: 1; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: var(--bg-screen); border-radius: 12px; border: 1px solid var(--border); }
 .gl-main { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .gl-name { font-size: 15px; font-weight: 600; color: var(--text); }
 .gl-desc { font-size: 11px; color: var(--text-soft); }
@@ -139,25 +97,8 @@ onMounted(async () => {
 .gl-ops { display: flex; flex-direction: column; gap: 6px; }
 .gl-btn {
   border: 1px solid var(--border); border-radius: 999px; padding: 6px 14px; font-size: 12px;
-  background: var(--bg); color: var(--text); white-space: nowrap;
+  background: var(--bg-screen); color: var(--text); white-space: nowrap;
 }
 .gl-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
 .gl-btn:active { transform: scale(0.96); }
-.gl-mask { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.45); z-index: 200; display: flex; align-items: flex-end; justify-content: center; }
-.gl-sheet {
-  width: 100%; max-width: 480px; background: var(--bg); border-radius: 18px 18px 0 0; padding: 18px 16px 22px;
-  max-height: 76vh; display: flex; flex-direction: column;
-}
-.gl-sheet-title { font-size: 16px; color: var(--text); text-align: center; }
-.gl-sheet-sub { font-size: 12px; color: var(--text-soft); text-align: center; margin: 6px 0 12px; }
-.gl-pick-list { flex: 1; overflow: auto; display: flex; flex-direction: column; gap: 4px; }
-.gl-pick {
-  display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 12px;
-  border: 1px solid transparent; background: var(--bg-soft); text-align: left;
-}
-.gl-pick.on { border-color: var(--accent); }
-.gl-pick-name { flex: 1; font-size: 14px; color: var(--text); }
-.gl-empty { text-align: center; font-size: 13px; color: var(--text-soft); padding: 24px 0; }
-.gl-sheet-btns { display: flex; gap: 10px; margin-top: 14px; }
-.gl-sheet-btns .md-btn { flex: 1; }
 </style>

@@ -39,5 +39,5 @@ export function useGameRecords() {
     return 'none'
   }
 
-  return { items, bestOf, save }
+  return { items, load, bestOf, save }
 }

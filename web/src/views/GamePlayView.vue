@@ -2,7 +2,7 @@
   <div class="gp-page">
     <AppHeader :title="gameName" back />
     <div class="gp-body">
-      <div class="gp-opponent">
+      <div v-if="showOpponent" class="gp-opponent">
         <AppAvatar :name="opponent.name" :avatar="opponent.avatar" :size="38" />
         <div class="gp-op-main">
           <span class="gp-op-name">{{ opponent.name }}</span>
@@ -17,10 +17,10 @@
     <!-- 结算弹窗 -->
     <div v-if="result" class="gp-mask" @click.self="result = null">
       <div class="gp-result">
-        <div class="gp-res-emoji">{{ result.win ? '🎉' : result.tie ? '🤝' : '😵' }}</div>
+        <div class="gp-res-emoji">{{ result.solo ? '🎉' : result.tie ? '🤝' : result.win ? '🎉' : '😵' }}</div>
         <h3 class="gp-res-title">{{ resultTitle }}</h3>
         <p v-if="result.detail" class="gp-res-detail">{{ result.detail }}</p>
-        <p class="gp-res-react">{{ reaction }}</p>
+        <p v-if="!result.solo" class="gp-res-react">{{ reaction }}</p>
         <div class="gp-res-btns">
           <button class="md-btn primary" @click="again">再来一局</button>
           <button class="md-btn ghost" @click="back">返回大厅</button>
@@ -31,7 +31,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, defineAsyncComponent, watch } from 'vue'
+import { ref, computed, onMounted, onActivated, onBeforeUnmount, defineAsyncComponent, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppAvatar from '@/components/common/AppAvatar.vue'
@@ -63,6 +63,9 @@ const kindTag = computed(() => {
 })
 const comp = computed(() => COMPONENTS[kind.value] || COMPONENTS.memory)
 
+/* 默契翻牌是单人计时局：不显示对手行，对方不参与 */
+const showOpponent = computed(() => kind.value !== 'memory')
+
 const opponent = ref({ id: 0, name: '对方', avatar: '' })
 const myAvatar = ref('')
 const fromInvite = ref(false)
@@ -76,8 +79,17 @@ watch(() => route.fullPath, () => {
   loadOpponent()
 })
 
+/* 对局页被 keep-alive 缓存：从大厅/聊天再次进入时 onMounted 不重跑，
+   靠 onActivated 重新开局 + 重载对手（含邀请对局的 contactId 场景） */
+onActivated(() => {
+  result.value = null
+  roundKey.value += 1
+  loadOpponent()
+})
+
 const resultTitle = computed(() => {
   if (!result.value) return ''
+  if (result.value.solo) return result.value.title || '完成'
   if (result.value.tie) return '平局'
   return result.value.win ? '你赢了' : '你输了'
 })
@@ -123,13 +135,16 @@ onBeforeUnmount(() => {
 
 async function onOver(r) {
   result.value = r || { win: false }
+  /* 单人休闲局（默契翻牌）没有对手反应语 */
+  if (r?.solo) {
+    reaction.value = ''
+    return
+  }
   const pool = r?.tie ? REACT_TIE : r?.win ? REACT_WIN : REACT_LOSE
   reaction.value = pool[Math.floor(Math.random() * pool.length)]
-  /* 纪录：翻牌记最少回合；其余记累计胜场（猜数的纪录在组件内处理） */
+  /* 纪录：除默契翻牌（组件内已按步数记录）外，胜局累计胜场 */
   try {
-    if (kind.value === 'memory' && r?.rounds) {
-      await save('memory', { value: r.rounds }, { lowerBetter: true })
-    } else if (r?.win) {
+    if (r?.win) {
       await save(kind.value, {}, { countKey: 'wins' })
     }
   } catch (e) { /* 纪录失败不影响对局 */ }
@@ -157,7 +172,7 @@ function back() {
   display: flex; align-items: center; justify-content: center; padding: 30px;
 }
 .gp-result {
-  width: 100%; max-width: 300px; background: var(--bg); border-radius: 18px; padding: 26px 20px 20px;
+  width: 100%; max-width: 300px; background: var(--bg-screen); border-radius: 18px; padding: 26px 20px 20px;
   text-align: center; border: 1px solid var(--border);
 }
 .gp-res-emoji { font-size: 46px; line-height: 1; }
