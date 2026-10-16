@@ -7,4 +7,6 @@ export {
   getGameInvites,
   getActiveGame,
   getGameName,
+  getGameMetaList,
+  getGameMeta,
 } from '../local/api'

@@ -18,6 +18,17 @@ export const GAME_NAMES = {
   guess: '猜数'
 }
 
+/* 游戏展示元数据（kind → 图标/名称/简介），大厅与入口页共用 */
+export const GAME_META = {
+  memory: { name: '默契翻牌', emoji: '🃏', desc: '单人休闲计时局，翻完所有配对' },
+  ghost: { name: '抽鬼牌', emoji: '👻', desc: '轮流抽牌，抽到小王者输' },
+  gomoku: { name: '五子棋', emoji: '⚫', desc: '五子连珠即获胜' },
+  go: { name: '围棋', emoji: '⚪', desc: '9 路棋盘，吃子数地' },
+  aeroplane: { name: '飞行棋', emoji: '✈️', desc: '掷 6 起飞，先到终点' },
+  rps: { name: '猜拳', emoji: '✊', desc: '三局两胜定输赢' },
+  guess: { name: '猜数', emoji: '🔢', desc: '1-100 猜数，次数越少越神' }
+}
+
 export function getGameName(kind) {
   return GAME_NAMES[kind] || '小游戏'
 }

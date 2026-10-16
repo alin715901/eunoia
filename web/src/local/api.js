@@ -1364,6 +1364,15 @@ export function getGameName(kind) {
   return gamesService.getGameName(kind)
 }
 
+/* 游戏展示元数据：列表 / 单个 */
+export function getGameMetaList() {
+  return Object.entries(gamesService.GAME_META).map(([kind, m]) => ({ kind, ...m }))
+}
+
+export function getGameMeta(kind) {
+  return gamesService.GAME_META[kind] || null
+}
+
 /* ─────────── 陪伴邀请 ─────────── */
 
 export async function sendCompanionInvite(payload = {}) {
