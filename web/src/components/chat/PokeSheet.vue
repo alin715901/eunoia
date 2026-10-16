@@ -15,7 +15,7 @@
               :key="it.id"
               class="poke-item"
               @click="$emit('pick', it)"
-            >拍了拍对方的{{ it.raw }}</button>
+            >{{ it.raw }}</button>
             <div v-if="!items.length" class="poke-empty">
               拍一拍库还是空的，点下面的「添加拍一拍」加几个吧
             </div>

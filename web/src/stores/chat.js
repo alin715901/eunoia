@@ -3,7 +3,6 @@ import * as api from '@/api/chat'
 import { markContactRead } from '@/api/contacts'
 import { useContactsStore } from './contacts'
 import { useBadgesStore } from './badges'
-import { composePoke } from '@/utils/poke'
 
 function dedupe(list, incoming) {
   const ids = new Set(list.map((m) => m.id))
@@ -89,11 +88,10 @@ export const useChatStore = defineStore('chat', {
       this.messagesByContact[contactId] = dedupe(this.messagesByContact[contactId] || [], [msg])
       return msg
     },
-    /* 我拍对方（双击头像触发）：把拍一拍对象合成「拍了拍对方的X」后发送，
+    /* 我拍对方（双击头像触发）：拍一拍内容完全由用户自定义，原样发送，
        插一条 sender='me' 的拍一拍系统提示（居中显示），不触发对方自动回复 */
-    async sendPoke(contactId, obj) {
-      const text = composePoke(obj, 'out')
-      const msg = await api.sendPoke(contactId, text)
+    async sendPoke(contactId, text) {
+      const msg = await api.sendPoke(contactId, String(text || '').trim())
       this.messagesByContact[contactId] = dedupe(this.messagesByContact[contactId] || [], [msg])
       return msg
     },

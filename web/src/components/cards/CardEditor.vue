@@ -2,7 +2,7 @@
   <Modal :show="show" :title="title" @close="$emit('close')">
     <!-- ═══ 添加模式：文本类 → 批量粘贴；图片/表情包 → 批量选文件；语音 → 两步上传 ═══ -->
     <template v-if="!initial && !isMedia && !isVoice">
-      <p class="ce-sub">每行一条，自动去重</p>
+      <p class="ce-sub">{{ isPoke ? '每行一条，点选即按原文发送' : '每行一条，自动去重' }}</p>
       <textarea
         v-model="content"
         class="ce-batch"

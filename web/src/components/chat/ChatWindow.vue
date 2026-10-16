@@ -179,7 +179,6 @@ import CardEditor from '@/components/cards/CardEditor.vue'
 import { useChatStore } from '@/stores/chat'
 import { favoriteMessage, recallMessage, deleteMessage, sendImage, sendRedPacket, sendQuestion, continueTalk, searchMessages, claimRedPacket, returnRedPacket } from '@/api/chat'
 import { getCards, createCard, createCardsBatch } from '@/api/cards'
-import { composePoke } from '@/utils/poke'
 import AppIcon from '@/components/common/AppIcon.vue'
 import { uploadFile } from '@/api/settings'
 import { useSettingsStore } from '@/stores/settings'
@@ -490,8 +489,9 @@ async function onSendQuestion(payload) {
 }
 
 /* ── 拍一拍：双击对方头像唤起 ──
-   选一条 → 发送「我拍了拍对方的X」（sender='me' 的居中系统提示，不触发对方回复）。
-   拍一拍库是独立的 poke_library 表（与字卡库完全分离），初始为空，由用户自行添加。 */
+   选一条 → 原样发送（sender='me' 的居中系统提示，不触发对方回复）。
+   拍一拍库是独立的 poke_library 表（与字卡库完全分离），初始为空；
+   内容完全由用户自行添加，不自动拼接任何前缀。 */
 const showPokeSheet = ref(false)
 const pokeList = ref([])
 const showPokeEditor = ref(false)
@@ -499,7 +499,7 @@ const showPokeEditor = ref(false)
 async function loadPokeList() {
   try {
     const cards = await getCards({ scope: 'general', category: 'poke' })
-    pokeList.value = cards.map((c) => ({ id: c.id, raw: c.content, text: composePoke(c.content, 'out') }))
+    pokeList.value = cards.map((c) => ({ id: c.id, raw: c.content }))
   } catch (e) { pokeList.value = [] }
 }
 async function onAvatarPoke() {
