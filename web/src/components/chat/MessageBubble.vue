@@ -147,6 +147,26 @@
               <div v-else class="lpc-status">等待对方接受…</div>
             </div>
           </template>
+          <!-- 游戏邀请：独立邀请卡片（无气泡底），TA 发来的未处理时可接受/拒绝 -->
+          <template v-else-if="message.content_type === 'game_invite'">
+            <div class="lp-card" :class="[giMeta.status, side]">
+              <div class="lpc-head">
+                <div class="lpc-cover lpc-no"><AppIcon name="game" :size="20" color="var(--text)" /></div>
+                <div class="lpc-main">
+                  <div class="lpc-title">{{ giFromMe ? `邀请${contactName}一起玩${giMeta.gameName}` : `邀请你一起玩${giMeta.gameName}` }}</div>
+                  <div class="lpc-song">来一局 {{ giMeta.gameName || '小游戏' }} 吧</div>
+                </div>
+              </div>
+              <div v-if="!giFromMe && giMeta.status === 'pending'" class="lpc-ops">
+                <button class="lpc-btn ghost" @click.stop="onGiRespond(false)">拒绝</button>
+                <button class="lpc-btn primary" @click.stop="onGiRespond(true)">来一局</button>
+              </div>
+              <div v-else-if="giMeta.status === 'accepted' || giMeta.status === 'rejected' || giMeta.status === 'cancelled' || giMeta.status === 'ended'" class="lpc-result" :class="giMeta.status">
+                {{ giStatusText }}
+              </div>
+              <div v-else class="lpc-status">等待对方接受…</div>
+            </div>
+          </template>
           <!-- 提问卡片：形式标签 + 问题 + 选项列表（选择题对方回复选项，问答题对方抽字卡） -->
           <template v-else-if="message.content_type === 'question'">
             <div class="q-card">
@@ -212,6 +232,7 @@ import { useChatStore } from '@/stores/chat'
 import { useCompanionStore } from '@/stores/companion'
 import { useMusicStore } from '@/stores/music'
 import { useCinemaStore } from '@/stores/cinema'
+import { respondGameInvite } from '@/api/games'
 import router from '@/router'
 
 const emit = defineEmits(['long-press', 'quote-tap', 'image-tap', 'open-redpacket', 'avatar-dblclick'])
@@ -330,7 +351,7 @@ const meta = computed(() => {
 const bubbleExtraClass = computed(() => {
   const t = props.message.content_type
   if (t === 'image' || t === 'sticker' || t === 'redpacket') return 'bare'
-  if (t === 'voice' || t === 'companion_invite' || t === 'listen_invite' || t === 'cinema_invite') return 'bare'
+  if (t === 'voice' || t === 'companion_invite' || t === 'listen_invite' || t === 'cinema_invite' || t === 'game_invite') return 'bare'
   // 图片字卡（无文字）＝表情包：同样去掉气泡底
   if (t === 'card' && props.message.asset_path && !props.message.text) return 'bare'
   return ''
@@ -468,6 +489,29 @@ async function onCiRespond(accept) {
       if (r && r.ok) router.push('/cinema')
     } else {
       await cinema.reject(ciMeta.value.inviteId)
+    }
+  } catch (e) { /* 忽略 */ }
+}
+
+/* ── 游戏邀请卡片 ── */
+const giMeta = computed(() => {
+  try { return JSON.parse(props.message.text || '{}') } catch (e) { return {} }
+})
+const giFromMe = computed(() => side.value === 'me')
+const giStatusText = computed(() => {
+  const s = giMeta.value.status
+  if (s === 'accepted') return '已开桌'
+  if (s === 'rejected') return '已拒绝'
+  if (s === 'cancelled') return '已取消'
+  if (s === 'ended') return '已结束'
+  return ''
+})
+async function onGiRespond(accept) {
+  try {
+    const r = await respondGameInvite(giMeta.value.inviteId, accept)
+    /* 接受成功：跳转对应游戏对局页，带上对方联系人 */
+    if (accept && r && r.ok) {
+      router.push(`/game/play/${r.gameKind}?contactId=${r.contactId}`)
     }
   } catch (e) { /* 忽略 */ }
 }

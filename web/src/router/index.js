@@ -68,6 +68,7 @@ const routes = [
   { path: '/music/settings', name: 'musicSettings', component: MusicSettingsView },
   { path: '/cinema', name: 'cinema', component: CinemaView },
   { path: '/game', name: 'game', component: GameView },
+  { path: '/game/play/:kind', name: 'game-play', component: () => import('@/views/GamePlayView.vue'), props: true },
   { path: '/mood', name: 'mood', component: MoodView },
   { path: '/memo', name: 'memo', component: MemoView },
   { path: '/period', name: 'period', component: PeriodView },

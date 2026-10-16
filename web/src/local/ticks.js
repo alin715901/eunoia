@@ -15,6 +15,7 @@ import { letterTick } from './services/letter.service'
 import { contactInviteTick as companionInviteTick } from './services/companion.service'
 import { contactInviteTick as listenInviteTick } from './services/listen.service'
 import { contactInviteTick as cinemaInviteTick } from './services/cinema-together.service'
+import { contactInviteTick as gameInviteTick } from './services/games.service'
 import { contactFavTick } from './services/music.service'
 
 const TICK_MS = 60 * 1000
@@ -45,6 +46,7 @@ function runMinuteTicks() {
     companionInviteTick()
     listenInviteTick()
     cinemaInviteTick()
+    gameInviteTick()
   } catch (e) {
     /* ignore */
   }

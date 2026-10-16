@@ -17,6 +17,7 @@ import * as momentService from './services/moment.service'
 import * as companionService from './services/companion.service'
 import * as listenService from './services/listen.service'
 import * as cinemaTogetherService from './services/cinema-together.service'
+import * as gamesService from './services/games.service'
 import * as musicService from './services/music.service'
 import * as musicCache from './services/musicCache'
 import * as mochiService from './services/mochi.service'
@@ -68,6 +69,7 @@ export async function getChatList() {
       else if (r.lastType === 'companion_invite') r.lastText = '[陪伴邀请]'
       else if (r.lastType === 'listen_invite') r.lastText = '[一起听歌]'
       else if (r.lastType === 'cinema_invite') r.lastText = '[一起观影]'
+      else if (r.lastType === 'game_invite') r.lastText = '[游戏邀请]'
       else if (r.lastType === 'voice') r.lastText = '[语音]'
       else if (r.lastType === 'redpacket') r.lastText = '[红包]'
       else if (r.lastType === 'call') {
@@ -1198,7 +1200,7 @@ export async function getStorageStats() {
   const sumBytes = (keys) => keys.reduce((s, k) => s + bytesOf(k), 0)
   const sumCount = (keys) => keys.reduce((s, k) => s + count(k), 0)
   const CONTENT = ['songs', 'song_favs', 'cards', 'card_groups', 'letters', 'moments', 'moment_interactions',
-    'favorites', 'wallets', 'anniversaries', 'divinations', 'app_items', 'companion_invites', 'listen_together', 'cinema_together']
+    'favorites', 'wallets', 'anniversaries', 'divinations', 'app_items', 'companion_invites', 'listen_together', 'cinema_together', 'game_invites']
   const SETTINGS = ['contacts', 'contact_members', 'contact_settings', 'contact_desktop',
     'global_settings', 'proactive_jobs', 'group_member_settings']
   return {
@@ -1315,6 +1317,51 @@ export async function getActiveCinema(contactId) {
 /* TA 主动邀我（内部触发，无 HTTP 出口） */
 export function cinemaContactInvite(contactId, preset) {
   return cinemaTogetherService.contactInvite(Number(contactId), preset || {})
+}
+
+/* ─────────── 游戏邀请 ─────────── */
+
+export async function sendGameInvite(contactId, gameKind) {
+  if (!contactId) fail('缺少联系人')
+  const r = gamesService.sendInvite(Number(contactId), gameKind || 'memory')
+  if (r.error) fail(r.error)
+  return r
+}
+
+export async function respondGameInvite(id, accept) {
+  const r = gamesService.respond(Number(id), !!accept)
+  if (r.error) fail(r.error)
+  return r
+}
+
+export async function cancelGameInvite(id) {
+  const r = gamesService.cancel(Number(id))
+  if (r.error) fail(r.error)
+  return r
+}
+
+export async function endGame(id) {
+  const r = gamesService.end(Number(id))
+  if (r.error) fail(r.error)
+  return r
+}
+
+export async function getGameInvites(limit = 50) {
+  return gamesService.listInvites(limit)
+}
+
+/* 当前与某联系人进行中的对局 */
+export async function getActiveGame(contactId) {
+  return gamesService.getActive(Number(contactId))
+}
+
+/* TA 主动邀我（内部触发，无 HTTP 出口） */
+export function gameContactInvite(contactId) {
+  return gamesService.contactInvite(Number(contactId))
+}
+
+export function getGameName(kind) {
+  return gamesService.getGameName(kind)
 }
 
 /* ─────────── 陪伴邀请 ─────────── */

@@ -173,6 +173,17 @@ export function migrate() {
     message_id INTEGER,
     created_at INTEGER
   )`)
+  // 游戏邀请：我邀请联系人一起玩某款小游戏 / TA 邀我。邀请落 game_invites 表，
+  // 并在聊天里落一条 content_type='game_invite' 的卡片消息。
+  db.exec(`CREATE TABLE IF NOT EXISTS game_invites (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    contact_id INTEGER NOT NULL,
+    from_side TEXT NOT NULL DEFAULT 'me',
+    game_kind TEXT NOT NULL DEFAULT 'memory',
+    status TEXT NOT NULL DEFAULT 'pending',
+    message_id INTEGER,
+    created_at INTEGER
+  )`)
 
   // 一次性迁移标记表
   db.exec('CREATE TABLE IF NOT EXISTS _migrations(key TEXT PRIMARY KEY)')

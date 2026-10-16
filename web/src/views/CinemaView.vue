@@ -483,6 +483,7 @@ function msgText(m) {
   if (t === 'redpacket') return '[红包]'
   if (t === 'listen_invite') return '[一起听歌邀请]'
   if (t === 'cinema_invite') return '[一起观影邀请]'
+  if (t === 'game_invite') return '[游戏邀请]'
   return m.text || ''
 }
 

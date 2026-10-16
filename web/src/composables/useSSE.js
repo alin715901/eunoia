@@ -43,6 +43,9 @@ function previewOf(m) {
   if (t === 'cinema_invite') {
     try { const mm = JSON.parse(m.text || '{}'); return mm.from === 'contact' ? `[一起观影] 邀你看《${mm.filmTitle || ''}》` : '[一起观影]' } catch (e) { return '[一起观影]' }
   }
+  if (t === 'game_invite') {
+    try { const mm = JSON.parse(m.text || '{}'); return mm.from === 'contact' ? `[游戏邀请] 邀你玩${mm.gameName || '小游戏'}` : '[游戏邀请]' } catch (e) { return '[游戏邀请]' }
+  }
   if (t === 'poke') return m.text || '拍了拍你'
   return m.text || '（一条卡片消息）'
 }
