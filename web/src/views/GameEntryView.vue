@@ -1,6 +1,6 @@
 <template>
   <div class="ge-page">
-    <AppHeader :title="meta.name" back />
+    <AppHeader :title="meta.name" back @back="onBack" />
     <div class="ge-body">
       <div class="ge-hero">
         <span class="ge-emoji">{{ meta.emoji }}</span>
@@ -10,14 +10,15 @@
       </div>
 
       <div class="ge-modes">
-        <button class="ge-mode primary" @click="solo">
+        <!-- 只有默契翻牌有单人休闲局；其余游戏均为双人对战，只提供一起玩 -->
+        <button v-if="isMemory" class="ge-mode primary" @click="solo">
           <span class="ge-mode-ic">🎮</span>
           <span class="ge-mode-main">
             <span class="ge-mode-title">自己玩</span>
             <span class="ge-mode-sub">一个人开一局，随时开始</span>
           </span>
         </button>
-        <button class="ge-mode ghost" @click="together">
+        <button class="ge-mode" :class="isMemory ? 'ghost' : 'primary'" @click="together">
           <span class="ge-mode-ic">💬</span>
           <span class="ge-mode-main">
             <span class="ge-mode-title">{{ isMemory ? '一起玩' : '邀请联系人一起玩' }}</span>
@@ -31,7 +32,7 @@
 
 <script setup>
 import { computed, onMounted, onActivated } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import { getGameMeta, getGameName } from '@/api/games'
 import { useGameRecords } from '@/composables/useGameRecords'
@@ -60,12 +61,48 @@ onActivated(() => {
   try { load() } catch (e) { /* ignore */ }
 })
 
+/* 返回：显式回游戏大厅。不用 history.back()——
+   邀请/对局流程在历史栈里会残留中间页，pop 可能落到邀请页 */
+function onBack(payload) {
+  if (payload && typeof payload.prevent === 'function') payload.prevent()
+  navGo('/game', true)
+}
+
+/* 系统返回键：pop 目标是大厅/主页等正常上一页时放行；
+   只有 pop 到残留的游戏子页（对局退出 replace 留下的邀请/对局记录）时，
+   才重定向回大厅。用 next(路径) 而不是 next(false)+replace：
+   后者会多压一层路由记录，导致后续 pop 目标变成相同路由被去重 */
+onBeforeRouteLeave((to, from, next) => {
+  if (selfNav) {
+    selfNav = false
+    return next()
+  }
+  if (to.path.startsWith('/game/')) {
+    selfNav = true
+    return next('/game')
+  }
+  next()
+})
+
+/* 内部主动导航（自己玩/一起玩/返回大厅）时跳过守卫接管，
+   否则正常的前进导航会被守卫 next(false) 取消并重定向回大厅，形成死循环 */
+let selfNav = false
+function navGo(path, replace = false) {
+  selfNav = true
+  if (replace) router.replace(path)
+  else router.push(path)
+  /* 兜底复位：守卫同步消费标志；若导航异常未触发守卫，下个宏任务清掉 */
+  setTimeout(() => { selfNav = false }, 0)
+}
+
+/* 进入邀请页/对局页用 push：保留历史栈深度，
+   系统返回键才能逐级回退；退出/返回一律用显式 replace 清理 */
 function solo() {
-  router.push(`/game/play/${kind.value}`)
+  navGo(`/game/play/${kind.value}`)
 }
 
 function together() {
-  router.push(`/game/invite/${kind.value}`)
+  navGo(`/game/invite/${kind.value}`)
 }
 </script>
 

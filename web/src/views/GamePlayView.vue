@@ -1,6 +1,6 @@
 <template>
   <div class="gp-page">
-    <AppHeader :title="gameName" back />
+    <AppHeader :title="gameName" back @back="onBack" />
     <div class="gp-body">
       <div v-if="showOpponent" class="gp-opponent">
         <AppAvatar :name="opponent.name" :avatar="opponent.avatar" :size="38" />
@@ -174,24 +174,33 @@ async function exitGame() {
   router.replace(`/game/entry/${kind.value}`)
 }
 
-/* 对局中返回（返回键 / 系统返回）：弹确认，退出回入口页，继续留在对局 */
-onBeforeRouteLeave(async (to, from, next) => {
-  if (leaving) return next()
+/* 返回键 / 系统返回：弹确认，退出回入口页，继续留在对局。
+   必须显式接管返回：历史栈可能被压浅，AppHeader 默认的 history.back()
+   会直接跳出 App；同时退出用 replace 回入口页而不是 pop，
+   避免栈里残留的邀请页在下次返回时露头 */
+async function confirmExit() {
+  if (leaving) return
   const ok = await confirmDialog({
     title: '退出游戏？',
     text: '退出后回到游戏选择页，邀请的对局需要重新邀请',
     okText: '退出',
     cancelText: '继续'
   })
-  if (!ok) return next(false)
-  leaving = true
-  await endInviteIfAny()
-  /* 先取消当前导航，下一个 tick 再 replace 到入口页：
-     守卫内直接 next(路径) 会与外部导航竞争导致 URL 错乱 */
+  if (!ok) return
+  await exitGame()
+}
+
+/* UI 返回键 */
+function onBack(payload) {
+  if (payload && typeof payload.prevent === 'function') payload.prevent()
+  confirmExit()
+}
+
+/* 系统返回键（浏览器/安卓返回） */
+onBeforeRouteLeave((to, from, next) => {
+  if (leaving) return next()
   next(false)
-  setTimeout(() => {
-    router.replace(`/game/entry/${kind.value}`)
-  }, 0)
+  confirmExit()
 })
 </script>
 

@@ -66,7 +66,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onActivated, onBeforeUnmount } from 'vue'
-import { useRoute, useRouter } from 'vue-router'
+import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppAvatar from '@/components/common/AppAvatar.vue'
 import { useContactsStore } from '@/stores/contacts'
@@ -134,29 +134,54 @@ async function send() {
 
 async function cancelInvite() {
   stopPoll()
-  if (inviteId.value) {
-    try { await cancelGameInvite(inviteId.value) } catch (e) { /* ignore */ }
-  }
   phase.value = 'pick'
+  const id = inviteId.value
+  inviteId.value = 0
+  if (id) {
+    try { await cancelGameInvite(id) } catch (e) { /* ignore */ }
+  }
 }
 
 function backToPick() {
   phase.value = 'pick'
 }
 
+/* 开始游戏用 push：保留历史栈深度，系统返回键可逐级回退 */
 function startGame() {
-  router.push(`/game/play/${kind.value}?contactId=${pickedId.value}`)
+  navGo(`/game/play/${kind.value}?contactId=${pickedId.value}`, false)
 }
 
-/* 返回：等待中先取消邀请并留在选人态，其他阶段直接退回上一页 */
-function onBack(payload) {
-  if (phase.value === 'waiting') {
-    if (payload && typeof payload.prevent === 'function') payload.prevent()
-    cancelInvite()
-    return
-  }
-  router.back()
+/* 内部主动导航时跳过返回守卫的接管：
+   否则 startGame 的导航会被守卫 next(false) 取消，与后续 replace 竞争，
+   导致 URL 与页面内容错乱 */
+let selfNav = false
+function navGo(path, replace) {
+  selfNav = true
+  if (replace) router.replace(path)
+  else router.push(path)
+  /* 兜底复位：守卫同步消费标志；若导航异常未触发守卫，下个宏任务清掉 */
+  setTimeout(() => { selfNav = false }, 0)
 }
+
+/* 返回统一回游戏入口页（自己玩/一起玩）：等待中先取消邀请。
+   不用 history.back()——栈里可能残留旧的邀请/对局记录 */
+function onBack(payload) {
+  if (payload && typeof payload.prevent === 'function') payload.prevent()
+  if (phase.value === 'waiting') cancelInvite()
+  navGo(`/game/entry/${kind.value}`, true)
+}
+
+/* 系统返回键：pop 的上一页就是入口页（邀请页只从入口页进入），直接放行；
+   等待中先取消邀请。不用 next(false)+replace——会多压一层路由记录，
+   导致后续 pop 目标变成相同路由被 vue-router 去重 */
+onBeforeRouteLeave((to, from, next) => {
+  if (selfNav) {
+    selfNav = false
+    return next()
+  }
+  if (phase.value === 'waiting') cancelInvite()
+  next()
+})
 
 onMounted(async () => {
   if (!contactsStore.list || !contactsStore.list.length) {
@@ -171,6 +196,7 @@ onActivated(() => {
   phase.value = 'pick'
   inviteId.value = 0
   pickedId.value = 0
+  selfNav = false
 })
 
 onBeforeUnmount(stopPoll)

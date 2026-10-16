@@ -32,7 +32,7 @@
 
 <script setup>
 import { computed, onMounted, onActivated } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRouter, onBeforeRouteLeave } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import { useContactsStore } from '@/stores/contacts'
@@ -56,8 +56,29 @@ function bestText(kind) {
 
 /* 点卡片进入游戏入口页（自己玩 / 一起玩） */
 function open(kind) {
-  router.push(`/game/entry/${kind}`)
+  navGo(`/game/entry/${kind}`)
 }
+
+/* 内部主动导航时跳过守卫：否则点卡片进入入口页会被当成
+   「pop 到残留子页」拦截，大厅再也进不了游戏 */
+let selfNav = false
+function navGo(path, replace = false) {
+  selfNav = true
+  if (replace) router.replace(path)
+  else router.push(path)
+  setTimeout(() => { selfNav = false }, 0)
+}
+
+/* 系统返回键：退出对局/入口页的 replace 会在栈里留下旧的游戏子页面记录，
+   pop 到这些残留页时停在大厅，不让用户看到中间的邀请/对局页 */
+onBeforeRouteLeave((to, from, next) => {
+  if (selfNav) {
+    selfNav = false
+    return next()
+  }
+  if (to.path.startsWith('/game/')) return next(false)
+  next()
+})
 
 async function loadAll() {
   if (!contactsStore.list || !contactsStore.list.length) {

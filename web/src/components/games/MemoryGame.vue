@@ -20,12 +20,13 @@
       <span v-if="!together" class="mg-stat">最佳 <b>{{ bestText }}</b></span>
     </div>
 
-    <div class="mg-grid">
+    <div class="mg-grid" :class="{ busy: together && turn !== 'me' }">
       <button
         v-for="c in cards"
         :key="c.key"
         class="mg-card"
-        :class="{ open: c.open, done: c.done }"
+        :class="{ open: c.open, done: c.done, first: c === first }"
+        :disabled="together && turn !== 'me'"
         @click="flip(c)"
       >
         <span v-if="c.open || c.done" class="mg-face">{{ c.emoji }}</span>
@@ -34,6 +35,7 @@
     </div>
 
     <p v-if="cleared" class="mg-win">全部配对成功！{{ steps }} 步 · {{ timeText }}</p>
+    <p v-else-if="together && first" class="mg-hint">已翻开一张，再翻一张试试配对</p>
 
     <div class="mg-btns">
       <button class="md-btn ghost" @click="reset">重新开始</button>
@@ -43,7 +45,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, onDeactivated } from 'vue'
 import AppAvatar from '@/components/common/AppAvatar.vue'
 import { useGameRecords } from '@/composables/useGameRecords'
 
@@ -135,7 +137,14 @@ function resolvePair(a, b) {
   return false
 }
 
+/* 组件被 keep-alive 停用 / 销毁后，旧的异步翻牌链不再向对局页抛结算，
+   避免退出对局后又被残留的 aiTurn 链弹出结算弹窗 */
+let gone = false
+onDeactivated(() => { gone = true })
+onBeforeUnmount(() => { gone = true; stopTimer() })
+
 async function finishTogether() {
+  if (gone) return
   stopTimer()
   emit('over', {
     noVs: true,
@@ -152,10 +161,10 @@ async function saveBest() {
     if (r === 'new') {
       best.value = await bestOf('memory')
     }
-    emit('over', { solo: true, title: '全部配对成功', detail })
+    if (!gone) emit('over', { solo: true, title: '全部配对成功', detail })
   } catch (e) {
     /* 纪录失败不影响游戏 */
-    emit('over', { solo: true, title: '全部配对成功', detail })
+    if (!gone) emit('over', { solo: true, title: '全部配对成功', detail })
   }
 }
 
@@ -172,10 +181,18 @@ async function flip(c) {
   first.value = null
   mySteps.value += 1
   steps.value += 1
-  const paired = resolvePair(a, c)
-  if (!paired) {
+  if (a.emoji === c.emoji) {
+    /* 配对成功：两张标记为已完成，继续摆在桌上（弱化显示） */
+    a.done = true
+    c.done = true
+  } else {
+    /* 配对失败：先把两张都亮一会儿让用户看清「第二张确实翻开了」，
+       再翻回背面——避免同一同步块里开→关，看着像第二张翻不了 */
     lock.value = true
-    await sleep(620)
+    await sleep(520)
+    a.open = false
+    c.open = false
+    await sleep(180)
     lock.value = false
   }
   if (cleared.value) {
@@ -191,8 +208,10 @@ async function flip(c) {
 
 /* 双人模式：对方翻两张 */
 async function aiTurn() {
+  if (gone) return
   if (cleared.value) return
   await sleep(750)
+  if (gone) return
   const closed = cards.value.filter((c) => !c.open && !c.done)
   if (closed.length < 2) {
     turn.value = 'me'
@@ -203,6 +222,8 @@ async function aiTurn() {
   await sleep(680)
   const rest = cards.value.filter((c) => !c.open && !c.done && c !== a)
   if (!rest.length) {
+    /* 理论上不可达（closed>=2 保证 rest>=1）；兜底：先把翻开的第一张翻回再还回合 */
+    a.open = false
     turn.value = 'me'
     return
   }
@@ -224,7 +245,6 @@ onMounted(async () => {
   best.value = await bestOf('memory')
   reset()
 })
-onBeforeUnmount(stopTimer)
 </script>
 
 <style scoped>
@@ -237,9 +257,26 @@ onBeforeUnmount(stopTimer)
   background: var(--bg-soft); display: flex; align-items: center; justify-content: center; padding: 0;
 }
 .mg-card.open, .mg-card.done { background: var(--bg-screen); border-color: var(--accent); }
+/* 已配对的牌弱化为「背景板」，与正在翻的牌明确区分，避免误点 */
+.mg-card.done {
+  opacity: 0.38; transform: scale(0.9); border-style: dashed;
+  border-color: var(--border); background: var(--bg-soft);
+}
+/* 当前翻开的第一张：光圈脉冲提示「再翻一张配对」。
+   用 box-shadow 而不用 transform：不改变元素几何，避免牌面持续位移
+   （自动化工具/辅助技术的稳定性判定、误触判定都会受影响） */
+.mg-card.first { border-color: var(--accent); animation: mg-pulse 1.1s ease-in-out infinite; }
+@keyframes mg-pulse {
+  0%, 100% { box-shadow: 0 0 0 1px var(--accent); }
+  50% { box-shadow: 0 0 0 4px var(--accent); }
+}
+/* 对方回合：整板置灰不可点 */
+.mg-grid.busy { opacity: 0.75; }
+.mg-card:disabled { cursor: default; }
 .mg-face { font-size: 30px; line-height: 1; }
 .mg-back { font-size: 22px; opacity: 0.45; }
 .mg-win { text-align: center; color: var(--accent); font-size: 14px; margin-top: 16px; }
+.mg-hint { text-align: center; color: var(--text-soft); font-size: 12px; margin-top: 14px; }
 .mg-btns { display: flex; justify-content: center; gap: 10px; margin-top: 18px; }
 
 /* 双人模式：双方条 + 回合提示 */
