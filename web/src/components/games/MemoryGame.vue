@@ -48,6 +48,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, onDeactivated } from 'vue'
 import AppAvatar from '@/components/common/AppAvatar.vue'
 import { useGameRecords } from '@/composables/useGameRecords'
+import { aiDelay } from './aiDelay.js'
 
 /* 默契翻牌：
    - 单人：休闲计时局，没有输赢，翻完所有配对即结束，比步数和用时；
@@ -149,22 +150,24 @@ async function finishTogether() {
   emit('over', {
     noVs: true,
     title: '全部翻完啦',
-    detail: `你 ${mySteps.value} 步 · 对方 ${aiSteps.value} 步 · ${timeText.value}`
+    detail: `你 ${mySteps.value} 步 · 对方 ${aiSteps.value} 步 · ${timeText.value}`,
+    rec: { mode: 'together', seconds: seconds.value, mySteps: mySteps.value, aiSteps: aiSteps.value }
   })
 }
 
 async function saveBest() {
   const rec = { value: steps.value }
   const detail = `${steps.value} 步 · ${timeText.value}`
+  const historyRec = { mode: 'solo', seconds: seconds.value, steps: steps.value }
   try {
     const r = await save('memory', rec, { lowerBetter: true })
     if (r === 'new') {
       best.value = await bestOf('memory')
     }
-    if (!gone) emit('over', { solo: true, title: '全部配对成功', detail })
+    if (!gone) emit('over', { solo: true, title: '全部配对成功', detail, rec: historyRec })
   } catch (e) {
     /* 纪录失败不影响游戏 */
-    if (!gone) emit('over', { solo: true, title: '全部配对成功', detail })
+    if (!gone) emit('over', { solo: true, title: '全部配对成功', detail, rec: historyRec })
   }
 }
 
@@ -211,7 +214,7 @@ async function flip(c) {
 async function aiTurn() {
   if (gone) return
   if (cleared.value) return
-  await sleep(750)
+  await sleep(aiDelay())
   if (gone) return
   const closed = cards.value.filter((c) => !c.open && !c.done)
   if (closed.length < 2) {

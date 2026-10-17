@@ -90,6 +90,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
+import { aiDelay } from './aiDelay.js'
 
 /* 抽鬼牌（标准规则）：
    一副扑克牌只留 1 张 Joker 当鬼牌（另一张王牌拿走不用），共 53 张。
@@ -264,7 +265,7 @@ async function rollDice() {
   logText.value = '开始轮流抽牌'
   if (turn.value === 'ai') {
     busy.value = true
-    setTimeout(aiDraw, 900)
+    setTimeout(aiDraw, aiDelay())
   }
 }
 
@@ -326,7 +327,7 @@ async function drawFromAi(i) {
   if (!over.value) {
     turn.value = 'ai'
     busy.value = true
-    setTimeout(aiDraw, 900)
+    setTimeout(aiDraw, aiDelay())
   }
 }
 

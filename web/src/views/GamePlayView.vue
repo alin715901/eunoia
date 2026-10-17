@@ -53,7 +53,7 @@ const COMPONENTS = {
 const route = useRoute()
 const router = useRouter()
 const contactsStore = useContactsStore()
-const { save } = useGameRecords()
+const { save, addHistory } = useGameRecords()
 
 const kind = computed(() => String(route.params.kind || 'memory'))
 const gameName = computed(() => getGameName(kind.value))
@@ -141,10 +141,20 @@ async function onOver(r) {
   /* 单人休闲局 / 双人无输赢局（默契翻牌）：没有对手反应语，不记胜场 */
   if (r?.solo || r?.noVs) {
     reaction.value = ''
-    return
+  } else {
+    const pool = r?.tie ? REACT_TIE : r?.win ? REACT_WIN : REACT_LOSE
+    reaction.value = pool[Math.floor(Math.random() * pool.length)]
   }
-  const pool = r?.tie ? REACT_TIE : r?.win ? REACT_WIN : REACT_LOSE
-  reaction.value = pool[Math.floor(Math.random() * pool.length)]
+  /* 历史记录：每局一条（时间 + 胜负；默契翻牌只记用时） */
+  try {
+    await addHistory(kind.value, {
+      win: !!(r && r.win),
+      tie: !!(r && r.tie),
+      detail: (r && r.detail) || '',
+      opponent: kind.value === 'memory' ? '' : (opponent.value.name || '对方'),
+      ...((r && r.rec) || {})
+    })
+  } catch (e) { /* 纪录失败不影响对局 */ }
   /* 纪录：除默契翻牌（组件内已按步数记录）外，胜局累计胜场 */
   try {
     if (r?.win) {

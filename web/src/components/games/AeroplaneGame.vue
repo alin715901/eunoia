@@ -25,6 +25,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
+import { aiDelay } from './aiDelay.js'
 import AppAvatar from '@/components/common/AppAvatar.vue'
 
 /* 飞行棋（双人简化版）：赛道 0→40，起点掷出 6 才能起飞（直接落到 6 格），
@@ -148,7 +149,7 @@ function aiTurn() {
     const v = 1 + Math.floor(Math.random() * 6)
     diceValue.value = v
     move(v, 'ai')
-  }, 750)
+  }, aiDelay())
 }
 
 function finish(isMeWin) {

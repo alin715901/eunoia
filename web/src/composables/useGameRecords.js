@@ -1,12 +1,13 @@
 import { useItems } from './useItems'
 
 /**
- * 小游戏纪录：沿用 app_items（module='game'）存放，一款游戏一条 title='best_<kind>' 的记录。
- * extra 结构由各游戏自定义（如 { rounds } / { wins } / { attempts }），
- * better() 决定「新纪录是否更优」，不更优只累加计数类字段。
+ * 小游戏纪录：沿用 app_items（module='game'）存放。
+ *  - 最佳成绩：一款游戏一条 title='best_<kind>' 的记录，extra 由各游戏自定义
+ *  - 历史记录：每局一条 title='hist_<kind>' 的记录，extra 含
+ *    { at, win, tie, detail, opponent, ...游戏自有字段 }，每款最多保留 50 条
  */
 export function useGameRecords() {
-  const { items, load, add, update } = useItems('game')
+  const { items, load, add, update, remove } = useItems('game')
 
   async function bestOf(kind) {
     await load()
@@ -39,5 +40,33 @@ export function useGameRecords() {
     return 'none'
   }
 
-  return { items, load, bestOf, save }
+  /* ── 历史记录：每局一条，新的在前，每款最多 50 条 ── */
+
+  async function addHistory(kind, rec = {}) {
+    await load()
+    const old = items.value
+      .filter((x) => x.title === `hist_${kind}`)
+      .sort((a, b) => (a.extra?.at || a.created_at || 0) - (b.extra?.at || b.created_at || 0))
+    while (old.length >= 50) {
+      const row = old.shift()
+      await remove(row.id)
+    }
+    await add({ title: `hist_${kind}`, extra: { at: Date.now(), ...rec } })
+  }
+
+  async function historyOf(kind) {
+    await load()
+    return items.value
+      .filter((x) => x.title === `hist_${kind}`)
+      .map((x) => ({ id: x.id, ...(x.extra || {}) }))
+      .sort((a, b) => (b.at || 0) - (a.at || 0))
+  }
+
+  async function clearHistory(kind) {
+    await load()
+    const rows = items.value.filter((x) => x.title === `hist_${kind}`)
+    for (const r of rows) await remove(r.id)
+  }
+
+  return { items, load, bestOf, save, addHistory, historyOf, clearHistory }
 }

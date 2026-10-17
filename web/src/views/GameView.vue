@@ -101,7 +101,7 @@ onActivated(loadAll)
   text-align: left; width: 100%;
 }
 .gl-item:active { transform: scale(0.98); }
-.gl-emoji { font-size: 30px; line-height: 1; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: var(--bg-screen); border-radius: 12px; border: 1px solid var(--border); flex: none; }
+.gl-emoji { font-size: 30px; line-height: 1.5; width: 44px; height: 44px; display: flex; align-items: center; justify-content: center; background: var(--bg-screen); border-radius: 12px; border: 1px solid var(--border); flex: none; }
 .gl-main { flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .gl-name { font-size: 15px; font-weight: 600; color: var(--text); }
 .gl-desc { font-size: 11px; color: var(--text-soft); }

@@ -24,6 +24,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
+import { aiDelay } from './aiDelay.js'
 import AppAvatar from '@/components/common/AppAvatar.vue'
 
 /* 五子棋：15×15，我执黑先手，对方执白。
@@ -102,7 +103,7 @@ function play(i) {
   }
   if (cells.value.every((v) => v !== EMPTY)) return finish('draw')
   thinking.value = true
-  setTimeout(aiPlay, 350)
+  setTimeout(aiPlay, aiDelay())
 }
 
 function place(i, color) {

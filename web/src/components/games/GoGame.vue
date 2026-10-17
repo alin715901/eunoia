@@ -25,6 +25,7 @@
 
 <script setup>
 import { ref, computed } from 'vue'
+import { aiDelay } from './aiDelay.js'
 import AppAvatar from '@/components/common/AppAvatar.vue'
 
 /* 围棋：9×9，我执黑先手。标准吃子（无气提子）、禁止自杀、双方连续虚着终局，
@@ -136,7 +137,7 @@ function play(i) {
   passes.value = 0
   if (board.every((v) => v !== EMPTY)) return finish()
   thinking.value = true
-  setTimeout(aiPlay, 400)
+  setTimeout(aiPlay, aiDelay())
 }
 
 function aiPlay() {
@@ -213,7 +214,7 @@ function pass() {
   passes.value += 1
   if (passes.value >= 2) return finish()
   thinking.value = true
-  setTimeout(aiPlay, 400)
+  setTimeout(aiPlay, aiDelay())
 }
 
 function giveUp() {
