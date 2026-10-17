@@ -182,7 +182,8 @@ async function flip(c) {
   mySteps.value += 1
   steps.value += 1
   if (a.emoji === c.emoji) {
-    /* 配对成功：两张标记为已完成，继续摆在桌上（弱化显示） */
+    /* 配对成功：两张标记为已完成，保持亮色摆在桌上（✓ 角标标识），
+       第二张牌翻上来的瞬间就能看到配对成功的高亮 */
     a.done = true
     c.done = true
   } else {
@@ -255,12 +256,14 @@ onMounted(async () => {
 .mg-card {
   aspect-ratio: 3 / 4; border: 1px solid var(--border); border-radius: 14px;
   background: var(--bg-soft); display: flex; align-items: center; justify-content: center; padding: 0;
+  position: relative;
 }
 .mg-card.open, .mg-card.done { background: var(--bg-screen); border-color: var(--accent); }
-/* 已配对的牌弱化为「背景板」，与正在翻的牌明确区分，避免误点 */
-.mg-card.done {
-  opacity: 0.38; transform: scale(0.9); border-style: dashed;
-  border-color: var(--border); background: var(--bg-soft);
+/* 已配对：保持正常亮色不变暗——第二张牌翻上来时看得见「配对成功」的高亮瞬间。
+   与「正在翻」的牌靠 ✓ 角标 + 实线边框区分（正在翻的第一张有光圈脉冲） */
+.mg-card.done::after {
+  content: '✓'; position: absolute; top: 4px; right: 7px;
+  font-size: 12px; font-weight: 700; color: var(--accent); line-height: 1;
 }
 /* 当前翻开的第一张：光圈脉冲提示「再翻一张配对」。
    用 box-shadow 而不用 transform：不改变元素几何，避免牌面持续位移
@@ -274,7 +277,8 @@ onMounted(async () => {
 .mg-grid.busy { opacity: 0.75; }
 .mg-card:disabled { cursor: default; }
 .mg-face { font-size: 30px; line-height: 1; }
-.mg-back { font-size: 22px; opacity: 0.45; }
+/* 牌背正常亮度：不刻意压暗，和牌面一样看得清 */
+.mg-back { font-size: 22px; }
 .mg-win { text-align: center; color: var(--accent); font-size: 14px; margin-top: 16px; }
 .mg-hint { text-align: center; color: var(--text-soft); font-size: 12px; margin-top: 14px; }
 .mg-btns { display: flex; justify-content: center; gap: 10px; margin-top: 18px; }
