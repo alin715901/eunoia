@@ -273,8 +273,7 @@ onMounted(async () => {
   0%, 100% { box-shadow: 0 0 0 1px var(--accent); }
   50% { box-shadow: 0 0 0 4px var(--accent); }
 }
-/* 对方回合：整板置灰不可点 */
-.mg-grid.busy { opacity: 0.75; }
+/* 对方回合：整板不可点但不压暗——牌面保持正常亮度，避免看得费劲 */
 .mg-card:disabled { cursor: default; }
 .mg-face { font-size: 30px; line-height: 1; }
 /* 牌背正常亮度：不刻意压暗，和牌面一样看得清 */

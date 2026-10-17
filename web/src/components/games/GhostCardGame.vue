@@ -10,6 +10,7 @@
             v-for="(c, i) in aiHand"
             :key="c.id"
             class="gh-card back"
+            :class="{ pairing: drawShow && drawShow.paired === c }"
             :disabled="!canDraw"
             @click="drawFromAi(i)"
           >?</button>
@@ -17,8 +18,34 @@
       </div>
 
       <div class="gh-mid">
-        <span class="gh-deck">🂠</span>
-        <span class="gh-tip">{{ phase === 'final' ? '决胜阶段' : '轮流抽牌' }}</span>
+        <!-- 抽牌展示：抽到的牌翻开亮相，能配对的两张一起高亮弃掉 -->
+        <div v-if="drawShow" class="gh-draw">
+          <span
+            class="gh-card big"
+            :class="{ red: isRed(drawShow.card), joker: drawShow.card.rank === '小王', discard: drawShow.discard }"
+          >
+            <b>{{ drawShow.card.rank }}</b><i>{{ drawShow.card.suit }}</i>
+          </span>
+          <span
+            v-if="drawShow.paired"
+            class="gh-card big pair"
+            :class="{ red: isRed(drawShow.paired), joker: drawShow.paired.rank === '小王', discard: drawShow.discard }"
+          >
+            <b>{{ drawShow.paired.rank }}</b><i>{{ drawShow.paired.suit }}</i>
+          </span>
+        </div>
+        <!-- 发牌动画：洗牌 → 分发（计数）→ 拆对子 -->
+        <template v-else-if="dealPhase !== 'done'">
+          <div v-if="dealPhase === 'wash'" class="gh-deal-stack">
+            <span v-for="n in 6" :key="n" class="gh-deal-card" :style="{ animationDelay: (n * 0.1) + 's' }">?</span>
+          </div>
+          <div v-else-if="dealPhase === 'split'" class="gh-deal-count">发牌中 {{ dealt }} / 52</div>
+          <div v-else class="gh-deal-count">拆对子…</div>
+        </template>
+        <template v-else>
+          <span class="gh-deck">🂠</span>
+          <span class="gh-tip">轮流抽牌 · 留着鬼牌的人输</span>
+        </template>
       </div>
 
       <div class="gh-hand">
@@ -28,7 +55,12 @@
             v-for="c in myHand"
             :key="c.id"
             class="gh-card"
-            :class="{ red: c.suit === '♥' || c.suit === '♦', joker: c.rank === '小王' }"
+            :class="{
+              red: isRed(c),
+              joker: c.rank === '小王',
+              fresh: c.fresh,
+              pairing: c.pairing || (drawShow && drawShow.paired === c)
+            }"
           >
             <b>{{ c.rank }}</b><i>{{ c.suit }}</i>
           </span>
@@ -46,11 +78,14 @@
 <script setup>
 import { ref, computed } from 'vue'
 
-/* 抽鬼牌：标准 54 张随机分一人一半；各自拆掉成对的数、去掉大王；
-   剩下双方轮流从对方手里抽一张，抽到能配对的即弃掉这对；
-   直到一方手上只剩「小王 + 一张普通牌」进入决胜：由对方抽一张，
-   抽到小王的人输；抽到普通牌则小王留在原主人手里，原主人输。
-   任一方手牌抽空（或只剩小王）时，持小王的一方判负。 */
+/* 抽鬼牌（标准规则）：
+   一副扑克牌只留 1 张 Joker 当鬼牌（另一张王牌拿走不用），共 53 张。
+   鬼牌是唯一凑不成对子的牌，谁最后手里留着它，谁输。
+   1. 发牌：全部洗牌后平分，多出来的牌放一边不用；
+   2. 先弃对子：双方把同点数对子（花色不限）直接丢掉，只剩单牌；
+   3. 轮流抽牌：从对方手上盲抽一张（对方手牌背面对着你），
+      抽到的牌能配对手上某张 → 这一对直接丢掉；凑不成 → 留在手里；
+   4. 手牌全部出光的玩家直接获胜；游戏结束时拿着鬼牌的人就是输家。 */
 const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K']
 const SUITS = ['♠', '♥', '♣', '♦']
 
@@ -62,175 +97,189 @@ const emit = defineEmits(['over'])
 const myHand = ref([])
 const aiHand = ref([])
 const turn = ref('me')
-const phase = ref('normal') // normal | final | over
-const finalHolder = ref(null) // 'me' | 'ai'
 const over = ref(false)
 const busy = ref(false)
 const logText = ref('')
 const resultText = ref('')
+/* 发牌动画阶段：wash 洗牌 → split 分发 → pairs 拆对子 → done 开局 */
+const dealPhase = ref('wash')
+const dealt = ref(0)
+const extraCard = ref(null)
+/* 抽牌展示：抽到的牌翻开亮相；paired 是被配走的另一张 */
+const drawShow = ref(null)
 
 let uid = 0
 function newCard(rank, suit) {
-  return { id: ++uid, rank, suit }
+  return { id: ++uid, rank, suit, fresh: false, pairing: false }
 }
+function sleep(ms) {
+  return new Promise((r) => setTimeout(r, ms))
+}
+const isRed = (c) => c.suit === '♥' || c.suit === '♦'
 
+/* 53 张：52 张普通牌 + 1 张小王（鬼牌），另一张王牌不用 */
 function buildDeck() {
   const deck = []
   for (const r of RANKS) for (const s of SUITS) deck.push(newCard(r, s))
-  deck.push(newCard('大王', ''))
   deck.push(newCard('小王', ''))
-  return deck.sort(() => Math.random() - 0.5)
+  for (let i = deck.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1))
+    ;[deck[i], deck[j]] = [deck[j], deck[i]]
+  }
+  return deck
 }
 
-/* 拆对：同点数两两弃掉；大王直接弃掉；小王保留（鬼牌） */
-function removePairs(hand) {
-  const kept = []
+/* 标记将要弃掉的对子（同点数前 2*pairs 张，花色不限；小王凑不成对保留） */
+function markPairs(hand) {
   const byRank = {}
-  for (const c of hand) {
-    if (c.rank === '大王') continue
-    ;(byRank[c.rank] = byRank[c.rank] || []).push(c)
+  for (const c of hand) (byRank[c.rank] = byRank[c.rank] || []).push(c)
+  for (const rank of Object.keys(byRank)) {
+    if (rank === '小王') continue
+    const list = byRank[rank]
+    const pairs = Math.floor(list.length / 2)
+    for (let i = 0; i < pairs * 2; i++) list[i].pairing = true
   }
+}
+
+/* 拆对子：同点数两两弃掉，剩下的零头和小王留在手里 */
+function removePairs(hand) {
+  const byRank = {}
+  for (const c of hand) (byRank[c.rank] = byRank[c.rank] || []).push(c)
+  const kept = []
   for (const rank of Object.keys(byRank)) {
     const list = byRank[rank]
     if (rank === '小王') { kept.push(...list); continue }
-    const pairs = Math.floor(list.length / 2)
-    /* 前 2*pairs 张成对弃掉，剩下的零头留在手里 */
-    for (let i = pairs * 2; i < list.length; i++) kept.push(list[i])
+    for (let i = Math.floor(list.length / 2) * 2; i < list.length; i++) kept.push(list[i])
   }
   return kept
 }
 
-function build() {
-  const deck = buildDeck()
-  const half = Math.ceil(deck.length / 2)
-  myHand.value = removePairs(deck.slice(0, half))
-  aiHand.value = removePairs(deck.slice(half))
-  turn.value = 'me'
-  phase.value = 'normal'
-  finalHolder.value = null
+/* 开局：洗牌动画 → 平分（多的放一边）→ 拆对子动画 → 开始轮流抽牌 */
+async function build() {
   over.value = false
   busy.value = false
+  turn.value = 'me'
+  myHand.value = []
+  aiHand.value = []
+  drawShow.value = null
+  extraCard.value = null
   resultText.value = ''
-  logText.value = '拆完对子，开始轮流抽牌'
-  /* 发完牌就可能直接进入决胜（一方恰好只剩小王+一张普通牌） */
-  checkEnd()
-  if (over.value) return
-  if (phase.value === 'final' && finalHolder.value === 'me') {
-    turn.value = 'ai'
-    busy.value = true
-    setTimeout(aiDraw, 1000)
+  logText.value = ''
+  dealPhase.value = 'wash'
+  dealt.value = 0
+  await sleep(1300) /* 桌面洗牌 */
+
+  const deck = buildDeck()
+  extraCard.value = deck.pop() /* 53 张多出 1 张，放一边不用 */
+  const mine = deck.slice(0, 26)
+  const theirs = deck.slice(26)
+
+  dealPhase.value = 'split'
+  for (let i = 0; i < 26; i++) { /* 逐张分发 */
+    aiHand.value.push(theirs[i])
+    mine[i].fresh = true
+    myHand.value.push(mine[i])
+    dealt.value = i + 1
+    await sleep(55)
   }
+
+  dealPhase.value = 'pairs'
+  await sleep(600)
+  markPairs(myHand.value) /* 对子先高亮 */
+  markPairs(aiHand.value)
+  await sleep(800)
+  myHand.value = removePairs(myHand.value)
+  aiHand.value = removePairs(aiHand.value)
+  for (const c of myHand.value) c.fresh = false
+  logText.value = '拆完对子，开始轮流抽牌'
+  await sleep(500)
+  dealPhase.value = 'done'
 }
 
 const statusText = computed(() => {
   if (over.value) return resultText.value
-  if (phase.value === 'final') {
-    return finalHolder.value === 'me'
-      ? '你只剩小王和一张普通牌，决胜：对方来抽'
-      : '对方只剩小王和一张普通牌，决胜：你来抽'
-  }
-  return turn.value === 'me' ? '你的回合：点对方一张牌来抽' : '对方思考中…'
+  if (dealPhase.value === 'wash') return '洗牌中…'
+  if (dealPhase.value === 'split') return '发牌中…'
+  if (dealPhase.value === 'pairs') return '拆对子…'
+  if (busy.value) return '对方思考中…'
+  return '你的回合：点对方一张牌来抽'
 })
-const canDraw = computed(() => {
-  if (over.value || busy.value) return false
-  /* 决胜阶段只有非持牌方抽牌 */
-  if (phase.value === 'final') return finalHolder.value === 'ai'
-  return turn.value === 'me'
-})
+const canDraw = computed(() =>
+  dealPhase.value === 'done' && !over.value && !busy.value && !drawShow.value && turn.value === 'me'
+)
 
-/* 终局判定：手牌空 → 对方持小王判负；只剩小王 → 持小王判负；小王+一张普通牌 → 决胜 */
+/* 终局：手牌全部出光的玩家直接获胜；拿着鬼牌的人就是输家 */
 function checkEnd() {
   if (over.value) return
-  const myJokerOnly = myHand.value.length === 1 && myHand.value[0].rank === '小王'
-  const aiJokerOnly = aiHand.value.length === 1 && aiHand.value[0].rank === '小王'
-  if (myHand.value.length === 0 || myJokerOnly) return finish(false)
-  if (aiHand.value.length === 0 || aiJokerOnly) return finish(true)
-  const myFinal = myHand.value.length === 2 && myHand.value.some((c) => c.rank === '小王')
-  const aiFinal = aiHand.value.length === 2 && aiHand.value.some((c) => c.rank === '小王')
-  if (myFinal && phase.value !== 'final') {
-    phase.value = 'final'
-    finalHolder.value = 'me'
-    logText.value = '你只剩小王和一张普通牌，进入决胜！'
-  } else if (aiFinal && phase.value !== 'final') {
-    phase.value = 'final'
-    finalHolder.value = 'ai'
-    logText.value = '对方只剩小王和一张普通牌，进入决胜！'
-  }
+  if (myHand.value.length === 0) return finish(true)
+  if (aiHand.value.length === 0) return finish(false)
 }
 
 function finish(win) {
   over.value = true
-  phase.value = 'over'
   const detail = win ? '对方留下了小王' : '小王落在了你手里'
   resultText.value = win ? `你赢了！${detail}` : `你输了！${detail}`
   emit('over', { win, title: win ? '胜利' : '失利', detail })
 }
 
-function pairOff(hand, card) {
-  if (card.rank === '小王') return false
-  const idx = hand.findIndex((c) => c.rank === card.rank)
-  if (idx >= 0) {
-    hand.splice(idx, 1)
-    return true
-  }
-  return false
+/* 手里能跟这张牌配上对的那张（小王凑不成对） */
+function findPair(hand, card) {
+  if (card.rank === '小王') return -1
+  return hand.findIndex((c) => c.rank === card.rank)
 }
 
-/* 一步走完后的调度：终局 → 决胜交接 → 正常轮转 */
-function afterMove(fromMe) {
-  checkEnd()
-  if (over.value) return
-  if (phase.value === 'final') {
-    /* 决胜阶段：非持牌方执行那决定性的一抽 */
-    if (finalHolder.value === 'me') {
-      turn.value = 'ai'
-      busy.value = true
-      setTimeout(aiDraw, 1000)
-    } else {
-      turn.value = 'me'
-      busy.value = false
-    }
-    return
-  }
-  if (fromMe) {
-    turn.value = 'ai'
-    busy.value = true
-    setTimeout(aiDraw, 900)
-  } else {
-    turn.value = 'me'
-    busy.value = false
-  }
-}
-
-/* 我从对方手里抽一张 */
-function drawFromAi(i) {
+/* 我从对方手里盲抽一张：翻开亮相 → 能配对则一起弃掉 */
+async function drawFromAi(i) {
   if (!canDraw.value) return
   const card = aiHand.value[i]
   if (!card) return
+  busy.value = true
   aiHand.value.splice(i, 1)
-  const isFinal = phase.value === 'final'
-  if (isFinal && card.rank === '小王') return finish(false)
-  myHand.value.push(card)
-  const paired = pairOff(myHand.value, card)
-  if (isFinal) return finish(true) // 决胜抽到普通牌：小王留在对方手里，对方输
-  logText.value = paired ? `你抽到 ${card.rank}${card.suit}，配对弃牌！` : `你抽到 ${card.rank}${card.suit}`
-  afterMove(true)
+  const pairIdx = findPair(myHand.value, card)
+  drawShow.value = { card, paired: pairIdx >= 0 ? myHand.value[pairIdx] : null, discard: false }
+  logText.value = `你抽到了 ${card.rank}${card.suit}`
+  await sleep(900) /* 展示抽到的牌 */
+  if (pairIdx >= 0) {
+    myHand.value.splice(pairIdx, 1)
+    drawShow.value.discard = true /* 两张一起高亮弃掉 */
+    logText.value = `抽到 ${card.rank}${card.suit}，配对弃牌！`
+    await sleep(650)
+  } else {
+    myHand.value.push(card)
+  }
+  drawShow.value = null
+  busy.value = false
+  checkEnd()
+  if (!over.value) {
+    turn.value = 'ai'
+    busy.value = true
+    setTimeout(aiDraw, 900)
+  }
 }
 
-/* 对方从我手里抽一张 */
-function aiDraw() {
-  if (over.value) return
-  const isFinal = phase.value === 'final' && finalHolder.value === 'me'
+/* 对方从我手里盲抽一张：同样翻开亮相 */
+async function aiDraw() {
+  if (over.value || dealPhase.value !== 'done') return
   const i = Math.floor(Math.random() * myHand.value.length)
   const card = myHand.value[i]
   if (!card) { busy.value = false; return }
   myHand.value.splice(i, 1)
-  if (isFinal && card.rank === '小王') return finish(true)
-  aiHand.value.push(card)
-  pairOff(aiHand.value, card)
-  if (isFinal) return finish(false) // 决胜抽到普通牌：小王留在你手里，你输
-  logText.value = '对方抽走了你的一张牌'
-  afterMove(false)
+  const pairIdx = findPair(aiHand.value, card)
+  drawShow.value = { card, paired: pairIdx >= 0 ? aiHand.value[pairIdx] : null, discard: false }
+  logText.value = `对方从你手里抽走了 ${card.rank}${card.suit}`
+  await sleep(900)
+  if (pairIdx >= 0) {
+    aiHand.value.splice(pairIdx, 1)
+    drawShow.value.discard = true
+    logText.value = `对方抽到 ${card.rank}${card.suit}，配对弃牌！`
+    await sleep(650)
+  } else {
+    aiHand.value.push(card)
+  }
+  drawShow.value = null
+  busy.value = false
+  checkEnd()
+  if (!over.value) turn.value = 'me'
 }
 
 function restart() {
@@ -259,10 +308,46 @@ build()
   background: var(--accent); border-color: var(--accent); color: #fff; font-size: 15px; cursor: pointer;
 }
 .gh-card.back:not(:disabled):active { transform: scale(0.94); }
-.gh-card.back:disabled { opacity: 0.75; cursor: default; }
-.gh-mid { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 4px 0; }
+/* 不可点时只禁光标、不压暗——牌面保持正常亮度 */
+.gh-card.back:disabled { cursor: default; }
+/* 发牌入场的牌：弹一下出现 */
+.gh-card.fresh { animation: gh-deal-in 0.28s ease-out; }
+@keyframes gh-deal-in {
+  from { opacity: 0; transform: translateY(-10px) scale(0.7); }
+  to { opacity: 1; transform: none; }
+}
+/* 拆对子/配对高亮：用 box-shadow 扩散，不改变元素几何 */
+.gh-card.pairing { animation: gh-pulse 0.5s ease-in-out infinite alternate; }
+@keyframes gh-pulse {
+  from { box-shadow: 0 0 0 1px var(--accent); }
+  to { box-shadow: 0 0 0 5px var(--accent); }
+}
+.gh-mid { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 4px 0; min-height: 64px; }
 .gh-deck { font-size: 26px; }
 .gh-tip { font-size: 12px; color: var(--text-soft); }
+/* 发牌动画 */
+.gh-deal-stack { position: relative; width: 44px; height: 60px; }
+.gh-deal-card {
+  position: absolute; inset: 0; border-radius: 8px;
+  background: var(--accent); border: 1px solid var(--accent); color: #fff;
+  display: flex; align-items: center; justify-content: center; font-size: 15px;
+  animation: gh-wash 0.6s ease-in-out infinite alternate;
+}
+@keyframes gh-wash {
+  from { transform: translate(-9px, -4px) rotate(-9deg); }
+  to { transform: translate(9px, 4px) rotate(9deg); }
+}
+.gh-deal-count { font-size: 13px; color: var(--text-soft); }
+/* 抽牌展示区 */
+.gh-draw { display: flex; gap: 10px; align-items: center; justify-content: center; }
+.gh-card.big { width: 52px; height: 72px; }
+.gh-card.big b { font-size: 17px; }
+.gh-card.big i { font-size: 19px; }
+.gh-card.pair { box-shadow: 0 0 0 2px var(--accent); }
+.gh-card.discard { animation: gh-discard 0.6s ease-in forwards; }
+@keyframes gh-discard {
+  to { opacity: 0; transform: translateY(-16px) scale(0.85); }
+}
 .gh-log { text-align: center; font-size: 12px; color: var(--text-soft); margin: 14px 0 10px; min-height: 16px; }
 .gh-btns { display: flex; justify-content: center; }
 </style>
