@@ -69,6 +69,7 @@ const routes = [
   { path: '/cinema', name: 'cinema', component: CinemaView },
   { path: '/game', name: 'game', component: GameView },
   { path: '/game/entry/:kind', name: 'game-entry', component: () => import('@/views/GameEntryView.vue'), props: true },
+  { path: '/game/history/:kind', name: 'game-history', component: () => import('@/views/GameHistoryView.vue'), props: true },
   { path: '/game/invite/:kind', name: 'game-invite', component: () => import('@/views/GameInviteView.vue'), props: true },
   { path: '/game/play/:kind', name: 'game-play', component: () => import('@/views/GamePlayView.vue'), props: true },
   { path: '/mood', name: 'mood', component: MoodView },

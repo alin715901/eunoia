@@ -1,6 +1,12 @@
 <template>
   <div class="ge-page">
-    <AppHeader :title="meta.name" back @back="onBack" />
+    <AppHeader :title="meta.name" back @back="onBack">
+      <template #right>
+        <button class="ge-hist-entry" @click="openHistory">
+          历史<span v-if="history.length" class="ge-hist-badge">{{ history.length }}</span>
+        </button>
+      </template>
+    </AppHeader>
     <div class="ge-body">
       <div class="ge-hero">
         <span class="ge-emoji"><GameIcon :name="kind" :size="56" /></span>
@@ -27,22 +33,15 @@
         </button>
       </div>
 
-      <!-- 历史记录：时间 + 胜负（默契翻牌只记用时）；全量留存，放不下可滑动 -->
-      <div class="ge-hist">
-        <div class="ge-hist-head">
-          <span class="ge-hist-title">历史记录<span v-if="history.length" class="ge-hist-count">{{ history.length }}</span></span>
-          <button v-if="history.length" class="ge-hist-clear" @click="clearHist">清空</button>
+      <!-- 游戏规则：玩法与规则说明（历史记录已移到右上角「历史」） -->
+      <div class="ge-rules">
+        <div class="ge-rules-head">
+          <span class="ge-rules-title">游戏规则</span>
         </div>
-        <div v-if="history.length" class="ge-hist-list">
-          <div v-for="h in history" :key="h.id" class="ge-hist-item">
-            <span class="ge-hist-tag" :class="tagClass(h)">{{ tagText(h) }}</span>
-            <span class="ge-hist-main">
-              <span class="ge-hist-detail">{{ histDetail(h) }}</span>
-              <span class="ge-hist-time">{{ fmtTime(h.at) }}</span>
-            </span>
-          </div>
-        </div>
-        <div v-else class="ge-hist-empty">还没有对局记录，玩一局吧</div>
+        <ol v-if="meta.rules && meta.rules.length" class="ge-rules-list">
+          <li v-for="(r, i) in meta.rules" :key="i">{{ r }}</li>
+        </ol>
+        <p v-else class="ge-rules-empty">暂无规则说明</p>
       </div>
     </div>
   </div>
@@ -56,7 +55,6 @@ import AppIcon from '@/components/common/AppIcon.vue'
 import GameIcon from '@/components/games/GameIcon.vue'
 import { getGameMeta, getGameName } from '@/api/games'
 import { useGameRecords } from '@/composables/useGameRecords'
-import { confirmDialog } from '@/utils/dialog'
 
 const route = useRoute()
 const router = useRouter()
@@ -64,7 +62,7 @@ const kind = computed(() => String(route.params.kind || 'memory'))
 const isMemory = computed(() => kind.value === 'memory')
 const meta = computed(() => getGameMeta(kind.value) || { name: getGameName(kind.value), emoji: '🎮', desc: '' })
 
-const { items, load, historyOf, clearHistory } = useGameRecords()
+const { items, load, historyOf } = useGameRecords()
 const bestText = computed(() => {
   const row = items.value.find((x) => x.title === `best_${kind.value}`)
   if (!row) return ''
@@ -74,52 +72,10 @@ const bestText = computed(() => {
   return e.wins ? `累计胜 ${e.wins} 场` : ''
 })
 
-/* ── 历史记录：每局一条，新的在前 ── */
+/* 历史记录数量（入口页只显示角标，完整列表在独立历史页） */
 const history = ref([])
 async function loadHistory() {
   try { history.value = await historyOf(kind.value) } catch (e) { history.value = [] }
-}
-function fmtDur(s) {
-  const n = Math.max(0, Math.round(Number(s) || 0))
-  return `${Math.floor(n / 60)}:${String(n % 60).padStart(2, '0')}`
-}
-function fmtTime(at) {
-  const d = new Date(at || Date.now())
-  const p = (x) => String(x).padStart(2, '0')
-  return `${d.getMonth() + 1}月${d.getDate()}日 ${p(d.getHours())}:${p(d.getMinutes())}`
-}
-function tagText(h) {
-  if (isMemory.value) return '用时'
-  if (h.tie) return '平局'
-  return h.win ? '胜利' : '失利'
-}
-function tagClass(h) {
-  if (isMemory.value) return 'time'
-  if (h.tie) return 'tie'
-  return h.win ? 'win' : 'lose'
-}
-function histDetail(h) {
-  if (isMemory.value) {
-    /* 默契翻牌只记用时，不记步数 */
-    return `${fmtDur(h.seconds)} · ${h.mode === 'together' ? '一起玩' : '单人'}`
-  }
-  const parts = []
-  /* 旧版抽鬼牌结算写过「对方留下了小王 / 小王落在了你手里」，
-     新版只报胜负；历史记录里含「小王」的旧文案一律不再展示 */
-  if (h.detail && h.detail.indexOf('小王') < 0) parts.push(h.detail)
-  if (h.opponent) parts.push(`vs ${h.opponent}`)
-  return parts.join(' · ')
-}
-async function clearHist() {
-  const ok = await confirmDialog({
-    title: '清空历史记录？',
-    text: `将删除「${meta.value.name}」的全部对局记录，不可恢复`,
-    okText: '清空',
-    cancelText: '取消'
-  })
-  if (!ok) return
-  try { await clearHistory(kind.value) } catch (e) { /* ignore */ }
-  await loadHistory()
 }
 
 onMounted(() => {
@@ -175,6 +131,11 @@ function solo() {
 function together() {
   navGo(`/game/invite/${kind.value}`)
 }
+
+/* 右上角「历史」→ 独立历史页（带对局数量角标） */
+function openHistory() {
+  navGo(`/game/history/${kind.value}`)
+}
 </script>
 
 <style scoped>
@@ -204,31 +165,31 @@ function together() {
 .ge-mode-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .ge-mode-title { font-size: 16px; font-weight: 700; color: var(--text); }
 .ge-mode-sub { font-size: 11px; color: var(--text-soft); line-height: 1.5; }
-.ge-hist { margin-top: 22px; }
-.ge-hist-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-.ge-hist-title { font-size: 14px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 6px; }
-.ge-hist-count { font-size: 11px; font-weight: 600; color: var(--text-soft); background: var(--bg-screen); border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; }
-.ge-hist-clear { font-size: 12px; color: var(--text-soft); background: none; border: none; padding: 4px 6px; cursor: pointer; }
-.ge-hist-clear:active { color: var(--accent); }
-/* 全量留存：超出高度后在列表内部滚动，不把入口页撑长 */
-.ge-hist-list {
-  display: flex; flex-direction: column; gap: 8px;
-  max-height: 300px; overflow-y: auto; -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
+/* 右上角「历史」入口：标题栏按钮 + 对局数量角标 */
+.ge-hist-entry {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 13px; font-weight: 600; color: var(--accent);
+  background: var(--bg-soft); border: 1px solid var(--border);
+  border-radius: 999px; padding: 5px 12px; cursor: pointer;
 }
-.ge-hist-item {
-  display: flex; align-items: center; gap: 10px; background: var(--bg-soft);
-  border: 1px solid var(--border); border-radius: 12px; padding: 9px 12px; flex: none;
+.ge-hist-entry:active { transform: scale(0.96); }
+.ge-hist-badge {
+  font-size: 10px; font-weight: 700; color: #fff; background: var(--accent);
+  border-radius: 999px; padding: 1px 6px; line-height: 1.4;
 }
-.ge-hist-tag {
-  flex: none; font-size: 11px; font-weight: 700; border-radius: 999px; padding: 3px 9px;
-  color: var(--text-soft); background: var(--bg-screen); border: 1px solid var(--border);
+/* 游戏规则卡（原历史记录位置） */
+.ge-rules {
+  margin-top: 22px; background: var(--bg-soft);
+  border: 1px solid var(--border); border-radius: 16px; padding: 16px;
 }
-.ge-hist-tag.win { color: var(--accent); border-color: var(--accent); }
-.ge-hist-tag.lose { color: #e5484d; border-color: #e5484d; }
-.ge-hist-tag.tie { color: #f5a623; border-color: #f5a623; }
-.ge-hist-main { flex: 1; display: flex; align-items: baseline; justify-content: space-between; gap: 8px; min-width: 0; }
-.ge-hist-detail { font-size: 12px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.ge-hist-time { font-size: 11px; color: var(--text-soft); flex: none; }
-.ge-hist-empty { font-size: 12px; color: var(--text-soft); text-align: center; padding: 18px 0; }
+.ge-rules-head { display: flex; align-items: center; margin-bottom: 10px; }
+.ge-rules-title { font-size: 14px; font-weight: 700; color: var(--text); }
+.ge-rules-list {
+  margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 8px;
+}
+.ge-rules-list li {
+  font-size: 12px; color: var(--text-soft); line-height: 1.7;
+}
+.ge-rules-list li::marker { color: var(--accent); font-weight: 700; }
+.ge-rules-empty { font-size: 12px; color: var(--text-soft); margin: 0; }
 </style>
