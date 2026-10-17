@@ -8,7 +8,7 @@
         <span class="cv-sum-ic"><AppIcon name="film" :size="26" color="var(--accent)" /></span>
         <span class="cv-sum-main">
           <span class="cv-sum-title">观影时长 {{ watchTotalText }}</span>
-          <span class="cv-sum-sub">一起看过的，和想一起看的</span>
+          <span class="cv-sum-sub">一起看过的，和想一起看的。</span>
         </span>
       </div>
 
