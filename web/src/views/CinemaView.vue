@@ -7,7 +7,7 @@
       <div class="cv-summary">
         <span class="cv-sum-ic"><AppIcon name="film" :size="26" color="var(--accent)" /></span>
         <span class="cv-sum-main">
-          <span class="cv-sum-title">站点 {{ allSites.length }} 个 · 片单 {{ linkList.length }} 条 · 时长 {{ watchTotalText }}</span>
+          <span class="cv-sum-title">观影时长 {{ watchTotalText }}</span>
           <span class="cv-sum-sub">一起看过的，和想一起看的</span>
         </span>
       </div>
@@ -25,6 +25,7 @@
           <button class="cv-add" @click="openAddSite"><AppIcon name="plus" :size="18" /> 添加</button>
         </div>
         <p class="cv-sec-tip">点击跳转浏览器里打开观看（视频网站大多禁止在应用内嵌播放）</p>
+        <p class="cv-warn">⚠ 严禁添加任何非法、色情和暴力网站。</p>
         <button
           v-for="s in allSites"
           :key="s.id"
@@ -51,6 +52,7 @@
           <button class="cv-add" @click="openAddLink"><AppIcon name="plus" :size="18" /> 导入</button>
         </div>
         <p class="cv-sec-tip">支持b站/腾讯视频链接和 mp4 直链，导入后直接播放；其他平台链接跳转浏览器里打开。（b站的分享链接需要在浏览器打开后，再复制链接才可以导入）</p>
+        <p class="cv-warn">⚠ 严禁添加任何非法、色情和暴力视频。</p>
         <button
           v-for="l in linkList"
           :key="l.id"
@@ -839,6 +841,8 @@ onBeforeUnmount(() => {
 .cv-sec-title { font-size: 14px; font-weight: 600; color: var(--text); }
 .cv-add { display: inline-flex; align-items: center; gap: 3px; border: none; background: transparent; color: var(--accent); font-size: 13px; font-weight: 600; padding: 4px 6px; }
 .cv-sec-tip { font-size: 12px; color: var(--text-soft); line-height: 1.6; margin: 6px 0 10px; }
+/* 警告说明：红色，提醒勿添加非法 / 色情 / 暴力内容 */
+.cv-warn { font-size: 12px; color: #e5484d; line-height: 1.6; margin: 0 0 10px; font-weight: 600; }
 
 .cv-card { width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px 4px; background: transparent; border: none; border-bottom: 1px solid var(--border); text-align: left; }
 .cv-card:last-of-type { border-bottom: none; }
