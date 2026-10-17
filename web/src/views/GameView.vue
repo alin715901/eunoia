@@ -17,7 +17,7 @@
           class="gl-item"
           @click="open(g.kind)"
         >
-          <span class="gl-emoji">{{ g.emoji }}</span>
+          <span class="gl-emoji"><GameIcon :name="g.kind" :size="30" /></span>
           <div class="gl-main">
             <span class="gl-name">{{ g.name }}</span>
             <span class="gl-desc">{{ g.desc }}</span>
@@ -35,6 +35,7 @@ import { computed, onMounted, onActivated } from 'vue'
 import { useRouter, onBeforeRouteLeave } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
+import GameIcon from '@/components/games/GameIcon.vue'
 import { useContactsStore } from '@/stores/contacts'
 import { getGameMetaList } from '@/api/games'
 import { useGameRecords } from '@/composables/useGameRecords'

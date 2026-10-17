@@ -3,7 +3,7 @@
     <AppHeader :title="meta.name" back @back="onBack" />
     <div class="ge-body">
       <div class="ge-hero">
-        <span class="ge-emoji">{{ meta.emoji }}</span>
+        <span class="ge-emoji"><GameIcon :name="kind" :size="56" /></span>
         <span class="ge-name">{{ meta.name }}</span>
         <span class="ge-desc">{{ meta.desc }}</span>
         <span v-if="bestText" class="ge-best">{{ bestText }}</span>
@@ -12,14 +12,14 @@
       <div class="ge-modes">
         <!-- 只有默契翻牌有单人休闲局；其余游戏均为双人对战，只提供一起玩 -->
         <button v-if="isMemory" class="ge-mode primary" @click="solo">
-          <span class="ge-mode-ic">🎮</span>
+          <span class="ge-mode-ic"><AppIcon name="game" :size="26" /></span>
           <span class="ge-mode-main">
             <span class="ge-mode-title">自己玩</span>
             <span class="ge-mode-sub">一个人开一局，随时开始</span>
           </span>
         </button>
         <button class="ge-mode" :class="isMemory ? 'ghost' : 'primary'" @click="together">
-          <span class="ge-mode-ic">💬</span>
+          <span class="ge-mode-ic"><AppIcon name="users" :size="26" /></span>
           <span class="ge-mode-main">
             <span class="ge-mode-title">{{ isMemory ? '一起玩' : '邀请联系人一起玩' }}</span>
             <span class="ge-mode-sub">邀请会发到对方聊天里，等 TA 接受即可开始</span>
@@ -52,6 +52,8 @@
 import { computed, onMounted, onActivated, ref } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
+import AppIcon from '@/components/common/AppIcon.vue'
+import GameIcon from '@/components/games/GameIcon.vue'
 import { getGameMeta, getGameName } from '@/api/games'
 import { useGameRecords } from '@/composables/useGameRecords'
 import { confirmDialog } from '@/utils/dialog'
@@ -98,10 +100,8 @@ function tagClass(h) {
 }
 function histDetail(h) {
   if (isMemory.value) {
-    const parts = [fmtDur(h.seconds)]
-    if (h.mode === 'together') parts.push(`一起玩 · 你 ${h.mySteps || 0} 步 · 对方 ${h.aiSteps || 0} 步`)
-    else parts.push(`单人 · ${h.steps || 0} 步`)
-    return parts.join(' · ')
+    /* 默契翻牌只记用时，不记步数 */
+    return `${fmtDur(h.seconds)} · ${h.mode === 'together' ? '一起玩' : '单人'}`
   }
   const parts = []
   if (h.detail) parts.push(h.detail)
@@ -195,8 +195,10 @@ function together() {
 .ge-mode.primary { background: var(--accent); border-color: var(--accent); }
 .ge-mode.primary .ge-mode-title { color: #fff; }
 .ge-mode.primary .ge-mode-sub { color: rgba(255, 255, 255, 0.75); }
+/* 模式图标：默认主题色，主按钮（彩色底）上用白 */
+.ge-mode-ic { color: var(--accent); display: flex; flex: none; }
+.ge-mode.primary .ge-mode-ic { color: #fff; }
 .ge-mode:active { transform: scale(0.98); }
-.ge-mode-ic { font-size: 26px; line-height: 1.5; flex: none; }
 .ge-mode-main { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
 .ge-mode-title { font-size: 16px; font-weight: 700; color: var(--text); }
 .ge-mode-sub { font-size: 11px; color: var(--text-soft); line-height: 1.5; }

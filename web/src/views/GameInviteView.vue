@@ -3,7 +3,7 @@
     <AppHeader :title="phaseTitle" back @back="onBack" />
     <div class="gi-body">
       <div class="gi-head">
-        <span class="gi-emoji">{{ game?.emoji }}</span>
+        <span class="gi-emoji"><GameIcon :name="kind" :size="30" /></span>
         <div class="gi-head-main">
           <span class="gi-title">{{ game?.name }}</span>
           <span class="gi-sub">邀请会发到对方的聊天里，等 TA 接受即可开局</span>
@@ -69,6 +69,7 @@ import { ref, computed, onMounted, onActivated, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppAvatar from '@/components/common/AppAvatar.vue'
+import GameIcon from '@/components/games/GameIcon.vue'
 import { useContactsStore } from '@/stores/contacts'
 import { useNotificationsStore } from '@/stores/notifications'
 import { sendGameInvite, cancelGameInvite, getGameInvites, getGameName, getGameMeta } from '@/api/games'

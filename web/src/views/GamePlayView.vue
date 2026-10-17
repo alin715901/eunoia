@@ -229,7 +229,7 @@ onBeforeRouteLeave((to, from, next) => {
   width: 100%; max-width: 300px; background: var(--bg-screen); border-radius: 18px; padding: 26px 20px 20px;
   text-align: center; border: 1px solid var(--border);
 }
-.gp-res-emoji { font-size: 46px; line-height: 1; }
+.gp-res-emoji { font-size: 46px; line-height: 1.5; }
 .gp-res-title { font-size: 18px; color: var(--text); margin: 12px 0 6px; }
 .gp-res-detail { font-size: 14px; color: var(--accent); font-weight: 600; }
 .gp-res-react { font-size: 12px; color: var(--text-soft); margin: 10px 0 18px; line-height: 1.5; }

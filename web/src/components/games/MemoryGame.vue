@@ -214,7 +214,7 @@ async function flip(c) {
 async function aiTurn() {
   if (gone) return
   if (cleared.value) return
-  await sleep(aiDelay())
+  await sleep(aiDelay(1000, 5000))
   if (gone) return
   const closed = cards.value.filter((c) => !c.open && !c.done)
   if (closed.length < 2) {
@@ -261,7 +261,11 @@ onMounted(async () => {
   background: var(--bg-soft); display: flex; align-items: center; justify-content: center; padding: 0;
   position: relative;
 }
-.mg-card.open, .mg-card.done { background: var(--bg-screen); border-color: var(--accent); }
+/* 翻开/配对态：背景与牌背保持一致（不翻转、不混色）——深色主题下
+   --bg-screen 比牌背 --bg-soft 更暗，任何「换底色」的写法都会让翻开的牌
+   看起来变暗（用户反馈过三次）。状态区分靠 accent 边框 + ✓ 角标 +
+   第一张的光圈脉冲 + 牌面图案本身，深浅主题下观感一致 */
+.mg-card.open, .mg-card.done { border-color: var(--accent); }
 /* 已配对：保持正常亮色不变暗——第二张牌翻上来时看得见「配对成功」的高亮瞬间。
    与「正在翻」的牌靠 ✓ 角标 + 实线边框区分（正在翻的第一张有光圈脉冲） */
 .mg-card.done::after {
@@ -278,7 +282,7 @@ onMounted(async () => {
 }
 /* 对方回合：整板不可点但不压暗——牌面保持正常亮度，避免看得费劲 */
 .mg-card:disabled { cursor: default; }
-.mg-face { font-size: 30px; line-height: 1; }
+.mg-face { font-size: 30px; line-height: 1.5; }
 /* 牌背正常亮度：不刻意压暗，和牌面一样看得清 */
 .mg-back { font-size: 22px; }
 .mg-win { text-align: center; color: var(--accent); font-size: 14px; margin-top: 16px; }

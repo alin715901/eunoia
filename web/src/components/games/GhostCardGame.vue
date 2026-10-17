@@ -291,9 +291,9 @@ function checkEnd() {
 
 function finish(win) {
   over.value = true
-  const detail = win ? '对方留下了小王' : '小王落在了你手里'
-  resultText.value = win ? `你赢了！${detail}` : `你输了！${detail}`
-  emit('over', { win, title: win ? '胜利' : '失利', detail })
+  /* 结算不展示持牌描述，只报胜负 */
+  resultText.value = win ? '你赢了！' : '你输了！'
+  emit('over', { win, title: win ? '胜利' : '失利', detail: '' })
 }
 
 /* 手里能跟这张牌配上对的那张（小王凑不成对） */
