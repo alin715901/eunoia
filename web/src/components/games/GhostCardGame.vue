@@ -34,6 +34,19 @@
             <b>{{ drawShow.paired.rank }}</b><i>{{ drawShow.paired.suit }}</i>
           </span>
         </div>
+        <!-- 掷骰子定先手：上对方、下我，各投一次，点数大的先抽 -->
+        <div v-else-if="dealPhase === 'dice'" class="gh-dice">
+          <div class="gh-dice-row">
+            <span class="gh-dice-name">对方</span>
+            <span class="gh-die" :class="{ rolling: dieRolling.ai }">{{ aiDieFace }}</span>
+            <b v-if="!dieRolling.ai" class="gh-dice-pts">{{ aiDie }} 点</b>
+          </div>
+          <div class="gh-dice-row">
+            <span class="gh-dice-name">我</span>
+            <span class="gh-die" :class="{ rolling: dieRolling.me }">{{ myDieFace }}</span>
+            <b v-if="!dieRolling.me" class="gh-dice-pts">{{ myDie }} 点</b>
+          </div>
+        </div>
         <!-- 发牌动画：洗牌 → 分发（计数）→ 拆对子 -->
         <template v-else-if="dealPhase !== 'done'">
           <div v-if="dealPhase === 'wash'" class="gh-deal-stack">
@@ -83,9 +96,10 @@ import { ref, computed } from 'vue'
    鬼牌是唯一凑不成对子的牌，谁最后手里留着它，谁输。
    1. 发牌：全部洗牌后平分，多出来的牌放一边不用；
    2. 先弃对子：双方把同点数对子（花色不限）直接丢掉，只剩单牌；
-   3. 轮流抽牌：从对方手上盲抽一张（对方手牌背面对着你），
+   3. 掷骰子定先手：双方各投一次，点数大的先抽；
+   4. 轮流抽牌：从对方手上盲抽一张（对方手牌背面对着你），
       抽到的牌能配对手上某张 → 这一对直接丢掉；凑不成 → 留在手里；
-   4. 手牌全部出光的玩家直接获胜；游戏结束时拿着鬼牌的人就是输家。 */
+   5. 手牌全部出光的玩家直接获胜；游戏结束时拿着鬼牌的人就是输家。 */
 const RANKS = ['A', '2', '3', '4', '5', '6', '7', '8', '9', '10', 'J', 'Q', 'K']
 const SUITS = ['♠', '♥', '♣', '♦']
 
@@ -101,10 +115,17 @@ const over = ref(false)
 const busy = ref(false)
 const logText = ref('')
 const resultText = ref('')
-/* 发牌动画阶段：wash 洗牌 → split 分发 → pairs 拆对子 → done 开局 */
+/* 发牌动画阶段：wash 洗牌 → split 分发 → pairs 拆对子 → dice 掷骰定先手 → done 开局 */
 const dealPhase = ref('wash')
 const dealt = ref(0)
 const extraCard = ref(null)
+/* 掷骰子定先手 */
+const myDie = ref(0)
+const aiDie = ref(0)
+const myDieFace = ref(1)
+const aiDieFace = ref(1)
+const dieRolling = ref({ me: false, ai: false })
+const dieNote = ref('')
 /* 抽牌展示：抽到的牌翻开亮相；paired 是被配走的另一张 */
 const drawShow = ref(null)
 
@@ -154,7 +175,7 @@ function removePairs(hand) {
   return kept
 }
 
-/* 开局：洗牌动画 → 平分（多的放一边）→ 拆对子动画 → 开始轮流抽牌 */
+/* 开局：洗牌动画 → 平分（多的放一边）→ 拆对子动画 → 掷骰子定先手 → 开始轮流抽牌 */
 async function build() {
   over.value = false
   busy.value = false
@@ -167,6 +188,9 @@ async function build() {
   logText.value = ''
   dealPhase.value = 'wash'
   dealt.value = 0
+  myDie.value = 0
+  aiDie.value = 0
+  dieNote.value = ''
   await sleep(1300) /* 桌面洗牌 */
 
   const deck = buildDeck()
@@ -191,9 +215,57 @@ async function build() {
   myHand.value = removePairs(myHand.value)
   aiHand.value = removePairs(aiHand.value)
   for (const c of myHand.value) c.fresh = false
-  logText.value = '拆完对子，开始轮流抽牌'
+  logText.value = '拆完对子，掷骰子定先手'
   await sleep(500)
+  await rollDice()
+}
+
+/* 掷骰子定先手：双方各投一次（滚动动画后定格），点数大的先抽；平局重投 */
+async function rollDice() {
+  dealPhase.value = 'dice'
+  for (let round = 1; round <= 5; round++) {
+    myDie.value = 0
+    aiDie.value = 0
+    dieNote.value = round > 1 ? `平局！第 ${round} 次投掷` : '掷骰子定先手，点数大的先抽'
+    const faces = { me: 1, ai: 1 }
+    dieRolling.value = { me: true, ai: true }
+    const timer = setInterval(() => {
+      faces.me = 1 + Math.floor(Math.random() * 6)
+      faces.ai = 1 + Math.floor(Math.random() * 6)
+      myDieFace.value = faces.me
+      aiDieFace.value = faces.ai
+    }, 80)
+    await sleep(1100) /* 骰子滚动 */
+    clearInterval(timer)
+    myDie.value = 1 + Math.floor(Math.random() * 6)
+    aiDie.value = 1 + Math.floor(Math.random() * 6)
+    myDieFace.value = myDie.value
+    aiDieFace.value = aiDie.value
+    dieRolling.value = { me: false, ai: false }
+    await sleep(700)
+    if (myDie.value !== aiDie.value) {
+      turn.value = myDie.value > aiDie.value ? 'me' : 'ai'
+      dieNote.value = myDie.value > aiDie.value
+        ? `你 ${myDie.value} 点 > 对方 ${aiDie.value} 点，你先抽！`
+        : `对方 ${aiDie.value} 点 > 你 ${myDie.value} 点，对方先抽！`
+      break
+    }
+    /* 5 轮都平局（概率极低）：随机定先手 */
+    if (round === 5) {
+      turn.value = Math.random() < 0.5 ? 'me' : 'ai'
+      dieNote.value = `屡次平局，随机定先手`
+    } else {
+      dieNote.value = `平局（各 ${myDie.value} 点），重新投！`
+      await sleep(900)
+    }
+  }
+  await sleep(1200)
   dealPhase.value = 'done'
+  logText.value = '开始轮流抽牌'
+  if (turn.value === 'ai') {
+    busy.value = true
+    setTimeout(aiDraw, 900)
+  }
 }
 
 const statusText = computed(() => {
@@ -201,6 +273,7 @@ const statusText = computed(() => {
   if (dealPhase.value === 'wash') return '洗牌中…'
   if (dealPhase.value === 'split') return '发牌中…'
   if (dealPhase.value === 'pairs') return '拆对子…'
+  if (dealPhase.value === 'dice') return dieNote.value
   if (busy.value) return '对方思考中…'
   return '你的回合：点对方一张牌来抽'
 })
@@ -322,9 +395,31 @@ build()
   from { box-shadow: 0 0 0 1px var(--accent); }
   to { box-shadow: 0 0 0 5px var(--accent); }
 }
-.gh-mid { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 4px 0; min-height: 64px; }
+/* 中间桌面区：固定高度 + 独立底板，抽牌展示/骰子出现消失都不引起布局抖动。
+   内容区 90px（112 - padding20 - border2），骰子两行 88 / 大牌 72 / 牌堆 60 均放得下 */
+.gh-mid {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  padding: 10px; min-height: 112px; width: 100%;
+  background: var(--bg-soft); border: 1px solid var(--border); border-radius: 14px;
+}
 .gh-deck { font-size: 26px; }
 .gh-tip { font-size: 12px; color: var(--text-soft); }
+/* 掷骰子定先手：上对方下我 */
+.gh-dice { display: flex; flex-direction: column; gap: 8px; align-items: center; }
+.gh-dice-row { display: flex; align-items: center; gap: 10px; }
+.gh-dice-name { font-size: 12px; color: var(--text-soft); width: 28px; text-align: right; }
+.gh-die {
+  width: 40px; height: 40px; border-radius: 10px; background: var(--bg-screen);
+  border: 1px solid var(--border); display: flex; align-items: center; justify-content: center;
+  font-size: 20px; font-weight: 700; color: var(--text);
+}
+.gh-die.rolling { animation: gh-die-shake 0.16s linear infinite; border-color: var(--accent); color: var(--accent); }
+@keyframes gh-die-shake {
+  0% { transform: rotate(-7deg) scale(1.04); }
+  50% { transform: rotate(0deg) scale(0.98); }
+  100% { transform: rotate(7deg) scale(1.04); }
+}
+.gh-dice-pts { font-size: 13px; color: var(--accent); min-width: 40px; }
 /* 发牌动画 */
 .gh-deal-stack { position: relative; width: 44px; height: 60px; }
 .gh-deal-card {
@@ -338,8 +433,8 @@ build()
   to { transform: translate(9px, 4px) rotate(9deg); }
 }
 .gh-deal-count { font-size: 13px; color: var(--text-soft); }
-/* 抽牌展示区 */
-.gh-draw { display: flex; gap: 10px; align-items: center; justify-content: center; }
+/* 抽牌展示区：固定宽度，牌在里面亮相，不撑动上下布局 */
+.gh-draw { display: flex; gap: 10px; align-items: center; justify-content: center; min-width: 128px; }
 .gh-card.big { width: 52px; height: 72px; }
 .gh-card.big b { font-size: 17px; }
 .gh-card.big i { font-size: 19px; }
