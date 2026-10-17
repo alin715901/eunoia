@@ -295,7 +295,9 @@ function nextRound() {
     win: overWin.value,
     tie: overTie.value,
     title: overTie.value ? '平局' : overWin.value ? '胜利' : '失利',
-    detail: `${mode.value === 'easy' ? '简单' : '困难'} · 你 ${me} 次 : 对方 ${ai} 次`
+    detail: `${mode.value === 'easy' ? '简单' : '困难'} · 你 ${me} 次 : 对方 ${ai} 次`,
+    /* 历史记录用简写「简单 · 6 : 6」（rec 在对局页覆盖历史 detail，弹窗仍用上面详细文案） */
+    rec: { detail: `${mode.value === 'easy' ? '简单' : '困难'} · ${me} : ${ai}` }
   })
 }
 

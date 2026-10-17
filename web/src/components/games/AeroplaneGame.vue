@@ -337,7 +337,10 @@ function finish(iWin) {
   emit('over', {
     win: iWin,
     title: iWin ? '胜利' : '失利',
-    detail: iWin ? '你的飞机率先抵达中心终点' : '对方抢先抵达中心终点'
+    detail: iWin ? '你的飞机率先抵达中心终点' : '对方抢先抵达中心终点',
+    /* 历史记录里不写「谁先抵达中心终点」这类话（胜负 tag 已表达）；
+       rec 在对局页 spread 于 detail 之后，可覆盖历史字段而不影响结算弹窗 */
+    rec: { detail: '' }
   })
 }
 

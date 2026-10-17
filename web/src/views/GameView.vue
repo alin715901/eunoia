@@ -1,12 +1,12 @@
 <template>
   <div class="md-page">
-    <AppHeader title="小游戏" back />
+    <AppHeader title="游戏厅" back @back="onBack" />
     <div class="md-body">
       <div class="md-summary">
         <span class="md-sum-ic"><AppIcon name="game" :size="26" color="var(--accent)" /></span>
         <span class="md-sum-main">
           <span class="md-sum-title">7 款小游戏</span>
-          <span class="md-sum-sub">自己开一局，或邀请一位联系人来聊天里应战</span>
+          <span class="md-sum-sub">自己开一局，或邀请联系人一起玩。</span>
         </span>
       </div>
 
@@ -60,6 +60,14 @@ function open(kind) {
   navGo(`/game/entry/${kind}`)
 }
 
+/* 左上角返回：显式回桌面主页。不用 history.back()——
+   对局/入口页的退出 replace 会在栈里留下 /game 残留条目，
+   pop 落到残留条目会被下方守卫取消，表现为返回「经常失效」 */
+function onBack(payload) {
+  if (payload && typeof payload.prevent === 'function') payload.prevent()
+  navGo('/', true)
+}
+
 /* 内部主动导航时跳过守卫：否则点卡片进入入口页会被当成
    「pop 到残留子页」拦截，大厅再也进不了游戏 */
 let selfNav = false
@@ -70,14 +78,19 @@ function navGo(path, replace = false) {
   setTimeout(() => { selfNav = false }, 0)
 }
 
-/* 系统返回键：退出对局/入口页的 replace 会在栈里留下旧的游戏子页面记录，
-   pop 到这些残留页时停在大厅，不让用户看到中间的邀请/对局页 */
+/* 系统返回键：pop 落到残留的 /game 子页面记录（对局/邀请页 replace 留下的）
+   时，取消 pop 并 replace 回主页——旧版只 next(false) 取消，
+   pop 目标不变，再按返回仍会被取消，返回从此失灵 */
 onBeforeRouteLeave((to, from, next) => {
   if (selfNav) {
     selfNav = false
     return next()
   }
-  if (to.path.startsWith('/game/')) return next(false)
+  if (to.path.startsWith('/game/')) {
+    next(false)
+    router.replace('/')
+    return
+  }
   next()
 })
 

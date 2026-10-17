@@ -68,13 +68,18 @@ function tagClass(h) {
 }
 function histDetail(h) {
   if (isMemory.value) {
-    /* 默契翻牌只记用时，不记步数 */
-    return `${fmtDur(h.seconds)} · ${h.mode === 'together' ? '一起玩' : '单人'}`
+    /* 默契翻牌只记用时；一起玩时标明和谁（h.opponent 由对局页记录） */
+    const base = `${fmtDur(h.seconds)} · ${h.mode === 'together' ? '一起玩' : '单人'}`
+    return h.opponent ? `${base} · vs ${h.opponent}` : base
   }
   const parts = []
   /* 旧版抽鬼牌结算写过「对方留下了小王 / 小王落在了你手里」，
      新版只报胜负；历史记录里含「小王」的旧文案一律不再展示 */
-  if (h.detail && h.detail.indexOf('小王') < 0) parts.push(h.detail)
+  let d = h.detail && h.detail.indexOf('小王') < 0 ? h.detail : ''
+  /* 猜数旧记录「简单 · 你 6 次 : 对方 6 次」统一显示为「简单 · 6 : 6」 */
+  const m = d.match(/^(.*)你 (\d+) 次 : 对方 (\d+) 次$/)
+  if (m) d = `${m[1]}${m[2]} : ${m[3]}`
+  if (d) parts.push(d)
   if (h.opponent) parts.push(`vs ${h.opponent}`)
   return parts.join(' · ')
 }

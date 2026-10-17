@@ -164,7 +164,7 @@ async function onOver(r) {
       win: !!(r && r.win),
       tie: !!(r && r.tie),
       detail: (r && r.detail) || '',
-      opponent: kind.value === 'memory' ? '' : (opponent.value.name || '对方'),
+      opponent: (kind.value === 'memory' && !isMemoryTogether.value) ? '' : (opponent.value.name || '对方'),
       ...((r && r.rec) || {})
     })
   } catch (e) { /* 纪录失败不影响对局 */ }

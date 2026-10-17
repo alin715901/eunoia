@@ -281,16 +281,36 @@ restart()
 .go-status { font-size: 13px; color: var(--accent); font-weight: 600; }
 .go-status.win { color: #4caf50; }
 .go-status.lose { color: #e53935; }
+/* 棋盘：不再用格子+gap 画线，而是按围棋习惯画 9 条横竖线（线过每格中心），
+   每个可点击格的中心就是一个交叉点，棋子落在交叉点上 */
 .go-board {
-  display: grid; grid-template-columns: repeat(9, 1fr); gap: 1px;
-  background: var(--border); border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
+  position: relative;
+  --go-line: var(--border);
+  display: grid; grid-template-columns: repeat(9, 1fr);
+  background-color: var(--bg-soft);
+  /* 星位 5 颗（(2,2) 等四角星 + 天元），圆心按 (n+0.5)/9 定位 */
+  background-image:
+    radial-gradient(circle at 27.78% 27.78%, var(--go-line) 2px, transparent 2.6px),
+    radial-gradient(circle at 72.22% 27.78%, var(--go-line) 2px, transparent 2.6px),
+    radial-gradient(circle at 27.78% 72.22%, var(--go-line) 2px, transparent 2.6px),
+    radial-gradient(circle at 72.22% 72.22%, var(--go-line) 2px, transparent 2.6px),
+    radial-gradient(circle at 50% 50%, var(--go-line) 2px, transparent 2.6px),
+    /* 竖线 9 条 / 横线 9 条：1px 线画在 tile 左/上缘，再偏移半格对准格中心 */
+    linear-gradient(to right, var(--go-line) 0 1px, transparent 1px),
+    linear-gradient(to bottom, var(--go-line) 0 1px, transparent 1px);
+  background-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%, calc(100%/9) 100%, 100% calc(100%/9);
+  background-position: 0 0, 0 0, 0 0, 0 0, 0 0, 6.25% 0, 0 6.25%;
+  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, repeat, repeat;
+  border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
 }
-.go-cell { aspect-ratio: 1; background: var(--bg-soft); border: 0; padding: 0; cursor: pointer; -webkit-appearance: none; appearance: none; }
+.go-cell { aspect-ratio: 1; background: transparent; border: 0; padding: 0; cursor: pointer; -webkit-appearance: none; appearance: none; position: relative; }
 /* 对方思考中：棋盘不可点但不压暗（iOS WebKit 对 disabled 有 UA 级硬编码压暗，
    Blink/WebKit 还会调淡 disabled 的 color） */
 .go-cell:disabled { cursor: default; opacity: 1; -webkit-opacity: 1; color: inherit; -webkit-text-fill-color: currentcolor; }
-.go-cell.black { background: #222; border-radius: 50%; box-shadow: inset 0 0 0 1px var(--bg-soft); }
-.go-cell.white { background: #fff; border-radius: 50%; box-shadow: inset 0 0 0 1px #ddd; }
-.go-cell.last { outline: 2px solid var(--accent); outline-offset: -2px; }
+/* 棋子：格中心 = 交叉点，圆形占格子约 86% */
+.go-cell::before { content: ''; position: absolute; inset: 7%; border-radius: 50%; }
+.go-cell.black::before { background: #222; box-shadow: inset 0 0 0 1px var(--bg-soft); }
+.go-cell.white::before { background: #fff; box-shadow: inset 0 0 0 1px #ddd; }
+.go-cell.last::before { outline: 2px solid var(--accent); outline-offset: -2px; }
 .go-btns { display: flex; justify-content: center; gap: 10px; margin-top: 16px; flex-wrap: wrap; }
 </style>
