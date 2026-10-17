@@ -1,9 +1,9 @@
 <template>
   <div class="go-wrap">
     <div class="go-bar">
-      <span class="go-side me"><AppAvatar :name="'我'" :avatar="myAvatar" :size="20" />我 ⚫ 提 {{ myCaps }}</span>
-      <span class="go-status" :class="{ win: result === 'win', lose: result === 'lose' }">{{ statusText }}</span>
       <span class="go-side ai"><AppAvatar :name="opponent.name" :avatar="opponent.avatar" :size="20" />{{ opponent.name }} ⚪ 提 {{ aiCaps }}</span>
+      <span class="go-status" :class="{ win: result === 'win', lose: result === 'lose' }">{{ statusText }}</span>
+      <span class="go-side me"><AppAvatar :name="'我'" :avatar="myAvatar" :size="20" />我 ⚫ 提 {{ myCaps }}</span>
     </div>
     <div class="go-board">
       <button
@@ -285,8 +285,10 @@ restart()
   display: grid; grid-template-columns: repeat(9, 1fr); gap: 1px;
   background: var(--border); border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
 }
-.go-cell { aspect-ratio: 1; background: var(--bg-soft); border: 0; padding: 0; cursor: pointer; }
-.go-cell:disabled { cursor: default; }
+.go-cell { aspect-ratio: 1; background: var(--bg-soft); border: 0; padding: 0; cursor: pointer; -webkit-appearance: none; appearance: none; }
+/* 对方思考中：棋盘不可点但不压暗（iOS WebKit 对 disabled 有 UA 级硬编码压暗，
+   Blink/WebKit 还会调淡 disabled 的 color） */
+.go-cell:disabled { cursor: default; opacity: 1; -webkit-opacity: 1; color: inherit; -webkit-text-fill-color: currentcolor; }
 .go-cell.black { background: #222; border-radius: 50%; box-shadow: inset 0 0 0 1px var(--bg-soft); }
 .go-cell.white { background: #fff; border-radius: 50%; box-shadow: inset 0 0 0 1px #ddd; }
 .go-cell.last { outline: 2px solid var(--accent); outline-offset: -2px; }

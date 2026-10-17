@@ -6,10 +6,11 @@
       <span class="rp-side" :class="{ on: !over }"><b>{{ myScore }}</b> 我<AppAvatar :name="'我'" :avatar="myAvatar" :size="20" /></span>
     </div>
 
+    <!-- 手势区与比分条同向：对方在左、我在右 -->
     <div class="rp-stage">
-      <div class="rp-hand" :class="{ shake: revealing }">{{ myFace }}</div>
-      <span class="rp-vs">VS</span>
       <div class="rp-hand" :class="{ shake: revealing }">{{ aiFace }}</div>
+      <span class="rp-vs">VS</span>
+      <div class="rp-hand" :class="{ shake: revealing }">{{ myFace }}</div>
     </div>
     <p class="rp-status">{{ statusText }}</p>
 

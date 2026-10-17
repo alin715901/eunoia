@@ -27,14 +27,14 @@
         </button>
       </div>
 
-      <!-- 历史记录：时间 + 胜负（默契翻牌只记用时） -->
+      <!-- 历史记录：时间 + 胜负（默契翻牌只记用时）；全量留存，放不下可滑动 -->
       <div class="ge-hist">
         <div class="ge-hist-head">
-          <span class="ge-hist-title">历史记录</span>
+          <span class="ge-hist-title">历史记录<span v-if="history.length" class="ge-hist-count">{{ history.length }}</span></span>
           <button v-if="history.length" class="ge-hist-clear" @click="clearHist">清空</button>
         </div>
         <div v-if="history.length" class="ge-hist-list">
-          <div v-for="h in history.slice(0, 20)" :key="h.id" class="ge-hist-item">
+          <div v-for="h in history" :key="h.id" class="ge-hist-item">
             <span class="ge-hist-tag" :class="tagClass(h)">{{ tagText(h) }}</span>
             <span class="ge-hist-main">
               <span class="ge-hist-detail">{{ histDetail(h) }}</span>
@@ -104,7 +104,9 @@ function histDetail(h) {
     return `${fmtDur(h.seconds)} · ${h.mode === 'together' ? '一起玩' : '单人'}`
   }
   const parts = []
-  if (h.detail) parts.push(h.detail)
+  /* 旧版抽鬼牌结算写过「对方留下了小王 / 小王落在了你手里」，
+     新版只报胜负；历史记录里含「小王」的旧文案一律不再展示 */
+  if (h.detail && h.detail.indexOf('小王') < 0) parts.push(h.detail)
   if (h.opponent) parts.push(`vs ${h.opponent}`)
   return parts.join(' · ')
 }
@@ -204,13 +206,19 @@ function together() {
 .ge-mode-sub { font-size: 11px; color: var(--text-soft); line-height: 1.5; }
 .ge-hist { margin-top: 22px; }
 .ge-hist-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-.ge-hist-title { font-size: 14px; font-weight: 700; color: var(--text); }
+.ge-hist-title { font-size: 14px; font-weight: 700; color: var(--text); display: flex; align-items: center; gap: 6px; }
+.ge-hist-count { font-size: 11px; font-weight: 600; color: var(--text-soft); background: var(--bg-screen); border: 1px solid var(--border); border-radius: 999px; padding: 1px 8px; }
 .ge-hist-clear { font-size: 12px; color: var(--text-soft); background: none; border: none; padding: 4px 6px; cursor: pointer; }
 .ge-hist-clear:active { color: var(--accent); }
-.ge-hist-list { display: flex; flex-direction: column; gap: 8px; }
+/* 全量留存：超出高度后在列表内部滚动，不把入口页撑长 */
+.ge-hist-list {
+  display: flex; flex-direction: column; gap: 8px;
+  max-height: 300px; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+}
 .ge-hist-item {
   display: flex; align-items: center; gap: 10px; background: var(--bg-soft);
-  border: 1px solid var(--border); border-radius: 12px; padding: 9px 12px;
+  border: 1px solid var(--border); border-radius: 12px; padding: 9px 12px; flex: none;
 }
 .ge-hist-tag {
   flex: none; font-size: 11px; font-weight: 700; border-radius: 999px; padding: 3px 9px;

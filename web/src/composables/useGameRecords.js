@@ -4,7 +4,7 @@ import { useItems } from './useItems'
  * 小游戏纪录：沿用 app_items（module='game'）存放。
  *  - 最佳成绩：一款游戏一条 title='best_<kind>' 的记录，extra 由各游戏自定义
  *  - 历史记录：每局一条 title='hist_<kind>' 的记录，extra 含
- *    { at, win, tie, detail, opponent, ...游戏自有字段 }，每款最多保留 50 条
+ *    { at, win, tie, detail, opponent, ...游戏自有字段 }，全量留存不清条数
  */
 export function useGameRecords() {
   const { items, load, add, update, remove } = useItems('game')
@@ -40,17 +40,10 @@ export function useGameRecords() {
     return 'none'
   }
 
-  /* ── 历史记录：每局一条，新的在前，每款最多 50 条 ── */
+  /* ── 历史记录：每局一条，新的在前，全量留存（放不下的由列表滚动展示） ── */
 
   async function addHistory(kind, rec = {}) {
     await load()
-    const old = items.value
-      .filter((x) => x.title === `hist_${kind}`)
-      .sort((a, b) => (a.extra?.at || a.created_at || 0) - (b.extra?.at || b.created_at || 0))
-    while (old.length >= 50) {
-      const row = old.shift()
-      await remove(row.id)
-    }
     await add({ title: `hist_${kind}`, extra: { at: Date.now(), ...rec } })
   }
 

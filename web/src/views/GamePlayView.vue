@@ -35,7 +35,7 @@ import { useRoute, useRouter, onBeforeRouteLeave } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppAvatar from '@/components/common/AppAvatar.vue'
 import { useContactsStore } from '@/stores/contacts'
-import { getDesktop, getContacts } from '@/api/contacts'
+import { getDesktop, getContactSettings } from '@/api/contacts'
 import { getGameName, getActiveGame, endGame } from '@/api/games'
 import { confirmDialog } from '@/utils/dialog'
 import { useGameRecords } from '@/composables/useGameRecords'
@@ -117,16 +117,29 @@ async function loadOpponent() {
     target = contactsStore.getById(cid) || null
   }
   if (!target) {
+    /* store 为空（如刷新后直接落在对局页）：先加载再取。
+       早先写法把 getContacts() 的结果丢弃了，store 依旧是空的，
+       对手名会退化成「对方」、我的头像也解析不出来 */
     if (!contactsStore.list || !contactsStore.list.length) {
-      try { await getContacts() } catch (e) { /* ignore */ }
+      try { await contactsStore.load() } catch (e) { /* ignore */ }
     }
     target = (contactsStore.list || []).find((c) => c.kind !== 'group') || null
   }
   if (target) {
     opponent.value = { id: target.id, name: target.name || '对方', avatar: target.avatar || '' }
+    /* 我的头像：与一起听歌/看电影保持同一套有效头像逻辑——
+       开启「同步人物卡头像到聊天」时优先桌面 my_avatar，
+       否则用联系人设置里的 my_avatar，最后桌面 my_avatar 兜底。
+       每次进入对局页（onMounted/onActivated/换对手）都重取，
+       在设置里改了头像，下一局/重新进入即跟随 */
     try {
-      const desk = await getDesktop(target.id)
-      myAvatar.value = desk?.my_avatar || ''
+      const [settings, desk] = await Promise.all([
+        getContactSettings(target.id).catch(() => null),
+        getDesktop(target.id).catch(() => null)
+      ])
+      const deskMy = (desk && desk.my_avatar) || ''
+      const setMy = (settings && settings.my_avatar) || ''
+      myAvatar.value = (desk && desk.sync_chat_avatar && deskMy) ? deskMy : (setMy || deskMy)
     } catch (e) { /* ignore */ }
   }
 }

@@ -1,15 +1,16 @@
 <template>
   <div class="mg-wrap">
-    <!-- 双人模式：双方轮流，每人翻两张，无输赢，翻完全部结束 -->
+    <!-- 双人模式：双方轮流，每人翻两张，无输赢，翻完全部结束。
+         布局固定「对方在左、我在右」，与其余游戏一致 -->
     <div v-if="together" class="mg-vs">
-      <span class="mg-side" :class="{ on: turn === 'me' }">
-        <AppAvatar :name="'我'" :avatar="myAvatar" :size="22" />
-        <b>{{ mySteps }}</b> 我
+      <span class="mg-side" :class="{ on: turn === 'ai' }">
+        <AppAvatar :name="opponent.name" :avatar="opponent.avatar" :size="22" />
+        {{ opponent.name }} <b>{{ aiSteps }}</b>
       </span>
       <span class="mg-turn">{{ turn === 'me' ? '你的回合' : '对方翻牌中…' }}</span>
-      <span class="mg-side" :class="{ on: turn === 'ai' }">
-        {{ opponent.name }} <b>{{ aiSteps }}</b>
-        <AppAvatar :name="opponent.name" :avatar="opponent.avatar" :size="22" />
+      <span class="mg-side" :class="{ on: turn === 'me' }">
+        <b>{{ mySteps }}</b> 我
+        <AppAvatar :name="'我'" :avatar="myAvatar" :size="22" />
       </span>
     </div>
 
@@ -260,6 +261,9 @@ onMounted(async () => {
   aspect-ratio: 3 / 4; border: 1px solid var(--border); border-radius: 14px;
   background: var(--bg-soft); display: flex; align-items: center; justify-content: center; padding: 0;
   position: relative;
+  /* 去掉 iOS 原生按钮渲染：原生 appearance 会带来 UA 级背景/描边，
+     与我们的自定义样式叠加后在 disabled 态出现不可控的压暗 */
+  -webkit-appearance: none; appearance: none;
 }
 /* 翻开/配对态：背景与牌背保持一致（不翻转、不混色）——深色主题下
    --bg-screen 比牌背 --bg-soft 更暗，任何「换底色」的写法都会让翻开的牌
@@ -280,8 +284,22 @@ onMounted(async () => {
   0%, 100% { box-shadow: 0 0 0 1px var(--accent); }
   50% { box-shadow: 0 0 0 4px var(--accent); }
 }
-/* 对方回合：整板不可点但不压暗——牌面保持正常亮度，避免看得费劲 */
-.mg-card:disabled { cursor: default; }
+/* 对方回合：整板不可点但不压暗——牌面保持正常亮度，避免看得费劲。
+   iOS WebKit 对 disabled 表单元素有 UA 级硬编码压暗（约 0.3~0.4），
+   且标准 opacity 不一定覆盖得住，必须显式重置 opacity / -webkit-opacity；
+   Blink/WebKit 还会把 disabled 的 color 调淡（-webkit-text-fill-color 跟随
+   currentcolor），一并重置回继承色——用户先后反馈过四次「变暗」，根因即此 */
+.mg-grid.busy,
+.mg-grid.busy .mg-card,
+.mg-card:disabled {
+  opacity: 1;
+  -webkit-opacity: 1;
+}
+.mg-card:disabled {
+  cursor: default;
+  color: inherit;
+  -webkit-text-fill-color: currentcolor;
+}
 .mg-face { font-size: 30px; line-height: 1.5; }
 /* 牌背正常亮度：不刻意压暗，和牌面一样看得清 */
 .mg-back { font-size: 22px; }

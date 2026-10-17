@@ -373,6 +373,7 @@ build()
   width: 38px; height: 52px; border-radius: 8px; border: 1px solid var(--border);
   background: var(--bg-screen); display: flex; flex-direction: column; align-items: center; justify-content: center;
   font-size: 13px; color: var(--text); padding: 0;
+  -webkit-appearance: none; appearance: none;
 }
 .gh-card b { font-size: 13px; line-height: 1.1; }
 .gh-card i { font-style: normal; font-size: 15px; line-height: 1; }
@@ -382,8 +383,18 @@ build()
   background: var(--accent); border-color: var(--accent); color: #fff; font-size: 15px; cursor: pointer;
 }
 .gh-card.back:not(:disabled):active { transform: scale(0.94); }
-/* 不可点时只禁光标、不压暗——牌面保持正常亮度 */
-.gh-card.back:disabled { cursor: default; }
+/* 不可点时只禁光标、不压暗——牌面保持正常亮度。
+   iOS WebKit 对 disabled 表单元素有 UA 级硬编码压暗（约 0.3~0.4），
+   标准 opacity 覆盖不住，需显式重置；Blink/WebKit 还会调淡 disabled 的
+   color（牌背是白字，显式保留 #fff） */
+.gh-card.back:disabled {
+  cursor: default;
+  opacity: 1;
+  -webkit-opacity: 1;
+  color: #fff;
+  -webkit-text-fill-color: #fff;
+}
+.gh-card:disabled { opacity: 1; -webkit-opacity: 1; }
 /* 发牌入场的牌：弹一下出现 */
 .gh-card.fresh { animation: gh-deal-in 0.28s ease-out; }
 @keyframes gh-deal-in {

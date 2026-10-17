@@ -3,6 +3,7 @@
     <div class="gn-bar">
       <span class="gn-side"><AppAvatar :name="opponent.name" :avatar="opponent.avatar" :size="22" />{{ opponent.name }} 想好了一个数</span>
       <span class="gn-range">范围 {{ lo }} ~ {{ hi }}</span>
+      <span class="gn-side">我<AppAvatar :name="'我'" :avatar="myAvatar" :size="22" /></span>
     </div>
 
     <div class="gn-mid">
@@ -36,7 +37,8 @@ import { useGameRecords } from '@/composables/useGameRecords'
 
 /* 猜数：对方想好 1-100 的一个数，你来猜，每次反馈大了/小了，次数越少越厉害。 */
 const props = defineProps({
-  opponent: { type: Object, default: () => ({ name: '对方', avatar: '' }) }
+  opponent: { type: Object, default: () => ({ name: '对方', avatar: '' }) },
+  myAvatar: { type: String, default: '' }
 })
 const emit = defineEmits(['over'])
 
