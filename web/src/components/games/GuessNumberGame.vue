@@ -147,6 +147,9 @@ const input = ref('')
 const myAttempts = ref(0)
 const myHistory = ref([])
 const aiSecret = ref(0)
+/* 本轮已猜中：锁定输入，等 900ms 展示「猜中了」后再进下一轮
+   （防止猜中后的展示窗口内重复提交，覆盖次数并重复排定 nextRound） */
+const settled = ref(false)
 
 /* 对方猜 */
 const aiAttempts = ref(0)
@@ -202,6 +205,7 @@ function startRound() {
   aiAttempts.value = 0
   myHistory.value = []
   aiHistory.value = []
+  settled.value = false
   lo.value = 1
   hi.value = RANGE[mode.value]
   input.value = ''
@@ -224,12 +228,13 @@ function confirmSecret() {
 
 /* 我猜对方的数 */
 function submit() {
-  if (phase.value !== 'guess' || !input.value) return
+  if (phase.value !== 'guess' || !input.value || settled.value) return
   const v = Number(input.value)
   if (!Number.isInteger(v) || v < lo.value || v > hi.value) return
   myAttempts.value += 1
   input.value = ''
   if (v === aiSecret.value) {
+    settled.value = true
     myHistory.value.unshift({ value: v, hint: 'hit' })
     results.value.me = myAttempts.value
     saveBest()
@@ -270,6 +275,8 @@ function aiGuess() {
 
 /* 两轮互换角色后结算 */
 function nextRound() {
+  /*  stale 定时器兜底：期间用户点了重新开始（phase 回 mode）则不再推进 */
+  if (phase.value === 'mode' || phase.value === 'over') return
   if (round.value === 1) {
     round.value = 2
     host.value = host.value === 'me' ? 'ai' : 'me'
@@ -329,6 +336,7 @@ function restart() {
   myHistory.value = []
   aiHistory.value = []
   results.value = { me: 0, ai: 0 }
+  settled.value = false
   overWin.value = false
   overTie.value = false
   resultText.value = ''
