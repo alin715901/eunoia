@@ -9,9 +9,9 @@ import { useItems } from './useItems'
 export function useGameRecords() {
   const { items, load, add, update, remove } = useItems('game')
 
-  async function bestOf(kind) {
+  async function bestOf(kind, key = '') {
     await load()
-    const r = items.value.find((x) => x.title === `best_${kind}`)
+    const r = items.value.find((x) => x.title === `best_${kind}${key ? '_' + key : ''}`)
     return r ? { id: r.id, ...(r.extra || {}) } : null
   }
 
@@ -19,22 +19,24 @@ export function useGameRecords() {
    * 保存一条成绩：
    *  - lowerBetter：分数越低越好（回合数/猜数次数/步数）
    *  - 否则视为胜场累计（wins +1）
+   *  - key：同游戏多维度分别记录（如猜数的简单/困难模式）
    * 返回 'new'（破纪录）/ 'count'（累加）/ 'none'（无变化）
    */
-  async function save(kind, rec = {}, { lowerBetter = false, countKey = null } = {}) {
+  async function save(kind, rec = {}, { lowerBetter = false, countKey = null, key = '' } = {}) {
     await load()
-    const row = items.value.find((x) => x.title === `best_${kind}`)
+    const title = `best_${kind}${key ? '_' + key : ''}`
+    const row = items.value.find((x) => x.title === title)
     if (countKey) {
       const next = { ...(row ? row.extra || {} : {}), [countKey]: ((row && row.extra && row.extra[countKey]) || 0) + 1 }
       if (row) await update(row.id, { extra: next })
-      else await add({ title: `best_${kind}`, extra: next })
+      else await add({ title, extra: next })
       return 'count'
     }
     const prev = row ? row.extra || {} : null
     const better = !prev || (lowerBetter ? rec.value < prev.value : rec.value > prev.value)
     if (better) {
       if (row) await update(row.id, { extra: rec })
-      else await add({ title: `best_${kind}`, extra: rec })
+      else await add({ title, extra: rec })
       return 'new'
     }
     return 'none'

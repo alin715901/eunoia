@@ -64,11 +64,19 @@ const meta = computed(() => getGameMeta(kind.value) || { name: getGameName(kind.
 
 const { items, load, historyOf } = useGameRecords()
 const bestText = computed(() => {
+  /* 猜数按简单/困难分别记录（best_guess_easy / best_guess_hard） */
+  if (kind.value === 'guess') {
+    const easy = items.value.find((x) => x.title === 'best_guess_easy')
+    const hard = items.value.find((x) => x.title === 'best_guess_hard')
+    const parts = []
+    if (easy && easy.extra && easy.extra.value != null) parts.push(`简单 ${easy.extra.value} 次`)
+    if (hard && hard.extra && hard.extra.value != null) parts.push(`困难 ${hard.extra.value} 次`)
+    return parts.length ? `最佳：${parts.join(' · ')}` : ''
+  }
   const row = items.value.find((x) => x.title === `best_${kind.value}`)
   if (!row) return ''
   const e = row.extra || {}
   if (kind.value === 'memory') return e.value ? `最佳：${e.value} 步通关` : ''
-  if (kind.value === 'guess') return e.value ? `最佳：${e.value} 次猜中` : ''
   return e.wins ? `累计胜 ${e.wins} 场` : ''
 })
 
