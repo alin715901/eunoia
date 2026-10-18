@@ -501,7 +501,7 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.divi { flex: 1; display: flex; flex-direction: column; min-height: 0; background: var(--bg); }
+.divi { flex: 1; display: flex; flex-direction: column; min-height: 0; background: var(--bg-body); }
 .d-tabs {
   display: flex;
   gap: 4px;

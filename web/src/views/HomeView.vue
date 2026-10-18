@@ -1320,7 +1320,7 @@ function onUnmountedClear(t) {
 .ms-spacer { flex: 1; }
 .ms-lib {
   display: flex; align-items: center; gap: 4px; padding: 6px 12px;
-  border-radius: 999px; border: 1px solid var(--border); background: var(--bg);
+  border-radius: 999px; border: 1px solid var(--border); background: var(--bg-soft);
   font-size: 12px; color: var(--text-soft);
 }
 .ms-list { flex: 1; overflow-y: auto; padding: 0 16px 12px; -webkit-overflow-scrolling: touch; }

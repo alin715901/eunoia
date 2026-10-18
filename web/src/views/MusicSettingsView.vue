@@ -399,13 +399,13 @@ onMounted(() => {
 }
 .ms-input {
   width: 100%; box-sizing: border-box; padding: 11px 14px; margin-bottom: 10px;
-  border-radius: 12px; border: 1px solid var(--border); background: var(--bg);
+  border-radius: 12px; border: 1px solid var(--border); background: var(--bg-soft);
   font-size: 13px; color: var(--text);
 }
 .ms-input::placeholder { color: var(--text-soft); }
 .ms-textarea {
   width: 100%; box-sizing: border-box; padding: 11px 14px; margin-bottom: 10px;
-  border-radius: 12px; border: 1px solid var(--border); background: var(--bg);
+  border-radius: 12px; border: 1px solid var(--border); background: var(--bg-soft);
   font-size: 13px; line-height: 1.6; color: var(--text);
   min-height: 110px; resize: none; font-family: inherit;
   -webkit-appearance: none;
