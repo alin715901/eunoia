@@ -1,16 +1,13 @@
 <template>
   <div class="md-page">
-    <AppHeader title="心情手账" back />
-
-    <div class="md-body">
-      <!-- 当前互动的联系人（全局可能绑多个梦角，记录按人分开） -->
-      <div class="mo-contact">
-        <span class="mo-contact-label">当前互动</span>
-        <div class="mo-select">
-          <button class="mo-select-btn" type="button" @click="contactOpen = !contactOpen">
-            <AppAvatar v-if="curContact" :name="curContact.name" :avatar="curContact.avatar" :size="22" />
-            <span class="mo-select-name">{{ curContact ? curContact.name : '未选择联系人' }}</span>
-            <AppIcon name="chevron-down" :size="14" color="var(--text-soft)" />
+    <!-- 联系人切换放到顶部导航栏最右侧（全局可能绑多个梦角，记录按人分开） -->
+    <AppHeader title="心情手账" back>
+      <template #right>
+        <div class="mo-select mo-select-head">
+          <button class="mo-select-btn mo-select-btn-head" type="button" @click="contactOpen = !contactOpen">
+            <AppAvatar v-if="curContact" :name="curContact.name" :avatar="curContact.avatar" :size="20" />
+            <span class="mo-select-name">{{ curContact ? curContact.name : '未选择' }}</span>
+            <AppIcon name="chevron-down" :size="12" color="var(--text-soft)" />
           </button>
           <div v-if="contactOpen" class="mo-select-pop">
             <button
@@ -27,8 +24,10 @@
             <div v-if="!contacts.length" class="mo-select-empty">还没有联系人，先去添加一个吧</div>
           </div>
         </div>
-      </div>
+      </template>
+    </AppHeader>
 
+    <div class="md-body">
       <div class="md-summary">
         <span class="md-sum-ic"><AppIcon name="mood" :size="26" color="var(--accent)" /></span>
         <span class="md-sum-main">
@@ -49,28 +48,34 @@
           v-for="(c, i) in cells"
           :key="i"
           class="mo-cell"
-          :class="{ empty: !c.day, today: c.today, has: c.mine || c.his }"
+          :class="{ empty: !c.day, today: c.today, has: c.me || c.him }"
           :style="tintOf(c)"
           @click="c.day && pick(c)"
         >
           <span class="mo-day">{{ c.day || '' }}</span>
           <span class="mo-dots">
-            <i v-if="c.mine" :style="{ background: colorOf(c.mine) }" />
-            <i v-if="c.his" :style="{ background: colorOf(c.his) }" />
+            <i v-if="c.him" :style="{ background: colorOf(c.him) }" />
+            <i v-if="c.me" :style="{ background: colorOf(c.me) }" />
           </span>
         </button>
       </div>
 
       <h3 class="mo-sec">本月心情分布</h3>
       <div class="mo-dist">
-        <div v-for="s in SIDES" :key="s.key" class="mo-dist-col">
-          <span class="mo-dist-title"><i class="mo-idot" :class="s.key" />{{ s.label }}</span>
+        <div class="mo-dist-col">
+          <div class="mo-dist-head">
+            <span class="mo-dist-title"><i class="mo-idot" :class="distSide" />{{ distSide === 'me' ? '我的' : 'TA 的' }}</span>
+            <div class="mo-dist-switch">
+              <button class="mo-sw-btn" :class="{ on: distSide === 'me' }" type="button" @click="distSide = 'me'">我的</button>
+              <button class="mo-sw-btn" :class="{ on: distSide === 'him' }" type="button" @click="distSide = 'him'">TA 的</button>
+            </div>
+          </div>
           <div v-for="t in allTags" :key="t.key" class="mo-dist-row">
             <MoodFace v-if="!t.custom" :name="t.key" :size="13" :color="t.color" />
             <i v-else class="mo-tag-dot" :style="{ background: t.color }" />
             <span class="mo-dist-name">{{ t.name }}</span>
-            <span class="mo-dist-bar"><i :style="{ width: pct(s.key, t.key) + '%', background: t.color }" /></span>
-            <span class="mo-dist-n">{{ countOf(s.key, t.key) }}</span>
+            <span class="mo-dist-bar"><i :style="{ width: pct(distSide, t.key) + '%', background: t.color }" /></span>
+            <span class="mo-dist-n">{{ countOf(distSide, t.key) }}</span>
           </div>
         </div>
       </div>
@@ -216,9 +221,9 @@ import { useNotificationsStore } from '@/stores/notifications'
    我的记录：12 个预设心情标签（各配极简线条表情）+ 自定义标签（长按删除）+ 碎碎念；
    TA 的记录：独立于我——当天一个随机时刻（8:00~21:59，按日期派生）自主记录，
               从全部可选标签里随机选一个心情，不在弹窗里手动填；
-   日历同一天并排两个半透明小圆点（左我右他，颜色各取当日心情色）；
+   日历同一天并排两个半透明小圆点（左 TA 右我，颜色各取当日心情色）；
    点有记录的日期先看详情（两人并排 + 铅笔入口），点铅笔才编辑；
-   记录按当前互动的联系人分开（全局可绑多个梦角）。 */
+   联系人切换在顶部导航栏最右侧；记录按当前互动的联系人分开（全局可绑多个梦角）。 */
 
 const WEEK = ['一', '二', '三', '四', '五', '六', '日']
 
@@ -241,11 +246,6 @@ const PRESET_MOODS = [
 const CUSTOM_COLORS = ['#a393c0', '#7fa8a0', '#c9a05f', '#b58bb0', '#c07f7f', '#7f9ec4']
 const CUSTOM_KEY = 'mood_custom_tags'
 const LAST_CID_KEY = 'mood_last_contact'
-
-const SIDES = [
-  { key: 'me', label: '我的' },
-  { key: 'him', label: 'TA 的' }
-]
 
 /* 旧版心情 key / 中文名 → 新标签 key（旧数据 extra.mood 存的是「sunny/初晴/开心…」） */
 const LEGACY_MAP = {
@@ -292,6 +292,9 @@ const hisItem = ref(null)
 const myForm = reactive({ mood: PRESET_MOODS[0].key, note: '' })
 const contactOpen = ref(false)
 
+/* 本月分布：单栏 + 右上角切换「我的 / TA 的」 */
+const distSide = ref('me')
+
 /* 自定义标签的添加输入 */
 const adding = ref(false)
 const newTag = ref('')
@@ -316,7 +319,7 @@ function tagName(key) {
   return t ? t.name : key
 }
 function tintOf(c) {
-  const key = c.mine || c.his
+  const key = c.me || c.him
   return key ? { background: colorOf(key) + '1a' } : null
 }
 /* 详情展示用：两人当天的心情标签 */
@@ -403,7 +406,7 @@ watch(curContact, async (c) => {
   await ensureHisToday()
 })
 
-/* 月历格子：周一为第一列；同一天取两人的记录（左我右他） */
+/* 月历格子：周一为第一列；同一天取两人的记录（左 TA 右我） */
 const cells = computed(() => {
   const y = year.value
   const m = month.value
@@ -422,13 +425,13 @@ const cells = computed(() => {
       day: d,
       date: ds,
       today: ds === t,
-      mine: mine ? moodKeyOf(mine.extra && mine.extra.mood) : null,
-      his: his ? moodKeyOf(his.extra && his.extra.mood) : null
+      me: mine ? moodKeyOf(mine.extra && mine.extra.mood) : null,
+      him: his ? moodKeyOf(his.extra && his.extra.mood) : null
     })
   }
   return out
 })
-const monthCount = computed(() => cells.value.filter((c) => c.mine || c.his).length)
+const monthCount = computed(() => cells.value.filter((c) => c.me || c.him).length)
 
 function todayStr() {
   const d = new Date()
@@ -602,18 +605,18 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 </script>
 
 <style scoped>
-/* 联系人下拉 */
-.mo-contact { display: flex; align-items: center; gap: 10px; margin-bottom: 12px; }
-.mo-contact-label { font-size: 12px; color: var(--text-soft); flex: 0 0 auto; }
-.mo-select { position: relative; flex: 1; min-width: 0; }
+/* 联系人下拉（位于顶部导航栏右侧） */
+.mo-select { position: relative; }
 .mo-select-btn {
-  width: 100%; display: flex; align-items: center; gap: 8px; padding: 8px 12px;
-  border: 1px solid var(--border); border-radius: 12px; background: var(--bg-soft);
-  font-size: 14px; color: var(--text);
+  display: flex; align-items: center; gap: 6px; padding: 6px 8px;
+  border: none; border-radius: 10px; background: transparent;
+  font-size: 13px; color: var(--text);
 }
-.mo-select-name { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mo-select-btn:active { background: var(--bg-soft); }
+.mo-select-name { max-width: 68px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mo-select-pop {
-  position: absolute; top: calc(100% + 6px); left: 0; right: 0; z-index: 20;
+  position: absolute; top: calc(100% + 6px); right: 0; z-index: 30;
+  min-width: 150px;
   background: var(--bg-screen); border: 1px solid var(--border); border-radius: 12px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.14); padding: 6px; max-height: 260px; overflow-y: auto;
 }
@@ -637,18 +640,26 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 .mo-cell.empty { background: transparent; }
 .mo-cell.today { outline: 1.5px solid var(--accent); }
 .mo-day { font-size: 13px; color: var(--text); }
-/* 同一天并排两个半透明小圆点：左我右他，颜色各取当日心情色 */
+/* 同一天并排两个半透明小圆点：左 TA 右我，颜色各取当日心情色 */
 .mo-dots { display: flex; align-items: center; gap: 3px; height: 6px; }
 .mo-dots i { width: 6px; height: 6px; border-radius: 50%; opacity: 0.55; }
 .mo-sec { font-size: 13px; color: var(--text-soft); margin: 18px 0 10px; font-weight: 500; }
 
-/* 本月心情分布：我的 / TA 的两栏 */
-.mo-dist { display: flex; gap: 10px; }
-.mo-dist-col { flex: 1; min-width: 0; background: var(--bg-soft); border-radius: 12px; padding: 10px 12px; }
-.mo-dist-title { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-soft); margin-bottom: 8px; }
+/* 本月心情分布：单栏 + 右上角切换视图 */
+.mo-dist-col { background: var(--bg-soft); border-radius: 12px; padding: 10px 12px; }
+.mo-dist-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
+.mo-dist-title { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-soft); }
 .mo-idot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
 .mo-idot.me { background: var(--accent); }
 .mo-idot.him { background: #8e9eb3; }
+.mo-dist-switch {
+  display: flex; flex: 0 0 auto; background: var(--bg-screen); border-radius: 999px; padding: 2px;
+}
+.mo-sw-btn {
+  border: none; background: transparent; border-radius: 999px; padding: 3px 10px;
+  font-size: 11px; color: var(--text-soft);
+}
+.mo-sw-btn.on { background: var(--accent); color: #fff; }
 .mo-dist-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
 .mo-dist-name { font-size: 12px; color: var(--text); width: 30px; flex: 0 0 auto; }
 .mo-dist-bar { flex: 1; height: 6px; border-radius: 3px; background: var(--bg-screen); overflow: hidden; }
