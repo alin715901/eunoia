@@ -4,10 +4,10 @@
     <AppHeader title="心情手账" back>
       <template #right>
         <div class="mo-select mo-select-head">
-          <button class="mo-select-btn mo-select-btn-head" type="button" @click="contactOpen = !contactOpen">
-            <AppAvatar v-if="curContact" :name="curContact.name" :avatar="curContact.avatar" :size="20" />
-            <span class="mo-select-name">{{ curContact ? curContact.name : '未选择' }}</span>
-            <AppIcon name="chevron-down" :size="12" color="var(--text-soft)" />
+          <button class="mo-select-btn mo-select-btn-head" type="button" aria-label="切换联系人" @click="contactOpen = !contactOpen">
+            <AppAvatar v-if="curContact" :name="curContact.name" :avatar="curContact.avatar" :size="24" />
+            <AppIcon v-else name="user" :size="18" color="var(--text-soft)" />
+            <AppIcon name="chevron-down" :size="11" color="var(--text-soft)" />
           </button>
           <div v-if="contactOpen" class="mo-select-pop">
             <button
@@ -28,14 +28,6 @@
     </AppHeader>
 
     <div class="md-body">
-      <div class="md-summary">
-        <span class="md-sum-ic"><AppIcon name="mood" :size="26" color="var(--accent)" /></span>
-        <span class="md-sum-main">
-          <span class="md-sum-title">{{ year }}.{{ String(month).padStart(2, '0') }} 已记录 {{ monthCount }} 天</span>
-          <span class="md-sum-sub">点某一天，记下你和 TA 的心情</span>
-        </span>
-      </div>
-
       <div class="mo-nav">
         <button class="mo-nav-btn" @click="shift(-1)">‹</button>
         <span class="mo-nav-title">{{ year }}年{{ month }}月</span>
@@ -147,7 +139,7 @@
                 v-for="t in allTags"
                 :key="t.key"
                 class="md-chip mo-mood"
-                :class="{ on: myForm.mood === t.key }"
+                :class="{ on: myForm.mood === t.key, pending: pendingDel === t.key }"
                 :style="myForm.mood === t.key ? { background: t.color, borderColor: t.color } : null"
                 type="button"
                 @pointerdown="chipDown(t)"
@@ -159,6 +151,10 @@
                 <MoodFace v-if="!t.custom" :name="t.key" :size="14" :color="myForm.mood === t.key ? '#fff' : t.color" />
                 <i v-else class="mo-tag-dot" :style="{ background: myForm.mood === t.key ? '#fff' : t.color }" />
                 {{ t.name }}
+                <!-- 长按后右上角出现删除钮，点 × 才真正删除 -->
+                <span v-if="pendingDel === t.key" class="mo-del" @click.stop="delTag(t)">
+                  <AppIcon name="close" :size="10" />
+                </span>
               </button>
 
               <button v-if="!adding" class="md-chip mo-add" type="button" @click="startAdd">
@@ -291,6 +287,8 @@ const myItem = ref(null)
 const hisItem = ref(null)
 const myForm = reactive({ mood: PRESET_MOODS[0].key, note: '' })
 const contactOpen = ref(false)
+/* 长按后进入「待删除」状态的标签 key（右上角显示 ×） */
+const pendingDel = ref(null)
 
 /* 本月分布：单栏 + 右上角切换「我的 / TA 的」 */
 const distSide = ref('me')
@@ -462,11 +460,12 @@ const dateLabel = computed(() => {
   return `${m}月${dd}日 周${w}`
 })
 
-/* 打开某日：当天两人都没有记录 → 直接编辑；有记录 → 先看详情 */
+/* 打开某日：永远先看详情（哪怕空的），点铅笔才进编辑 */
 function pick(c) {
   curDate.value = c.date
   refreshDay()
-  editing.value = !(myItem.value || hisItem.value)
+  editing.value = false
+  pendingDel.value = null
   show.value = true
 }
 function refreshDay() {
@@ -480,11 +479,13 @@ function openEdit() {
   myForm.note = myItem.value ? myItem.value.body || '' : ''
   adding.value = false
   newTag.value = ''
+  pendingDel.value = null
   editing.value = true
 }
 function close() {
   show.value = false
   editing.value = false
+  pendingDel.value = null
 }
 
 async function save() {
@@ -561,7 +562,8 @@ function removeTag(tag) {
   if (myForm.mood === tag.key) myForm.mood = PRESET_MOODS[0].key
 }
 
-/* 长按自定义标签 500ms 删除（长按触发后吞掉随后的 click 选中） */
+/* 长按自定义标签 500ms → 标签右上角出现删除钮（×），点 × 才真正删除。
+   长按触发后吞掉随后的 click 选中 */
 let pressTimer = null
 let longFired = false
 function chipDown(t) {
@@ -570,26 +572,31 @@ function chipDown(t) {
   clearTimeout(pressTimer)
   pressTimer = setTimeout(() => {
     longFired = true
-    if (confirm(`删除自定义标签「${t.name}」？\n历史记录里已记录的该标签仍会保留`)) {
-      removeTag(t)
-    }
+    pendingDel.value = t.key
   }, 500)
 }
 function chipUp() {
   clearTimeout(pressTimer)
 }
 function selectTag(t) {
-  if (longFired) return
+  if (longFired) return /* 长按抬手的 click：吞掉选中，保留待删除态 */
+  pendingDel.value = null
   myForm.mood = t.key
+}
+function delTag(t) {
+  pendingDel.value = null
+  removeTag(t)
+  toast.pushToast({ title: `已删除标签「${t.name}」` })
 }
 
 function pickContact(c) {
   curCid.value = c.id
   contactOpen.value = false
 }
-/* 点下拉外部关闭 */
+/* 点下拉外部关闭；点标签以外的区域取消「待删除」态 */
 function onDocClick(e) {
   if (!e.target.closest('.mo-select')) contactOpen.value = false
+  if (pendingDel.value && !e.target.closest('.mo-mood')) pendingDel.value = null
 }
 
 onMounted(async () => {
@@ -605,15 +612,14 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 </script>
 
 <style scoped>
-/* 联系人下拉（位于顶部导航栏右侧） */
+/* 联系人下拉（位于顶部导航栏右侧，只显示头像） */
 .mo-select { position: relative; }
 .mo-select-btn {
-  display: flex; align-items: center; gap: 6px; padding: 6px 8px;
+  display: flex; align-items: center; gap: 3px; padding: 5px 6px;
   border: none; border-radius: 10px; background: transparent;
   font-size: 13px; color: var(--text);
 }
 .mo-select-btn:active { background: var(--bg-soft); }
-.mo-select-name { max-width: 68px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mo-select-pop {
   position: absolute; top: calc(100% + 6px); right: 0; z-index: 30;
   min-width: 150px;
@@ -626,8 +632,9 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 }
 .mo-select-opt:hover { background: var(--bg-soft); }
 .mo-select-empty { padding: 12px; text-align: center; font-size: 12px; color: var(--text-soft); }
+.mo-select-opt .mo-select-name { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.mo-nav { display: flex; align-items: center; justify-content: center; gap: 18px; margin-bottom: 10px; }
+.mo-nav { display: flex; align-items: center; justify-content: center; gap: 18px; margin: 14px 0 10px; }
 .mo-nav-btn { border: none; background: transparent; font-size: 22px; color: var(--text-soft); padding: 0 6px; }
 .mo-nav-title { font-size: 15px; font-weight: 600; min-width: 96px; text-align: center; }
 .mo-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
@@ -694,6 +701,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 /* 心情 chips 与输入框之间留间距 */
 .mo-block .md-chips { margin-bottom: 10px; }
 .mo-mood {
+  position: relative;
   display: inline-flex; align-items: center; gap: 5px;
   /* 长按删除：禁掉系统长按菜单/文本选择，按压缩放给反馈 */
   user-select: none; -webkit-user-select: none; -webkit-touch-callout: none;
@@ -701,6 +709,14 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 }
 .mo-mood:active { transform: scale(0.96); }
 .mo-mood.on { color: #fff; }
+/* 长按 500ms 后右上角浮出删除钮 */
+.mo-mood.pending { border-color: var(--text-soft); }
+.mo-del {
+  position: absolute; top: -7px; right: -7px; width: 16px; height: 16px;
+  border: none; border-radius: 50%; background: #c0576b; color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
+}
 /* 自定义标签入口与输入（按钮收窄，和输入框拉开距离） */
 .mo-add { border-style: dashed; display: inline-flex; align-items: center; gap: 4px; }
 .mo-add-input {
