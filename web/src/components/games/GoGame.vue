@@ -1,25 +1,42 @@
 <template>
   <div class="go-wrap">
-    <div class="go-bar">
-      <span class="go-side ai"><AppAvatar :name="opponent.name" :avatar="opponent.avatar" :size="20" />{{ opponent.name }} ⚪ 提 {{ aiCaps }}</span>
-      <span class="go-status" :class="{ win: result === 'win', lose: result === 'lose' }">{{ statusText }}</span>
-      <span class="go-side me"><AppAvatar :name="'我'" :avatar="myAvatar" :size="20" />我 ⚫ 提 {{ myCaps }}</span>
+    <!-- 阶段一：选择难度（简单 9×9 / 困难 13×13） -->
+    <div v-if="phase === 'mode'" class="go-mid">
+      <p class="go-mode-status">选择棋盘，开始对局</p>
+      <div class="go-modes">
+        <button class="go-mode-btn" @click="chooseMode('easy')">
+          <b>简单</b><span>9 × 9 棋盘</span>
+        </button>
+        <button class="go-mode-btn hard" @click="chooseMode('hard')">
+          <b>困难</b><span>13 × 13 棋盘</span>
+        </button>
+      </div>
+      <p class="go-mode-tip">我执黑先手；中国规则数地，双方连续虚着即终局</p>
     </div>
-    <div class="go-board">
-      <button
-        v-for="(cell, i) in cells"
-        :key="i"
-        class="go-cell"
-        :class="{ black: cell === 1, white: cell === 2, last: lastMove === i }"
-        :disabled="cell !== 0 || over || thinking"
-        @click="play(i)"
-      ></button>
-    </div>
-    <div class="go-btns">
-      <button class="md-btn ghost" :disabled="over || thinking" @click="pass">虚着</button>
-      <button class="md-btn ghost" :disabled="over || thinking" @click="giveUp">认输</button>
-      <button class="md-btn ghost" @click="restart">重新开始</button>
-    </div>
+
+    <!-- 阶段二：对局 -->
+    <template v-else>
+      <div class="go-bar">
+        <span class="go-side ai"><AppAvatar :name="opponent.name" :avatar="opponent.avatar" :size="20" />{{ opponent.name }} ⚪ 提 {{ aiCaps }}</span>
+        <span class="go-status" :class="{ win: result === 'win', lose: result === 'lose' }">{{ statusText }}</span>
+        <span class="go-side me"><AppAvatar :name="'我'" :avatar="myAvatar" :size="20" />我 ⚫ 提 {{ myCaps }}</span>
+      </div>
+      <div class="go-board" :style="boardStyle">
+        <button
+          v-for="(cell, i) in cells"
+          :key="i"
+          class="go-cell"
+          :class="{ black: cell === 1, white: cell === 2, last: lastMove === i }"
+          :disabled="cell !== 0 || over || thinking"
+          @click="play(i)"
+        ></button>
+      </div>
+      <div class="go-btns">
+        <button class="md-btn ghost" :disabled="over || thinking" @click="pass">虚着</button>
+        <button class="md-btn ghost" :disabled="over || thinking" @click="giveUp">认输</button>
+        <button class="md-btn ghost" @click="restart">重新开始</button>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -28,9 +45,9 @@ import { ref, computed } from 'vue'
 import { aiDelay } from './aiDelay.js'
 import AppAvatar from '@/components/common/AppAvatar.vue'
 
-/* 围棋：9×9，我执黑先手。标准吃子（无气提子）、禁止自杀、双方连续虚着终局，
-   按中国规则数地（子 + 围空，无贴目）。AI：优先提子 > 随机占角边 > 虚着。 */
-const SIZE = 9
+/* 围棋：简单 9×9 / 困难 13×13，我执黑先手。标准吃子（无气提子）、禁止自杀、
+   双方连续虚着终局，按中国规则数地（子 + 围空，无贴目）。
+   AI：优先提子 > 随机占角边 > 虚着。 */
 const EMPTY = 0
 const ME = 1
 const AI = 2
@@ -41,7 +58,10 @@ const props = defineProps({
 })
 const emit = defineEmits(['over'])
 
-const cells = ref(new Array(SIZE * SIZE).fill(EMPTY))
+const phase = ref('mode') // mode 选难度 | play 对局
+const size = ref(9)
+
+const cells = ref([])
 const over = ref(false)
 const thinking = ref(false)
 const result = ref('')
@@ -51,13 +71,38 @@ const aiCaps = ref(0)
 const passes = ref(0) // 连续虚着次数
 const scoreText = ref('')
 
+/* 星位：9×9 在 (2,2) 等四角星 + 天元；13×13 在 (3,3) 等四角星 + 天元 */
+const stars = computed(() => {
+  const s = size.value
+  const e = s === 9 ? 2 : 3
+  const pts = [[e, e], [e, s - 1 - e], [s - 1 - e, e], [s - 1 - e, s - 1 - e], [(s - 1) / 2, (s - 1) / 2]]
+  return pts.map(([r, c]) => [((c + 0.5) / s) * 100, ((r + 0.5) / s) * 100])
+})
+
+/* 棋盘背景：size 条横竖线（线过每格中心 = 交叉点）+ 星位圆点 */
+const boardStyle = computed(() => {
+  const s = size.value
+  const starLayers = stars.value.map(([x, y]) => `radial-gradient(circle at ${x}% ${y}%, var(--go-line) 2px, transparent 2.6px)`)
+  const linePos = 50 / (s - 1) /* 线贴图偏移半格，对准格中心 */
+  return {
+    gridTemplateColumns: `repeat(${s}, 1fr)`,
+    backgroundImage: [...starLayers,
+      'linear-gradient(to right, var(--go-line) 0 1px, transparent 1px)',
+      'linear-gradient(to bottom, var(--go-line) 0 1px, transparent 1px)'
+    ].join(', '),
+    backgroundSize: [...starLayers.map(() => '100% 100%'), `calc(100%/${s}) 100%`, `100% calc(100%/${s})`].join(', '),
+    backgroundPosition: [...starLayers.map(() => '0 0'), `${linePos}% 0`, `0 ${linePos}%`].join(', '),
+    backgroundRepeat: [...starLayers.map(() => 'no-repeat'), 'repeat', 'repeat'].join(', ')
+  }
+})
+
 const statusText = computed(() => {
   if (over.value) return scoreText.value || (result.value === 'win' ? '你赢了！' : result.value === 'lose' ? '对方赢了' : '平局')
   return thinking.value ? '对方思考中…' : '你的回合，落子'
 })
 
-function idx(r, c) { return r * SIZE + c }
-function inBoard(r, c) { return r >= 0 && r < SIZE && c >= 0 && c < SIZE }
+function idx(r, c) { return r * size.value + c }
+function inBoard(r, c) { return r >= 0 && r < size.value && c >= 0 && c < size.value }
 const NBR = [[-1, 0], [1, 0], [0, -1], [0, 1]]
 
 /* 提取 (r,c) 所在棋块的气数集合 */
@@ -85,8 +130,15 @@ function libertiesOf(board, r, c) {
   return { stones, libs }
 }
 
-function restart() {
-  cells.value = new Array(SIZE * SIZE).fill(EMPTY)
+function chooseMode(m) {
+  size.value = m === 'easy' ? 9 : 13
+  phase.value = 'play'
+  initBoard()
+}
+
+/* 重置当前棋盘（保留难度，直接开新局） */
+function initBoard() {
+  cells.value = new Array(size.value * size.value).fill(EMPTY)
   over.value = false
   thinking.value = false
   result.value = ''
@@ -95,6 +147,12 @@ function restart() {
   aiCaps.value = 0
   passes.value = 0
   scoreText.value = ''
+}
+
+/* 重新开始：回到难度选择（与猜数游戏一致） */
+function restart() {
+  phase.value = 'mode'
+  initBoard()
 }
 
 /* 尝试落子：返回提掉的对方子数；非法（占位/自杀）返回 -1 */
@@ -126,8 +184,8 @@ function tryPlace(board, r, c, color) {
 
 function play(i) {
   if (over.value || thinking.value || cells.value[i] !== EMPTY) return
-  const r = Math.floor(i / SIZE)
-  const c = i % SIZE
+  const r = Math.floor(i / size.value)
+  const c = i % size.value
   const board = cells.value.slice()
   const cap = tryPlace(board, r, c, ME)
   if (cap < 0) return
@@ -146,16 +204,17 @@ function aiPlay() {
   const occupied = board.map((v, i) => (v !== EMPTY ? i : -1)).filter((i) => i >= 0)
   if (!occupied.length) {
     /* 开局占星位 */
-    tryPlace(board, 2, 2, AI)
+    const e = size.value === 9 ? 2 : 3
+    tryPlace(board, e, e, AI)
     cells.value = board
-    lastMove.value = idx(2, 2)
+    lastMove.value = idx(e, e)
     thinking.value = false
     return
   }
   const cands = new Set()
   for (const i of occupied) {
-    const r = Math.floor(i / SIZE)
-    const c = i % SIZE
+    const r = Math.floor(i / size.value)
+    const c = i % size.value
     for (const [dr, dc] of NBR) {
       const nr = r + dr
       const nc = c + dc
@@ -165,8 +224,8 @@ function aiPlay() {
   let best = -1
   let bestScore = -Infinity
   for (const i of cands) {
-    const r = Math.floor(i / SIZE)
-    const c = i % SIZE
+    const r = Math.floor(i / size.value)
+    const c = i % size.value
     const sim = board.slice()
     const cap = tryPlace(sim, r, c, AI)
     if (cap < 0) continue
@@ -197,7 +256,7 @@ function aiPlay() {
     if (passes.value >= 2) finish()
     return
   }
-  const cap = tryPlace(board, Math.floor(best / SIZE), best % SIZE, AI)
+  const cap = tryPlace(board, Math.floor(best / size.value), best % size.value, AI)
   cells.value = board
   aiCaps.value += cap
   lastMove.value = best
@@ -229,7 +288,7 @@ function giveUp() {
 function finish() {
   if (over.value) return
   const board = cells.value
-  const owner = new Array(SIZE * SIZE).fill(0)
+  const owner = new Array(size.value * size.value).fill(0)
   const seen = new Set()
   let black = 0
   let white = 0
@@ -244,8 +303,8 @@ function finish() {
     let touchesMe = false
     let touchesAi = false
     for (let k = 0; k < region.length; k++) {
-      const r = Math.floor(region[k] / SIZE)
-      const c = region[k] % SIZE
+      const r = Math.floor(region[k] / size.value)
+      const c = region[k] % size.value
       for (const [dr, dc] of NBR) {
         const nr = r + dr
         const nc = c + dc
@@ -268,7 +327,8 @@ function finish() {
   if (black > white) result.value = 'win'
   else if (white > black) result.value = 'lose'
   else result.value = 'draw'
-  emit('over', { win: result.value === 'win', tie: result.value === 'draw', title: result.value === 'win' ? '胜利' : result.value === 'lose' ? '失利' : '平局', detail: scoreText.value })
+  const modeTag = size.value === 9 ? '简单' : '困难'
+  emit('over', { win: result.value === 'win', tie: result.value === 'draw', title: result.value === 'win' ? '胜利' : result.value === 'lose' ? '失利' : '平局', detail: `${modeTag} · ${scoreText.value}` })
 }
 
 defineExpose({ restart })
@@ -281,28 +341,29 @@ restart()
 .go-status { font-size: 13px; color: var(--accent); font-weight: 600; }
 .go-status.win { color: #4caf50; }
 .go-status.lose { color: #e53935; }
-/* 棋盘：不再用格子+gap 画线，而是按围棋习惯画 9 条横竖线（线过每格中心），
-   每个可点击格的中心就是一个交叉点，棋子落在交叉点上 */
+/* 棋盘：按围棋习惯画 size 条横竖线（线过每格中心），
+   每个可点击格的中心就是一个交叉点，棋子落在交叉点上；
+   网格线与星位由 boardStyle 按当前难度（9/13）动态生成 */
 .go-board {
   position: relative;
   --go-line: var(--border);
-  display: grid; grid-template-columns: repeat(9, 1fr);
+  display: grid;
   background-color: var(--bg-soft);
-  /* 星位 5 颗（(2,2) 等四角星 + 天元），圆心按 (n+0.5)/9 定位 */
-  background-image:
-    radial-gradient(circle at 27.78% 27.78%, var(--go-line) 2px, transparent 2.6px),
-    radial-gradient(circle at 72.22% 27.78%, var(--go-line) 2px, transparent 2.6px),
-    radial-gradient(circle at 27.78% 72.22%, var(--go-line) 2px, transparent 2.6px),
-    radial-gradient(circle at 72.22% 72.22%, var(--go-line) 2px, transparent 2.6px),
-    radial-gradient(circle at 50% 50%, var(--go-line) 2px, transparent 2.6px),
-    /* 竖线 9 条 / 横线 9 条：1px 线画在 tile 左/上缘，再偏移半格对准格中心 */
-    linear-gradient(to right, var(--go-line) 0 1px, transparent 1px),
-    linear-gradient(to bottom, var(--go-line) 0 1px, transparent 1px);
-  background-size: 100% 100%, 100% 100%, 100% 100%, 100% 100%, 100% 100%, calc(100%/9) 100%, 100% calc(100%/9);
-  background-position: 0 0, 0 0, 0 0, 0 0, 0 0, 6.25% 0, 0 6.25%;
-  background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, no-repeat, repeat, repeat;
   border: 1px solid var(--border); border-radius: 8px; overflow: hidden;
 }
+/* 难度选择 */
+.go-mid { text-align: center; padding: 18px 0 6px; }
+.go-mode-status { font-size: 14px; color: var(--accent); font-weight: 600; }
+.go-modes { display: flex; gap: 12px; margin-top: 16px; }
+.go-mode-btn {
+  flex: 1; display: flex; flex-direction: column; gap: 4px; align-items: center;
+  padding: 18px 0; border-radius: 16px; border: 1px solid var(--border); background: var(--bg-soft);
+}
+.go-mode-btn b { font-size: 17px; color: var(--text); }
+.go-mode-btn span { font-size: 12px; color: var(--text-soft); }
+.go-mode-btn.hard { border-color: var(--accent); }
+.go-mode-btn:active { transform: scale(0.97); }
+.go-mode-tip { font-size: 11px; color: var(--text-soft); margin-top: 12px; line-height: 1.6; }
 .go-cell { aspect-ratio: 1; background: transparent; border: 0; padding: 0; cursor: pointer; -webkit-appearance: none; appearance: none; position: relative; }
 /* 对方思考中：棋盘不可点但不压暗（iOS WebKit 对 disabled 有 UA 级硬编码压暗，
    Blink/WebKit 还会调淡 disabled 的 color） */
