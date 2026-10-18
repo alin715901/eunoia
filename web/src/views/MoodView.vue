@@ -74,7 +74,7 @@
       <p v-if="!monthCount" class="md-empty">这个月还没有记录<br /><span class="md-empty-sub">点日历上的任意一天，开始你和 TA 的共记</span></p>
     </div>
 
-    <!-- 某日弹窗：有记录 → 详情态（两人记录 + 铅笔入口）；无记录 → 直接编辑态 -->
+    <!-- 某日弹窗：恒先进详情态（两人记录并排 + 右上角铅笔入口），点铅笔才进编辑 -->
     <div v-if="show" class="md-mask" @click.self="close">
       <div class="md-sheet">
         <!-- 详情：两人的记录并排，右上角铅笔进入编辑 -->
