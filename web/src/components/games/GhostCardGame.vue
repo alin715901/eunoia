@@ -65,7 +65,10 @@
               :style="washStyle()"
             ><span>?</span></span>
           </div>
-          <div v-else-if="dealPhase === 'split'" class="gh-deal-count">发牌中 {{ dealt }} / 52</div>
+          <div v-else-if="dealPhase === 'split'" class="gh-deal-count">
+            发牌中 {{ dealt }} / 53
+            <span v-if="dealt >= 53" class="gh-card back mini"><span>?</span></span>
+          </div>
           <div v-else class="gh-deal-count">拆对子…</div>
         </template>
         <template v-else>
@@ -286,9 +289,13 @@ async function build() {
     aiHand.value.push(theirs[i])
     mine[i].fresh = true
     myHand.value.push(mine[i])
-    dealt.value = i + 1
+    dealt.value = (i + 1) * 2 /* 每轮发出 2 张：对方一张、我一张 */
     await sleep(55)
   }
+  /* 第 53 张：多出的暗牌，亮明放到一边（不参与对局，且绝不是鬼牌） */
+  dealt.value = 53
+  await sleep(500)
+  if (tok !== buildToken) return
 
   dealPhase.value = 'pairs'
   await sleep(600)
@@ -489,16 +496,20 @@ build()
 .gh-label { font-size: 12px; color: var(--text-soft); margin-bottom: 4px; }
 
 /* 扇形手牌：横向滚动条可左右滑动，滚动条隐藏；
-   inner 用 margin:auto 居中，牌多溢出时从左起可滑 */
+   inner 用 margin:auto 居中，牌多溢出时从左起可滑。
+   注意 overflow-x:auto 会把 overflow-y 也变成 auto（CSS 规范），
+   因此纵向必须留足内边距：选中上浮 16px、边缘弧度 34px、
+   旋转后视觉外扩约 10px，都不能被裁掉 */
 .gh-fan { overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .gh-fan::-webkit-scrollbar { display: none; }
-.gh-fan-inner { display: flex; margin: 0 auto; width: max-content; padding: 0 30px; }
-/* 对方的扇（弧口朝下，牌底边对齐底缘）；我的扇（弧口朝上，顶边对齐顶缘） */
-.gh-hand.opp .gh-fan-inner { align-items: flex-end; }
-.gh-hand.mine .gh-fan-inner { align-items: flex-start; }
+.gh-fan-inner { display: flex; margin: 0 auto; width: max-content; }
+/* 对方的扇（弧口朝下，牌底边对齐底缘；边缘上扬，上方留 56px）；
+   我的扇（弧口朝上，顶边对齐顶缘；边缘下垂，下方留 56px） */
+.gh-hand.opp .gh-fan-inner { align-items: flex-end; padding: 56px 30px 32px; }
+.gh-hand.mine .gh-fan-inner { align-items: flex-start; padding: 32px 30px 56px; }
 .gh-slot { width: 66px; height: 96px; flex: none; transition: transform 0.22s ease; }
 .gh-slot + .gh-slot { margin-left: -30px; }
-.gh-hand .gh-fan { height: 132px; }
+.gh-hand .gh-fan { height: 184px; }
 /* 手牌区不参与压缩：屏幕再挤也保住扇形高度，不被中间的抽牌展示挤占 */
 .gh-hand { flex: 0 0 auto; }
 .gh-mid { flex: 0 0 auto; }
@@ -593,7 +604,8 @@ build()
   position: absolute; left: 50%; top: 50%; margin: -48px 0 0 -33px;
   transition: transform 0.18s ease; pointer-events: none;
 }
-.gh-deal-count { font-size: 13px; color: var(--text-soft); }
+.gh-deal-count { font-size: 13px; color: var(--text-soft); display: flex; flex-direction: column; align-items: center; gap: 8px; }
+.gh-card.back.mini { width: 40px; height: 56px; border-radius: 6px; font-size: 13px; cursor: default; }
 /* 抽牌展示区：固定宽度，牌在里面亮相，不撑动上下布局 */
 .gh-draw { display: flex; gap: 10px; align-items: center; justify-content: center; min-width: 128px; }
 .gh-card.big { width: 64px; height: 88px; }
