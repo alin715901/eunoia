@@ -1,7 +1,5 @@
 <template>
   <div class="gh-wrap">
-    <p class="gh-status">{{ statusText }}</p>
-
     <div class="gh-area">
       <!-- 对方的手牌：扇形铺开（方向与我相反，牌背朝上） -->
       <div class="gh-hand opp">
@@ -71,10 +69,12 @@
           </div>
           <div v-else class="gh-deal-count">拆对子…</div>
         </template>
-        <template v-else>
+        <!-- 对局中：中央牌堆 + 动态状态提示（你的回合/再点一次抽出/对方思考中…）。
+             顶部不再放状态行——省下的垂直空间让底部日志与按钮不被截断 -->
+        <div v-else class="gh-mid-done">
           <span class="gh-deck">🂠</span>
-          <span class="gh-tip">点对方的牌选中，再点一次抽出</span>
-        </template>
+          <span class="gh-mid-status">{{ statusText }}</span>
+        </div>
       </div>
 
       <!-- 我的手牌：扇形铺开（牌面朝上，可左右滑动） -->
@@ -491,7 +491,6 @@ build()
 </script>
 
 <style scoped>
-.gh-status { text-align: center; font-size: 14px; color: var(--accent); margin-bottom: 14px; font-weight: 600; }
 .gh-area { display: flex; flex-direction: column; gap: 10px; }
 .gh-label { font-size: 12px; color: var(--text-soft); margin-bottom: 4px; }
 
@@ -573,15 +572,18 @@ build()
 .gh-hand.opp .gh-card.sel { transform: translateY(16px); }
 .gh-hand.mine .gh-card.sel { transform: translateY(-16px); }
 
-/* 中间桌面区：固定高度 + 独立底板，洗牌堆/抽牌展示/骰子出现消失都不引起布局抖动 */
+/* 中间桌面区：底板承载洗牌堆/抽牌展示/骰子/中央牌堆+状态提示。
+   min-height 只按骰子档定（约 100px）——对局主体（done）内容是
+   牌堆图标+一行状态，天然更矮，省出的垂直空间给底部日志 */
 .gh-mid {
   display: flex; align-items: center; justify-content: center; gap: 10px;
-  padding: 10px; min-height: 156px; width: 100%;
+  padding: 10px; min-height: 100px; width: 100%;
   background: var(--bg-soft); border: 1px solid var(--border); border-radius: 14px;
   overflow: hidden;
 }
+.gh-mid-done { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+.gh-mid-status { font-size: 14px; font-weight: 600; color: var(--accent); text-align: center; }
 .gh-deck { font-size: 26px; }
-.gh-tip { font-size: 12px; color: var(--text-soft); }
 /* 掷骰子定先手：上对方下我 */
 .gh-dice { display: flex; flex-direction: column; gap: 8px; align-items: center; }
 .gh-dice-row { display: flex; align-items: center; gap: 10px; }
@@ -616,6 +618,6 @@ build()
 @keyframes gh-discard {
   to { opacity: 0; transform: translateY(-16px) scale(0.85); }
 }
-.gh-log { text-align: center; font-size: 12px; color: var(--text-soft); margin: 14px 0 10px; min-height: 16px; }
+.gh-log { text-align: center; font-size: 12px; color: var(--text-soft); margin: 10px 0 8px; min-height: 16px; }
 .gh-btns { display: flex; justify-content: center; }
 </style>
