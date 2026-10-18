@@ -4,10 +4,10 @@
     <div v-if="phase === 'mode'" class="go-mid">
       <p class="go-mode-status">选择棋盘，开始对局</p>
       <div class="go-modes">
-        <button class="go-mode-btn" @click="chooseMode('easy')">
+        <button class="go-mode-btn" :class="{ picked: picked === 'easy' }" @click="chooseMode('easy')">
           <b>简单</b><span>9 × 9 棋盘</span>
         </button>
-        <button class="go-mode-btn hard" @click="chooseMode('hard')">
+        <button class="go-mode-btn" :class="{ picked: picked === 'hard' }" @click="chooseMode('hard')">
           <b>困难</b><span>13 × 13 棋盘</span>
         </button>
       </div>
@@ -60,6 +60,9 @@ const emit = defineEmits(['over'])
 
 const phase = ref('mode') // mode 选难度 | play 对局
 const size = ref(9)
+/* 点选难度：先高亮选中的按钮，再进对局（给用户一个选中反馈） */
+const picked = ref('')
+let pickTimer = null
 
 const cells = ref([])
 const over = ref(false)
@@ -131,9 +134,14 @@ function libertiesOf(board, r, c) {
 }
 
 function chooseMode(m) {
-  size.value = m === 'easy' ? 9 : 13
-  phase.value = 'play'
-  initBoard()
+  if (picked.value) return
+  picked.value = m
+  pickTimer = setTimeout(() => {
+    picked.value = ''
+    size.value = m === 'easy' ? 9 : 13
+    phase.value = 'play'
+    initBoard()
+  }, 340)
 }
 
 /* 重置当前棋盘（保留难度，直接开新局） */
@@ -151,6 +159,8 @@ function initBoard() {
 
 /* 重新开始：回到难度选择（与猜数游戏一致） */
 function restart() {
+  if (pickTimer) { clearTimeout(pickTimer); pickTimer = null }
+  picked.value = ''
   phase.value = 'mode'
   initBoard()
 }
@@ -361,7 +371,11 @@ restart()
 }
 .go-mode-btn b { font-size: 17px; color: var(--text); }
 .go-mode-btn span { font-size: 12px; color: var(--text-soft); }
-.go-mode-btn.hard { border-color: var(--accent); }
+/* 点选高亮：选中的难度按钮亮起高亮框 */
+.go-mode-btn.picked {
+  border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-soft));
+}
 .go-mode-btn:active { transform: scale(0.97); }
 .go-mode-tip { font-size: 11px; color: var(--text-soft); margin-top: 12px; line-height: 1.6; }
 .go-cell { aspect-ratio: 1; background: transparent; border: 0; padding: 0; cursor: pointer; -webkit-appearance: none; appearance: none; position: relative; }

@@ -16,10 +16,10 @@
     <div v-if="phase === 'mode'" class="gn-mid">
       <p class="gn-status">选择难度，开始游戏</p>
       <div class="gn-modes">
-        <button class="gn-mode-btn" @click="chooseMode('easy')">
+        <button class="gn-mode-btn" :class="{ picked: picked === 'easy' }" @click="chooseMode('easy')">
           <b>简单</b><span>1 ~ 100</span>
         </button>
-        <button class="gn-mode-btn hard" @click="chooseMode('hard')">
+        <button class="gn-mode-btn" :class="{ picked: picked === 'hard' }" @click="chooseMode('hard')">
           <b>困难</b><span>1 ~ 1000</span>
         </button>
       </div>
@@ -119,6 +119,9 @@ const { bestOf, save } = useGameRecords()
 /* phase: mode → roll → (host-input | guess) → (ai-guess | guess) → over */
 const phase = ref('mode')
 const mode = ref('easy')
+/* 点选难度：先高亮选中的按钮，再进掷骰（给用户一个选中反馈） */
+const picked = ref('')
+let pickTimer = null
 const round = ref(1)
 const host = ref('ai') /* 本轮出题方：me | ai */
 const rangeMax = computed(() => RANGE[mode.value])
@@ -170,12 +173,17 @@ function roleOf(side) {
 }
 
 function chooseMode(m) {
-  mode.value = m
-  lo.value = 1
-  hi.value = RANGE[m]
-  phase.value = 'roll'
-  rollStatus.value = '双方各掷一次，点数大者先出题'
-  refreshBest()
+  if (picked.value) return
+  picked.value = m
+  pickTimer = setTimeout(() => {
+    picked.value = ''
+    mode.value = m
+    lo.value = 1
+    hi.value = RANGE[m]
+    phase.value = 'roll'
+    rollStatus.value = '双方各掷一次，点数大者先出题'
+    refreshBest()
+  }, 340)
 }
 
 function rollDice() {
@@ -322,6 +330,8 @@ async function refreshBest() {
 }
 
 function restart() {
+  if (pickTimer) { clearTimeout(pickTimer); pickTimer = null }
+  picked.value = ''
   phase.value = 'mode'
   mode.value = 'easy'
   round.value = 1
@@ -376,7 +386,11 @@ restart()
 }
 .gn-mode-btn b { font-size: 17px; color: var(--text); }
 .gn-mode-btn span { font-size: 12px; color: var(--text-soft); }
-.gn-mode-btn.hard { border-color: var(--accent); }
+/* 点选高亮：选中的难度按钮亮起高亮框 */
+.gn-mode-btn.picked {
+  border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent);
+  background: color-mix(in srgb, var(--accent) 12%, var(--bg-soft));
+}
 .gn-mode-btn:active { transform: scale(0.97); }
 .gn-dice-pair { display: flex; align-items: center; justify-content: center; gap: 18px; }
 .gn-die { font-size: 46px; line-height: 1; }
