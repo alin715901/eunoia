@@ -267,7 +267,16 @@ async function build() {
   stopWash()
 
   const deck = buildDeck()
-  extraCard.value = deck.pop() /* 53 张多出 1 张，放一边不用 */
+  /* 53 张多出 1 张放一边不用；但暗牌绝不能是鬼牌——
+     否则对局里没有鬼牌，52 张普通牌全可配对，终局无人持鬼。
+     若随机抽到小王，就和牌堆里一张普通牌互换，保证鬼牌一定发到某人手上 */
+  let extra = deck.pop()
+  if (extra.rank === '小王') {
+    const swap = deck.shift() /* 此时牌堆已无王，shift 必为普通牌 */
+    deck.push(extra)
+    extra = swap
+  }
+  extraCard.value = extra
   const mine = deck.slice(0, 26)
   const theirs = deck.slice(26)
 
@@ -502,10 +511,21 @@ build()
 .gh-card i { font-style: normal; font-size: 16px; line-height: 1; }
 .gh-card.red { color: #e53935; }
 .gh-card.joker { border-color: var(--accent); color: var(--accent); background: var(--bg-soft); }
+/* 牌背：固定经典深蓝 + 斜纹 + 外圈白边（不用主题色），
+   外扩白圈让扇形重叠时每张牌界限清晰 */
 .gh-card.back {
-  background: var(--accent); border-color: var(--accent); color: #fff; font-size: 15px; cursor: pointer;
+  background:
+    repeating-linear-gradient(45deg, rgba(255, 255, 255, 0.16) 0 2px, transparent 2px 6px),
+    repeating-linear-gradient(-45deg, rgba(255, 255, 255, 0.16) 0 2px, transparent 2px 6px),
+    linear-gradient(160deg, #40618f, #27436b);
+  border: 1px solid #1e3454;
+  box-shadow:
+    0 0 0 2px #f2f5f9,
+    inset 0 0 0 1px rgba(255, 255, 255, 0.5),
+    0 1px 3px rgba(0, 0, 0, 0.18);
+  color: #fff; font-size: 15px; cursor: pointer;
 }
-.gh-card.back span { pointer-events: none; }
+.gh-card.back span { pointer-events: none; color: rgba(255, 255, 255, 0.9); }
 .gh-card.back:not(:disabled):active { transform: scale(0.94); }
 /* 不可点时只禁光标、不压暗——牌面保持正常亮度。
    iOS WebKit 对 disabled 表单元素有 UA 级硬编码压暗（约 0.3~0.4），
