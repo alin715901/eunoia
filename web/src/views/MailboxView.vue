@@ -481,6 +481,10 @@ onMounted(async () => {
 /* 展开全文 */
 .lc-full {
   flex-basis: 100%;
+  min-width: 0; /* 关键：切断 flex item 的 min-width:auto 兜底——
+     否则正文里出现不可断长串（英文单词/URL/emoji 串/符号串）时，
+     本块会被撑到内容宽度，整段文字冲出卡片（复现：220 个 a 把
+     402px 的卡片撑到 1837px，文字盖住回信区和按钮） */
   display: flex;
   flex-direction: column;
   border-top: 1px dashed var(--border);
@@ -494,6 +498,7 @@ onMounted(async () => {
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   padding-right: 2px;
+  min-width: 0;
 }
 .lc-actions {
   display: flex;
@@ -513,9 +518,11 @@ onMounted(async () => {
 }
 .lca-btn:active { background: var(--bg-soft); }
 .lca-btn.danger { color: #fa5151; border-color: #fa5151; }
-.l-open { font-family: var(--font-serif); font-size: 14px; margin-bottom: 6px; }
-.l-line { font-family: var(--font-serif); font-size: 15px; line-height: 1.8; margin: 4px 0; }
-.l-close { font-family: var(--font-serif); font-size: 14px; margin-top: 8px; text-align: right; color: var(--text-soft); }
+/* 正文各行：长串（英文单词/URL/emoji/符号）强制在容器内断行，
+   不冲出卡片；中文仍按正常断行规则 */
+.l-open { font-family: var(--font-serif); font-size: 14px; margin-bottom: 6px; overflow-wrap: anywhere; word-break: break-word; }
+.l-line { font-family: var(--font-serif); font-size: 15px; line-height: 1.8; margin: 4px 0; overflow-wrap: anywhere; word-break: break-word; }
+.l-close { font-family: var(--font-serif); font-size: 14px; margin-top: 8px; text-align: right; color: var(--text-soft); overflow-wrap: anywhere; word-break: break-word; }
 /* 回信中挂着的原信入口：点击跳转查看原信 */
 .l-orig {
   display: flex;
