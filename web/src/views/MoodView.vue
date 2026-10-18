@@ -485,11 +485,15 @@ const cells = computed(() => {
   }
   return out
 })
-/* 取当天某方最新的一条（按时间排；无时间的旧数据按原序） */
+/* 取当天某方最新的一条（先按时间；同一分钟时取后创建的） */
 function latestOf(dayItems, pred) {
   const list = dayItems.filter(pred)
   if (!list.length) return null
-  return list.reduce((a, b) => (timeMin(b) >= timeMin(a) ? b : a))
+  return list.reduce((a, b) => {
+    const ta = timeMin(a), tb = timeMin(b)
+    if (tb !== ta) return tb > ta ? b : a
+    return (b.id || 0) >= (a.id || 0) ? b : a
+  })
 }
 
 function todayStr() {
