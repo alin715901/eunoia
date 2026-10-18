@@ -52,26 +52,43 @@
         </button>
       </div>
 
-      <h3 class="mo-sec">本月心情分布</h3>
-      <div class="mo-dist">
-        <div class="mo-dist-col">
-          <div class="mo-dist-head">
-            <span class="mo-dist-title"><i class="mo-idot" :class="distSide" />{{ distSide === 'me' ? '我的' : 'TA 的' }}</span>
-            <div class="mo-dist-switch">
-              <button class="mo-sw-btn" :class="{ on: distSide === 'me' }" type="button" @click="distSide = 'me'">我的</button>
-              <button class="mo-sw-btn" :class="{ on: distSide === 'him' }" type="button" @click="distSide = 'him'">TA 的</button>
+      <!-- 当日时间轴：双轨钟摆布局——他的靠左、我的靠右，中间一条细墨主轴 -->
+      <h3 class="mo-sec">{{ tlTitle }}</h3>
+      <div class="mo-tl">
+        <i class="mo-tl-axis" aria-hidden="true" />
+        <template v-for="r in dayRecords" :key="r.id">
+          <!-- 他的记录：靠左，时间 + 头像 + 心情印记 -->
+          <div v-if="isHis(r)" class="mo-tl-row him">
+            <div class="mo-tl-side">
+              <span class="mo-tl-time">{{ r._time }}</span>
+              <span class="mo-tl-mood">
+                <AppAvatar :name="himName" :avatar="curContact && curContact.avatar" :size="20" />
+                <MoodFace v-if="r._t && !r._t.custom" :name="r._k" :size="16" :color="r._t.color" />
+                <i v-else class="mo-tag-dot mo-tag-dot-lg" :style="{ background: r._t ? r._t.color : '#b5b0a3' }" />
+              </span>
+            </div>
+            <i class="mo-tl-dot" :style="{ background: r._t ? r._t.color : '#b5b0a3' }" />
+            <div class="mo-tl-side mo-tl-empty" />
+          </div>
+          <!-- 我的记录：靠右，时间 + 心情词 + 纸质感小信笺 -->
+          <div v-else class="mo-tl-row me">
+            <div class="mo-tl-side mo-tl-empty" />
+            <i class="mo-tl-dot" :style="{ background: r._t ? r._t.color : '#b5b0a3' }" />
+            <div class="mo-tl-side">
+              <span class="mo-tl-time">{{ r._time }}</span>
+              <span class="mo-tl-mood">
+                <MoodFace v-if="r._t && !r._t.custom" :name="r._k" :size="16" :color="r._t.color" />
+                <i v-else class="mo-tag-dot mo-tag-dot-lg" :style="{ background: r._t ? r._t.color : '#b5b0a3' }" />
+                <b v-if="r._t">{{ r._t.name }}</b>
+              </span>
+              <p v-if="r.body" class="mo-tl-note">{{ r.body }}</p>
             </div>
           </div>
-          <div v-for="t in allTags" :key="t.key" class="mo-dist-row">
-            <MoodFace v-if="!t.custom" :name="t.key" :size="13" :color="t.color" />
-            <i v-else class="mo-tag-dot" :style="{ background: t.color }" />
-            <span class="mo-dist-name">{{ t.name }}</span>
-            <span class="mo-dist-bar"><i :style="{ width: pct(distSide, t.key) + '%', background: t.color }" /></span>
-            <span class="mo-dist-n">{{ countOf(distSide, t.key) }}</span>
-          </div>
-        </div>
+        </template>
+        <p v-if="!dayRecords.length" class="mo-tl-empty-tip">
+          这天还没有记录<br /><span class="md-empty-sub">点日历上的任意一天，开始你和 {{ himName }} 的共记</span>
+        </p>
       </div>
-      <p v-if="!monthCount" class="md-empty">这个月还没有记录<br /><span class="md-empty-sub">点日历上的任意一天，开始你和 TA 的共记</span></p>
     </div>
 
     <!-- 某日弹窗：恒先进详情态（两人记录并排 + 右上角铅笔入口），点铅笔才进编辑 -->
@@ -107,7 +124,7 @@
               <p v-else class="mo-detail-empty">还没记录</p>
             </div>
             <div class="mo-detail-card">
-              <span class="mo-detail-title"><i class="mo-idot him" />TA 的记录</span>
+              <span class="mo-detail-title"><i class="mo-idot him" />{{ himName }} 的记录</span>
               <template v-if="hisItem">
                 <div class="mo-detail-mood">
                   <MoodFace v-if="!hisTag.custom" :name="hisTag.key" :size="18" :color="hisTag.color" />
@@ -190,7 +207,7 @@
 
             <!-- TA 当天的心情由 TA 自主记录，这里只读展示 -->
             <div v-if="hisItem" class="mo-his">
-              <span class="mo-his-title"><i class="mo-idot him" />TA 今天的心情</span>
+              <span class="mo-his-title"><i class="mo-idot him" />{{ himName }} 今天的心情</span>
               <span class="mo-his-mood">
                 <MoodFace v-if="!hisTag.custom" :name="hisTag.key" :size="16" :color="hisTag.color" />
                 <i v-else class="mo-tag-dot" :style="{ background: hisTag.color }" />
@@ -200,6 +217,7 @@
           </div>
 
           <div class="md-actions">
+            <button class="md-btn ghost" type="button" @click="saveAnother">再记一条</button>
             <button class="md-btn ghost" type="button" @click="editing = false">取消</button>
             <button class="md-btn primary" type="button" @click="save">保存</button>
           </div>
@@ -281,6 +299,8 @@ const curCid = ref(Number(localStorage.getItem(LAST_CID_KEY)) || 0)
 const curContact = computed(
   () => contacts.value.find((c) => String(c.id) === String(curCid.value)) || contacts.value[0] || null
 )
+/* 界面上的「他」一律显示当前联系人名（无联系人时兜底 TA） */
+const himName = computed(() => (curContact.value && curContact.value.name) || 'TA')
 
 const items = ref([])
 const now = new Date()
@@ -296,8 +316,8 @@ const contactOpen = ref(false)
 /* 长按后进入「待删除」状态的标签 key（右上角显示 ×） */
 const pendingDel = ref(null)
 
-/* 本月分布：单栏 + 右上角切换「我的 / TA 的」 */
-const distSide = ref('me')
+/* 当日时间轴：展示的日期（默认今天；点日历某日时跟随切换） */
+const tlDate = ref('')
 
 /* 自定义标签的添加输入 */
 const adding = ref(false)
@@ -371,36 +391,66 @@ async function migrateLegacy() {
   }
 }
 
-/* TA 当天的记录：独立于我，在当天一个随机时刻自主生成。
-   时刻由日期派生（同一天稳定，落在 8:00~21:59），进入心情页时若已过该时刻就补上。
-   保存/删除我的记录都不会触发或清除 TA 的记录。 */
-function hisMoment(ds) {
+/* TA 当天的记录：独立于我，当天可分多次自主记录。
+   次数与时刻都由日期 hash 派生（同一天稳定，首条落在 8:00~21:59，其后每条错开 35~90 分钟）。
+   进入心情页时按当前时间补齐已到点的记录；保存/删除我的记录都不会触发或清除 TA 的。 */
+function hisMoments(ds) {
   let h = 0
   for (const ch of String(ds)) h = (h * 31 + ch.charCodeAt(0)) % 100003
-  const minutes = 8 * 60 + (h % (14 * 60))
-  return { h: Math.floor(minutes / 60), m: minutes % 60 }
+  const count = 1 + (h % 3)
+  const out = []
+  let cur = 8 * 60 + (h % (14 * 60))
+  for (let i = 0; i < count && cur < 24 * 60; i++) {
+    out.push({ h: Math.floor(cur / 60), m: cur % 60 })
+    cur += 35 + ((h >>> ((i + 2) * 3)) % 56)
+  }
+  return out
 }
-function hisMomentPassed(ds) {
-  const { h, m } = hisMoment(ds)
-  const d = new Date()
-  return d.getHours() * 60 + d.getMinutes() >= h * 60 + m
+function hm(h, m) {
+  return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+}
+/* 旧数据（无 time 字段）的展示兜底：TA 用日期派生时刻，我的不显示时间 */
+function timeOf(it) {
+  const t = it.extra && it.extra.time
+  if (t) return t
+  if (isHis(it)) {
+    const { h, m } = hisMoments(it.title)[0]
+    return hm(h, m)
+  }
+  return ''
+}
+/* 排序用：把 HH:mm 转分钟；无时间的排在最前 */
+function timeMin(it) {
+  const t = it.extra && it.extra.time
+  if (!t) return -1
+  const [h, m] = t.split(':').map(Number)
+  return (h || 0) * 60 + (m || 0)
 }
 async function ensureHisToday() {
   const ds = todayStr()
   if (!curContact.value) return
-  if (items.value.some((x) => x.title === ds && isHis(x))) return
-  if (!hisMomentPassed(ds)) return
-  try {
-    const tag = allTags.value[Math.floor(Math.random() * allTags.value.length)]
-    await createItem({
-      module: 'mood',
-      contactId: curContact.value.id,
-      title: ds,
-      body: '',
-      extra: { mood: tag.key, moodName: tag.name, owner: 'him' }
-    })
-    await reload()
-  } catch (e) { /* 忽略：TA 的自动记录失败不影响我的使用 */ }
+  const moments = hisMoments(ds)
+  const have = items.value.filter((x) => x.title === ds && isHis(x)).length
+  if (have >= moments.length) return
+  const d = new Date()
+  const nowMin = d.getHours() * 60 + d.getMinutes()
+  let created = false
+  for (let i = have; i < moments.length; i++) {
+    const { h, m } = moments[i]
+    if (nowMin < h * 60 + m) break /* 还没到 TA 的时刻 */
+    try {
+      const tag = allTags.value[Math.floor(Math.random() * allTags.value.length)]
+      await createItem({
+        module: 'mood',
+        contactId: curContact.value.id,
+        title: ds,
+        body: '',
+        extra: { mood: tag.key, moodName: tag.name, owner: 'him', time: hm(h, m) }
+      })
+      created = true
+    } catch (e) { /* 忽略：TA 的自动记录失败不影响我的使用 */ }
+  }
+  if (created) await reload()
 }
 
 /* 切换联系人：记住选择并重载该梦角的记录 */
@@ -410,7 +460,7 @@ watch(curContact, async (c) => {
   await ensureHisToday()
 })
 
-/* 月历格子：周一为第一列；同一天取两人的记录（左 TA 右我） */
+/* 月历格子：周一为第一列；同一天取两人的记录（左 TA 右我，多条时取最新一条） */
 const cells = computed(() => {
   const y = year.value
   const m = month.value
@@ -423,8 +473,8 @@ const cells = computed(() => {
   for (let d = 1; d <= days; d++) {
     const ds = `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`
     const dayItems = items.value.filter((x) => x.title === ds)
-    const mine = dayItems.find(isMine)
-    const his = dayItems.find(isHis)
+    const mine = latestOf(dayItems, isMine)
+    const his = latestOf(dayItems, isHis)
     out.push({
       day: d,
       date: ds,
@@ -435,7 +485,12 @@ const cells = computed(() => {
   }
   return out
 })
-const monthCount = computed(() => cells.value.filter((c) => c.me || c.him).length)
+/* 取当天某方最新的一条（按时间排；无时间的旧数据按原序） */
+function latestOf(dayItems, pred) {
+  const list = dayItems.filter(pred)
+  if (!list.length) return null
+  return list.reduce((a, b) => (timeMin(b) >= timeMin(a) ? b : a))
+}
 
 function todayStr() {
   const d = new Date()
@@ -449,14 +504,6 @@ function shift(n) {
   year.value = y
   month.value = m
 }
-function countOf(owner, key) {
-  return cells.value.filter((c) => c[owner] === key).length
-}
-function pct(owner, key) {
-  const total = cells.value.filter((c) => c[owner]).length
-  if (!total) return 0
-  return Math.round((countOf(owner, key) / total) * 100)
-}
 
 const dateLabel = computed(() => {
   const d = curDate.value
@@ -466,9 +513,34 @@ const dateLabel = computed(() => {
   return `${m}月${dd}日 周${w}`
 })
 
-/* 打开某日：永远先看详情（哪怕空的），点铅笔才进编辑 */
+/* 当日时间轴：标题（今天显示「今天」）+ 当日全部记录（按时间从上往下，他的左我的右） */
+const tlTitle = computed(() => {
+  const d = tlDate.value
+  if (!d) return '当日时间轴'
+  const label = dateLabelOf(d)
+  return d === todayStr() ? `今天 · ${label} · 时间轴` : `${label} · 时间轴`
+})
+function dateLabelOf(d) {
+  const [y, m, dd] = d.split('-').map(Number)
+  const w = ['日', '一', '二', '三', '四', '五', '六'][new Date(y, m - 1, dd).getDay()]
+  return `${m}月${dd}日 周${w}`
+}
+const dayRecords = computed(() => {
+  const ds = tlDate.value
+  if (!ds) return []
+  return items.value
+    .filter((x) => x.title === ds)
+    .map((x) => {
+      const k = moodKeyOf(x.extra && x.extra.mood)
+      return { ...x, _k: k, _t: (k && tagOf(k)) || null, _time: timeOf(x) }
+    })
+    .sort((a, b) => timeMin(a) - timeMin(b))
+})
+
+/* 打开某日：永远先看详情（哪怕空的），点铅笔才进编辑；时间轴跟随到该日 */
 function pick(c) {
   curDate.value = c.date
+  tlDate.value = c.date
   refreshDay()
   editing.value = false
   pendingDel.value = null
@@ -476,8 +548,8 @@ function pick(c) {
 }
 function refreshDay() {
   const dayItems = items.value.filter((x) => x.title === curDate.value)
-  myItem.value = dayItems.find(isMine) || null
-  hisItem.value = dayItems.find(isHis) || null
+  myItem.value = latestOf(dayItems, isMine)
+  hisItem.value = latestOf(dayItems, isHis)
 }
 /* 详情 → 编辑：回填我的记录 */
 function openEdit() {
@@ -498,7 +570,7 @@ async function save() {
   const cid = curContact.value ? curContact.value.id : null
   const date = curDate.value
   try {
-    await saveMine(cid, date)
+    await saveMine(cid, date, false)
     await reload()
     refreshDay()
     editing.value = false /* 保存后回详情，看两人的记录 */
@@ -507,14 +579,38 @@ async function save() {
     toast.pushToast({ title: '保存失败', text: e.message })
   }
 }
-async function saveMine(cid, date) {
+/* 再记一条：当天可以随时记多条，强制新增（时间取当前时刻） */
+async function saveAnother() {
+  const cid = curContact.value ? curContact.value.id : null
+  const date = curDate.value
+  try {
+    await saveMine(cid, date, true)
+    await reload()
+    refreshDay()
+    editing.value = false /* 回详情，时间轴看得到刚记的这条 */
+    toast.pushToast({ title: '已记录' })
+  } catch (e) {
+    toast.pushToast({ title: '保存失败', text: e.message })
+  }
+}
+/* 当前时刻 HH:mm（固定系统时间下也可被测试控制） */
+function nowHM() {
+  const d = new Date()
+  return hm(d.getHours(), d.getMinutes())
+}
+async function saveMine(cid, date, forceNew) {
   const payload = {
     title: date,
     body: String(myForm.note || '').trim(),
     extra: { mood: myForm.mood, moodName: tagName(myForm.mood), owner: 'me' }
   }
-  if (myItem.value) await updateItem(myItem.value.id, payload)
-  else await createItem({ module: 'mood', contactId: cid, ...payload })
+  if (!forceNew && myItem.value) {
+    /* 更新当天最新一条：保留原记录时刻 */
+    const oldTime = myItem.value.extra && myItem.value.extra.time
+    await updateItem(myItem.value.id, { ...payload, extra: { ...payload.extra, time: oldTime || nowHM() } })
+  } else {
+    await createItem({ module: 'mood', contactId: cid, ...payload, extra: { ...payload.extra, time: nowHM() } })
+  }
 }
 /* 删除我的记录：不动 TA 的（TA 独立记录） */
 async function removeCur() {
@@ -611,6 +707,7 @@ onMounted(async () => {
     try { await contactsStore.load() } catch (e) { /* ignore */ }
   }
   await migrateLegacy()
+  tlDate.value = todayStr() /* 时间轴默认展示今天 */
   await reload()
   await ensureHisToday()
 })
@@ -658,26 +755,46 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 .mo-dots i { width: 6px; height: 6px; border-radius: 50%; opacity: 0.55; }
 .mo-sec { font-size: 13px; color: var(--text-soft); margin: 18px 0 10px; font-weight: 500; }
 
-/* 本月心情分布：单栏 + 右上角切换视图 */
-.mo-dist-col { background: var(--bg-soft); border-radius: 12px; padding: 10px 12px; }
-.mo-dist-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 8px; }
-.mo-dist-title { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-soft); }
+/* 双人小圆点（弹窗标题、TA 只读行用） */
 .mo-idot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
 .mo-idot.me { background: var(--accent); }
-.mo-idot.him { background: #8e9eb3; }
-.mo-dist-switch {
-  display: flex; flex: 0 0 auto; background: var(--bg-screen); border-radius: 999px; padding: 2px;
+.mo-idot.him { background: #8e9b3; }
+/* 当日时间轴：双轨钟摆布局 —— 他的靠左、我的靠右，中间一条极细淡墨主轴 */
+.mo-tl { position: relative; padding: 8px 0 4px; }
+.mo-tl-axis {
+  position: absolute; left: 50%; top: 0; bottom: 0; width: 1px;
+  transform: translateX(-0.5px);
+  background: var(--border);
+  background: color-mix(in srgb, var(--text-soft) 32%, transparent);
 }
-.mo-sw-btn {
-  border: none; background: transparent; border-radius: 999px; padding: 3px 10px;
-  font-size: 11px; color: var(--text-soft);
+.mo-tl-row {
+  display: grid; grid-template-columns: 1fr 26px 1fr; align-items: start;
+  margin-bottom: 28px; /* 大留白：诗歌集节奏，不挤 */
 }
-.mo-sw-btn.on { background: var(--accent); color: #fff; }
-.mo-dist-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
-.mo-dist-name { font-size: 12px; color: var(--text); width: 30px; flex: 0 0 auto; }
-.mo-dist-bar { flex: 1; height: 6px; border-radius: 3px; background: var(--bg-screen); overflow: hidden; }
-.mo-dist-bar > i { display: block; height: 100%; border-radius: 3px; }
-.mo-dist-n { font-size: 11px; color: var(--text-soft); width: 16px; text-align: right; }
+.mo-tl-row:last-of-type { margin-bottom: 0; }
+.mo-tl-side { min-width: 0; display: flex; flex-direction: column; gap: 5px; }
+.mo-tl-row.him .mo-tl-side:not(.mo-tl-empty) { align-items: flex-end; text-align: right; }
+.mo-tl-row.me .mo-tl-side:not(.mo-tl-empty) { align-items: flex-start; text-align: left; }
+.mo-tl-dot {
+  width: 7px; height: 7px; border-radius: 50%; justify-self: center; margin-top: 4px;
+  box-shadow: 0 0 0 3.5px var(--bg-screen); /* 点四周留白，线在点处断开 */
+}
+.mo-tl-time { font-size: 11px; color: var(--text-soft); font-variant-numeric: tabular-nums; letter-spacing: .03em; }
+.mo-tl-mood { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; color: var(--text); }
+/* 我的碎碎念：一张纸质感小信笺（米黄纸底 + 信纸横线 + 不规则圆角） */
+.mo-tl-note {
+  margin: 2px 0 0; padding: 9px 12px 10px;
+  background: var(--bg-soft);
+  background: color-mix(in srgb, #f6efdc 68%, var(--bg-screen));
+  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, #cfc09a 45%, var(--border));
+  border-radius: 3px 12px 3px 12px;
+  font-size: 12.5px; font-weight: 400; line-height: 1.9; color: var(--text);
+  white-space: pre-wrap; word-break: break-word;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .05);
+  background-image: repeating-linear-gradient(transparent, transparent 23px, rgba(120, 100, 60, .08) 24px);
+}
+.mo-tl-empty-tip { grid-column: 1 / -1; text-align: center; font-size: 12px; color: var(--text-soft); padding: 20px 0 8px; }
 /* 自定义标签的纯色小点（无表情） */
 .mo-tag-dot { width: 5px; height: 5px; border-radius: 50%; flex: 0 0 auto; }
 .mo-tag-dot-lg { width: 8px; height: 8px; }
