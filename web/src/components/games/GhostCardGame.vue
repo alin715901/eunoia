@@ -69,7 +69,7 @@
           </div>
           <div v-else class="gh-deal-count">拆对子…</div>
         </template>
-        <!-- 对局中：中央牌堆 + 动态状态提示（你的回合/再点一次抽出/对方思考中…）。
+        <!-- 对局中：中央牌堆 + 动态状态提示并排居中（牌堆图标不再偏上）。
              顶部不再放状态行——省下的垂直空间让底部日志与按钮不被截断 -->
         <div v-else class="gh-mid-done">
           <span class="gh-deck">🂠</span>
@@ -572,16 +572,16 @@ build()
 .gh-hand.opp .gh-card.sel { transform: translateY(16px); }
 .gh-hand.mine .gh-card.sel { transform: translateY(-16px); }
 
-/* 中间桌面区：底板承载洗牌堆/抽牌展示/骰子/中央牌堆+状态提示。
-   min-height 只按骰子档定（约 100px）——对局主体（done）内容是
-   牌堆图标+一行状态，天然更矮，省出的垂直空间给底部日志 */
+/* 中间桌面区：固定高度 + 独立底板，洗牌堆/抽牌展示/骰子/牌堆提示
+   切换出现消失都不引起布局抖动（手牌区不会跟着上下跳）。
+   固定值取内容最高档（洗牌堆 152 + 上下 padding 20） */
 .gh-mid {
   display: flex; align-items: center; justify-content: center; gap: 10px;
-  padding: 10px; min-height: 100px; width: 100%;
+  padding: 10px; height: 172px; width: 100%;
   background: var(--bg-soft); border: 1px solid var(--border); border-radius: 14px;
   overflow: hidden;
 }
-.gh-mid-done { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 8px; }
+.gh-mid-done { display: flex; flex-direction: row; align-items: center; justify-content: center; gap: 10px; }
 .gh-mid-status { font-size: 14px; font-weight: 600; color: var(--accent); text-align: center; }
 .gh-deck { font-size: 26px; }
 /* 掷骰子定先手：上对方下我 */

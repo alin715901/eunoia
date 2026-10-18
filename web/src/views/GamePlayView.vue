@@ -84,14 +84,12 @@ watch(() => route.fullPath, () => {
   loadOpponent()
 })
 
-/* 对局页被 keep-alive 缓存：从大厅/聊天再次进入时 onMounted 不重跑，
-   靠 onActivated 重新开局 + 重载对手（含邀请对局的 contactId 场景）；
-   同时复位退出标记，保证再次进入对局时返回仍会弹确认 */
+/* 对局页被 keep-alive 缓存：从大厅/聊天/桌面再次进入时 onMounted 不重跑。
+   仅复位退出标记（保证再次进入时返回仍会弹确认）——不重开一局：
+   中途离开再回来接着打（AI 的思考计时在后台照常推进）。
+   换游戏/换对手由上面的 route.fullPath watch 负责重开 */
 onActivated(() => {
   leaving = false
-  result.value = null
-  roundKey.value += 1
-  loadOpponent()
 })
 
 const resultTitle = computed(() => {

@@ -186,11 +186,27 @@ const dotPositions = computed(() => {
 })
 const coreR = computed(() => 5 + visual.value.intensity * 5 + Math.sin(tick.value * Math.PI * 2) * (1 + visual.value.turbulence * 2))
 
+/* ── 感知结果持久化 ──
+   返回再进入 / keep-alive 失效 / 自动更新整页 reload / 冷启动后，
+   都显示上一次感知到的结果；只有主动点「再感知一次」才更新 */
+const LAST_KEY = 'diary_perception_last'
+function loadLast() {
+  try {
+    const p = JSON.parse(localStorage.getItem(LAST_KEY) || 'null')
+    if (p && p.space && p.presence && p.emotion) return p
+  } catch (e) { /* 忽略 */ }
+  return null
+}
+function saveLast(p) {
+  try { localStorage.setItem(LAST_KEY, JSON.stringify(p)) } catch (e) { /* 忽略 */ }
+}
+
 function roll() {
   rolling.value = true
   clearTimeout(rollTimer)
   rollTimer = setTimeout(() => {
     result.value = rollPerception()
+    saveLast(result.value)
     rolling.value = false
   }, 420)
 }
@@ -206,7 +222,13 @@ function loop(now) {
   tick.value += dt / period
   raf = requestAnimationFrame(loop)
 }
-onMounted(() => { raf = requestAnimationFrame(loop); roll() })
+onMounted(() => {
+  raf = requestAnimationFrame(loop)
+  /* 有上次的结果直接恢复，不重新感知；仅首次（无记录）才 roll */
+  const saved = loadLast()
+  if (saved) result.value = saved
+  else roll()
+})
 onUnmounted(() => { if (raf) cancelAnimationFrame(raf); clearTimeout(rollTimer) })
 </script>
 
