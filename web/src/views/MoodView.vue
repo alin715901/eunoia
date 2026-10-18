@@ -77,79 +77,126 @@
       <p v-if="!monthCount" class="md-empty">这个月还没有记录<br /><span class="md-empty-sub">点日历上的任意一天，开始你和 TA 的共记</span></p>
     </div>
 
-    <!-- 某日记录：我的心情（可编辑）+ TA 今日心情（自动生成，只读展示） -->
+    <!-- 某日弹窗：有记录 → 详情态（两人记录 + 铅笔入口）；无记录 → 直接编辑态 -->
     <div v-if="show" class="md-mask" @click.self="close">
       <div class="md-sheet">
-        <h3 class="md-sheet-title">{{ dateLabel }} 的心情</h3>
-        <p class="md-sheet-sub" v-if="curContact">与 {{ curContact.name }} 的共同记录</p>
-
-        <div class="mo-block">
-          <div class="mo-block-head">
-            <span class="mo-block-title"><i class="mo-idot me" />我的记录</span>
-            <button v-if="myItem" class="mo-block-del" type="button" @click="removeCur">
-              <AppIcon name="trash" :size="14" />
+        <!-- 详情：两人的记录并排，右上角铅笔进入编辑 -->
+        <template v-if="!editing">
+          <div class="mo-detail-head">
+            <div class="mo-detail-head-main">
+              <h3 class="md-sheet-title">{{ dateLabel }} 的心情</h3>
+              <p class="md-sheet-sub" v-if="curContact">与 {{ curContact.name }} 的共同记录</p>
+            </div>
+            <button class="mo-edit-btn" type="button" aria-label="修改记录" @click="openEdit">
+              <AppIcon name="edit" :size="15" />
             </button>
           </div>
 
-          <div class="md-chips">
-            <button
-              v-for="t in allTags"
-              :key="t.key"
-              class="md-chip mo-mood"
-              :class="{ on: myForm.mood === t.key }"
-              :style="myForm.mood === t.key ? { background: t.color, borderColor: t.color } : null"
-              type="button"
-              @pointerdown="chipDown(t)"
-              @pointerup="chipUp"
-              @pointercancel="chipUp"
-              @pointerleave="chipUp"
-              @click="selectTag(t)"
-            >
-              <MoodFace v-if="!t.custom" :name="t.key" :size="14" :color="myForm.mood === t.key ? '#fff' : t.color" />
-              <i v-else class="mo-tag-dot" :style="{ background: myForm.mood === t.key ? '#fff' : t.color }" />
-              {{ t.name }}
-            </button>
-
-            <button v-if="!adding" class="md-chip mo-add" type="button" @click="startAdd">
-              <AppIcon name="plus" :size="12" color="var(--text-soft)" />自定义
-            </button>
-            <template v-else>
-              <input
-                ref="addInput"
-                v-model="newTag"
-                class="mo-add-input"
-                maxlength="6"
-                placeholder="标签名"
-                @keyup.enter="confirmAdd"
-                @keyup.esc="cancelAdd"
-              />
-              <button class="mo-add-ok" type="button" @click="confirmAdd">添加</button>
-              <button class="mo-add-cancel" type="button" @click="cancelAdd">取消</button>
-            </template>
+          <div class="mo-detail">
+            <div class="mo-detail-card">
+              <span class="mo-detail-title"><i class="mo-idot me" />我的记录</span>
+              <template v-if="myItem">
+                <div class="mo-detail-mood">
+                  <MoodFace v-if="!myTag.custom" :name="myTag.key" :size="18" :color="myTag.color" />
+                  <i v-else class="mo-tag-dot mo-tag-dot-lg" :style="{ background: myTag.color }" />
+                  <b>{{ myTag.name }}</b>
+                </div>
+                <p v-if="myItem.body" class="mo-detail-note">{{ myItem.body }}</p>
+              </template>
+              <p v-else class="mo-detail-empty">还没记录</p>
+            </div>
+            <div class="mo-detail-card">
+              <span class="mo-detail-title"><i class="mo-idot him" />TA 的记录</span>
+              <template v-if="hisItem">
+                <div class="mo-detail-mood">
+                  <MoodFace v-if="!hisTag.custom" :name="hisTag.key" :size="18" :color="hisTag.color" />
+                  <i v-else class="mo-tag-dot mo-tag-dot-lg" :style="{ background: hisTag.color }" />
+                  <b>{{ hisTag.name }}</b>
+                </div>
+                <p v-if="hisItem.body" class="mo-detail-note">{{ hisItem.body }}</p>
+              </template>
+              <p v-else class="mo-detail-empty">还没记录</p>
+            </div>
           </div>
 
-          <textarea
-            v-model="myForm.note"
-            class="md-textarea"
-            rows="3"
-            placeholder="写点什么…（可选）"
-          />
-
-          <!-- TA 当天的心情由我保存时自动随机生成，这里只读展示 -->
-          <div v-if="hisItem" class="mo-his">
-            <span class="mo-his-title"><i class="mo-idot him" />TA 今天的心情</span>
-            <span class="mo-his-mood">
-              <MoodFace v-if="!hisTag.custom" :name="hisTag.key" :size="16" :color="hisTag.color" />
-              <i v-else class="mo-tag-dot" :style="{ background: hisTag.color }" />
-              {{ hisTag.name }}
-            </span>
+          <div class="md-actions">
+            <button class="md-btn primary" type="button" @click="close">关闭</button>
           </div>
-        </div>
+        </template>
 
-        <div class="md-actions">
-          <button class="md-btn ghost" type="button" @click="close">取消</button>
-          <button class="md-btn primary" type="button" @click="save">保存</button>
-        </div>
+        <!-- 编辑：我的记录（TA 的心情只读展示，不在这里填） -->
+        <template v-else>
+          <h3 class="md-sheet-title">{{ dateLabel }} 的心情</h3>
+          <p class="md-sheet-sub" v-if="curContact">与 {{ curContact.name }} 的共同记录</p>
+
+          <div class="mo-block">
+            <div class="mo-block-head">
+              <span class="mo-block-title"><i class="mo-idot me" />我的记录</span>
+              <button v-if="myItem" class="mo-block-del" type="button" @click="removeCur">
+                <AppIcon name="trash" :size="14" />
+              </button>
+            </div>
+
+            <div class="md-chips">
+              <button
+                v-for="t in allTags"
+                :key="t.key"
+                class="md-chip mo-mood"
+                :class="{ on: myForm.mood === t.key }"
+                :style="myForm.mood === t.key ? { background: t.color, borderColor: t.color } : null"
+                type="button"
+                @pointerdown="chipDown(t)"
+                @pointerup="chipUp"
+                @pointercancel="chipUp"
+                @pointerleave="chipUp"
+                @click="selectTag(t)"
+              >
+                <MoodFace v-if="!t.custom" :name="t.key" :size="14" :color="myForm.mood === t.key ? '#fff' : t.color" />
+                <i v-else class="mo-tag-dot" :style="{ background: myForm.mood === t.key ? '#fff' : t.color }" />
+                {{ t.name }}
+              </button>
+
+              <button v-if="!adding" class="md-chip mo-add" type="button" @click="startAdd">
+                <AppIcon name="plus" :size="12" color="var(--text-soft)" />自定义
+              </button>
+              <template v-else>
+                <input
+                  ref="addInput"
+                  v-model="newTag"
+                  class="mo-add-input"
+                  maxlength="6"
+                  placeholder="标签名"
+                  @keyup.enter="confirmAdd"
+                  @keyup.esc="cancelAdd"
+                />
+                <button class="mo-add-ok" type="button" @click="confirmAdd">添加</button>
+                <button class="mo-add-cancel" type="button" @click="cancelAdd">取消</button>
+              </template>
+            </div>
+
+            <textarea
+              v-model="myForm.note"
+              class="md-textarea"
+              rows="3"
+              placeholder="写点什么…（可选）"
+            />
+
+            <!-- TA 当天的心情由 TA 自主记录，这里只读展示 -->
+            <div v-if="hisItem" class="mo-his">
+              <span class="mo-his-title"><i class="mo-idot him" />TA 今天的心情</span>
+              <span class="mo-his-mood">
+                <MoodFace v-if="!hisTag.custom" :name="hisTag.key" :size="16" :color="hisTag.color" />
+                <i v-else class="mo-tag-dot" :style="{ background: hisTag.color }" />
+                {{ hisTag.name }}
+              </span>
+            </div>
+          </div>
+
+          <div class="md-actions">
+            <button class="md-btn ghost" type="button" @click="editing = false">取消</button>
+            <button class="md-btn primary" type="button" @click="save">保存</button>
+          </div>
+        </template>
       </div>
     </div>
   </div>
@@ -167,8 +214,10 @@ import { useNotificationsStore } from '@/stores/notifications'
 
 /* 心情手账（双人共记）：
    我的记录：12 个预设心情标签（各配极简线条表情）+ 自定义标签（长按删除）+ 碎碎念；
-   TA 的记录：我当天保存时自动生成，从全部可选标签里随机选一个心情，不在弹窗里手动填；
+   TA 的记录：独立于我——当天一个随机时刻（8:00~21:59，按日期派生）自主记录，
+              从全部可选标签里随机选一个心情，不在弹窗里手动填；
    日历同一天并排两个半透明小圆点（左我右他，颜色各取当日心情色）；
+   点有记录的日期先看详情（两人并排 + 铅笔入口），点铅笔才编辑；
    记录按当前互动的联系人分开（全局可绑多个梦角）。 */
 
 const WEEK = ['一', '二', '三', '四', '五', '六', '日']
@@ -236,6 +285,7 @@ const now = new Date()
 const year = ref(now.getFullYear())
 const month = ref(now.getMonth() + 1)
 const show = ref(false)
+const editing = ref(false)
 const curDate = ref('')
 const myItem = ref(null)
 const hisItem = ref(null)
@@ -269,6 +319,17 @@ function tintOf(c) {
   const key = c.mine || c.his
   return key ? { background: colorOf(key) + '1a' } : null
 }
+/* 详情展示用：两人当天的心情标签 */
+const myTag = computed(() => {
+  const it = myItem.value
+  const k = it ? moodKeyOf(it.extra && it.extra.mood) : null
+  return (k && tagOf(k)) || { key: 'calm', name: '平静', color: '#8ab17d', custom: false }
+})
+const hisTag = computed(() => {
+  const it = hisItem.value
+  const k = it ? moodKeyOf(it.extra && it.extra.mood) : null
+  return (k && tagOf(k)) || { key: 'calm', name: '平静', color: '#8ab17d', custom: false }
+})
 
 async function reload() {
   try {
@@ -303,10 +364,43 @@ async function migrateLegacy() {
   }
 }
 
+/* TA 当天的记录：独立于我，在当天一个随机时刻自主生成。
+   时刻由日期派生（同一天稳定，落在 8:00~21:59），进入心情页时若已过该时刻就补上。
+   保存/删除我的记录都不会触发或清除 TA 的记录。 */
+function hisMoment(ds) {
+  let h = 0
+  for (const ch of String(ds)) h = (h * 31 + ch.charCodeAt(0)) % 100003
+  const minutes = 8 * 60 + (h % (14 * 60))
+  return { h: Math.floor(minutes / 60), m: minutes % 60 }
+}
+function hisMomentPassed(ds) {
+  const { h, m } = hisMoment(ds)
+  const d = new Date()
+  return d.getHours() * 60 + d.getMinutes() >= h * 60 + m
+}
+async function ensureHisToday() {
+  const ds = todayStr()
+  if (!curContact.value) return
+  if (items.value.some((x) => x.title === ds && isHis(x))) return
+  if (!hisMomentPassed(ds)) return
+  try {
+    const tag = allTags.value[Math.floor(Math.random() * allTags.value.length)]
+    await createItem({
+      module: 'mood',
+      contactId: curContact.value.id,
+      title: ds,
+      body: '',
+      extra: { mood: tag.key, moodName: tag.name, owner: 'him' }
+    })
+    await reload()
+  } catch (e) { /* 忽略：TA 的自动记录失败不影响我的使用 */ }
+}
+
 /* 切换联系人：记住选择并重载该梦角的记录 */
-watch(curContact, (c) => {
+watch(curContact, async (c) => {
   if (c) localStorage.setItem(LAST_CID_KEY, String(c.id))
-  reload()
+  await reload()
+  await ensureHisToday()
 })
 
 /* 月历格子：周一为第一列；同一天取两人的记录（左我右他） */
@@ -365,37 +459,39 @@ const dateLabel = computed(() => {
   return `${m}月${dd}日 周${w}`
 })
 
-/* TA 当日心情（只读展示用） */
-const hisTag = computed(() => {
-  const it = hisItem.value
-  const k = it ? moodKeyOf(it.extra && it.extra.mood) : null
-  return (k && tagOf(k)) || { key: 'calm', name: '平静', color: '#8ab17d', custom: false }
-})
-
-/* 打开某日：回填我的记录；TA 的记录只读展示 */
+/* 打开某日：当天两人都没有记录 → 直接编辑；有记录 → 先看详情 */
 function pick(c) {
   curDate.value = c.date
-  const dayItems = items.value.filter((x) => x.title === c.date)
+  refreshDay()
+  editing.value = !(myItem.value || hisItem.value)
+  show.value = true
+}
+function refreshDay() {
+  const dayItems = items.value.filter((x) => x.title === curDate.value)
   myItem.value = dayItems.find(isMine) || null
   hisItem.value = dayItems.find(isHis) || null
+}
+/* 详情 → 编辑：回填我的记录 */
+function openEdit() {
   myForm.mood = myItem.value ? moodKeyOf(myItem.value.extra && myItem.value.extra.mood) || PRESET_MOODS[0].key : PRESET_MOODS[0].key
   myForm.note = myItem.value ? myItem.value.body || '' : ''
   adding.value = false
   newTag.value = ''
-  show.value = true
+  editing.value = true
 }
 function close() {
   show.value = false
+  editing.value = false
 }
 
 async function save() {
   const cid = curContact.value ? curContact.value.id : null
   const date = curDate.value
-  close()
   try {
     await saveMine(cid, date)
-    await ensureHis(cid, date)
     await reload()
+    refreshDay()
+    editing.value = false /* 保存后回详情，看两人的记录 */
     toast.pushToast({ title: '已记录' })
   } catch (e) {
     toast.pushToast({ title: '保存失败', text: e.message })
@@ -410,26 +506,14 @@ async function saveMine(cid, date) {
   if (myItem.value) await updateItem(myItem.value.id, payload)
   else await createItem({ module: 'mood', contactId: cid, ...payload })
 }
-/* 我当天保存过记录 → TA 当天也该有一条：从全部可选标签里随机选一个心情；已有则不覆盖 */
-async function ensureHis(cid, date) {
-  if (items.value.some((x) => x.title === date && isHis(x))) return
-  const tag = allTags.value[Math.floor(Math.random() * allTags.value.length)]
-  await createItem({
-    module: 'mood',
-    contactId: cid,
-    title: date,
-    body: '',
-    extra: { mood: tag.key, moodName: tag.name, owner: 'him' }
-  })
-}
+/* 删除我的记录：不动 TA 的（TA 独立记录） */
 async function removeCur() {
   if (!myItem.value) return
-  close()
   try {
     await removeItem(myItem.value.id)
-    /* TA 的当天记录是随我的记录自动生成的，一并清除 */
-    if (hisItem.value) await removeItem(hisItem.value.id)
     await reload()
+    refreshDay()
+    editing.value = false
     toast.pushToast({ title: '已清除' })
   } catch (e) {
     toast.pushToast({ title: '失败', text: e.message })
@@ -512,6 +596,7 @@ onMounted(async () => {
   }
   await migrateLegacy()
   await reload()
+  await ensureHisToday()
 })
 onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 </script>
@@ -571,13 +656,32 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 .mo-dist-n { font-size: 11px; color: var(--text-soft); width: 16px; text-align: right; }
 /* 自定义标签的纯色小点（无表情） */
 .mo-tag-dot { width: 5px; height: 5px; border-radius: 50%; flex: 0 0 auto; }
+.mo-tag-dot-lg { width: 8px; height: 8px; }
 
-/* 弹窗内我的记录区块 */
+/* 详情弹窗：标题 + 右上角铅笔 */
+.mo-detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.mo-detail-head-main { min-width: 0; }
+.mo-edit-btn {
+  flex: 0 0 auto; border: 1px solid var(--border); border-radius: 10px; padding: 7px;
+  background: var(--bg-soft); color: var(--text-soft);
+}
+.mo-edit-btn:active { transform: scale(0.94); }
 .md-sheet-sub { font-size: 12px; color: var(--text-soft); margin: -6px 0 12px; }
+/* 详情：两人的记录卡片 */
+.mo-detail { display: flex; flex-direction: column; gap: 10px; margin-bottom: 4px; }
+.mo-detail-card { border: 1px solid var(--border); border-radius: 14px; padding: 12px; }
+.mo-detail-title { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600; color: var(--text-soft); }
+.mo-detail-mood { display: flex; align-items: center; gap: 8px; margin-top: 8px; font-size: 16px; font-weight: 600; color: var(--text); }
+.mo-detail-note { margin: 8px 0 0; font-size: 13px; line-height: 1.7; color: var(--text); white-space: pre-wrap; word-break: break-word; }
+.mo-detail-empty { margin: 8px 0 0; font-size: 12px; color: var(--text-soft); }
+
+/* 编辑弹窗：我的记录区块 */
 .mo-block { border: 1px solid var(--border); border-radius: 14px; padding: 12px; }
 .mo-block-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .mo-block-title { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; }
 .mo-block-del { border: none; background: transparent; color: var(--text-soft); padding: 4px; }
+/* 心情 chips 与输入框之间留间距 */
+.mo-block .md-chips { margin-bottom: 10px; }
 .mo-mood {
   display: inline-flex; align-items: center; gap: 5px;
   /* 长按删除：禁掉系统长按菜单/文本选择，按压缩放给反馈 */
@@ -586,15 +690,13 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 }
 .mo-mood:active { transform: scale(0.96); }
 .mo-mood.on { color: #fff; }
-/* 自定义标签入口与输入 */
+/* 自定义标签入口与输入（按钮收窄，和输入框拉开距离） */
 .mo-add { border-style: dashed; display: inline-flex; align-items: center; gap: 4px; }
 .mo-add-input {
-  width: 88px; padding: 7px 10px; font-size: 13px; border: 1px solid var(--accent);
+  width: 84px; padding: 5px 10px; font-size: 12px; border: 1px solid var(--accent);
   border-radius: 999px; background: var(--bg-screen); color: var(--text); outline: none;
 }
-.mo-add-ok, .mo-add-cancel {
-  padding: 7px 12px; font-size: 12px; border-radius: 999px; border: none;
-}
+.mo-add-ok, .mo-add-cancel { padding: 5px 10px; font-size: 11px; border-radius: 999px; border: none; }
 .mo-add-ok { background: var(--accent); color: #fff; }
 .mo-add-cancel { background: var(--bg-soft); color: var(--text-soft); }
 /* TA 今日心情：只读一行 */
