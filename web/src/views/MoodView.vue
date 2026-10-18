@@ -77,16 +77,20 @@
     <!-- 某日弹窗：恒先进详情态（两人记录并排 + 右上角铅笔入口），点铅笔才进编辑 -->
     <div v-if="show" class="md-mask" @click.self="close">
       <div class="md-sheet">
-        <!-- 详情：两人的记录并排，右上角铅笔进入编辑 -->
+        <!-- 详情：两人的记录并排，右上角铅笔进入编辑、× 关闭弹窗 -->
         <template v-if="!editing">
           <div class="mo-detail-head">
             <div class="mo-detail-head-main">
               <h3 class="md-sheet-title">{{ dateLabel }} 的心情</h3>
-              <p class="md-sheet-sub" v-if="curContact">与 {{ curContact.name }} 的共同记录</p>
             </div>
-            <button class="mo-edit-btn" type="button" aria-label="修改记录" @click="openEdit">
-              <AppIcon name="edit" :size="15" />
-            </button>
+            <div class="mo-detail-btns">
+              <button class="mo-edit-btn" type="button" aria-label="修改记录" @click="openEdit">
+                <AppIcon name="edit" :size="15" />
+              </button>
+              <button class="mo-close-btn" type="button" aria-label="关闭" @click="close">
+                <AppIcon name="close" :size="14" />
+              </button>
+            </div>
           </div>
 
           <div class="mo-detail">
@@ -115,16 +119,18 @@
               <p v-else class="mo-detail-empty">还没记录</p>
             </div>
           </div>
-
-          <div class="md-actions">
-            <button class="md-btn primary" type="button" @click="close">关闭</button>
-          </div>
         </template>
 
         <!-- 编辑：我的记录（TA 的心情只读展示，不在这里填） -->
         <template v-else>
-          <h3 class="md-sheet-title">{{ dateLabel }} 的心情</h3>
-          <p class="md-sheet-sub" v-if="curContact">与 {{ curContact.name }} 的共同记录</p>
+          <div class="mo-detail-head">
+            <div class="mo-detail-head-main">
+              <h3 class="md-sheet-title">{{ dateLabel }} 的心情</h3>
+            </div>
+            <button class="mo-close-btn" type="button" aria-label="关闭" @click="close">
+              <AppIcon name="close" :size="14" />
+            </button>
+          </div>
 
           <div class="mo-block">
             <div class="mo-block-head">
@@ -676,15 +682,16 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 .mo-tag-dot { width: 5px; height: 5px; border-radius: 50%; flex: 0 0 auto; }
 .mo-tag-dot-lg { width: 8px; height: 8px; }
 
-/* 详情弹窗：标题 + 右上角铅笔 */
+/* 详情弹窗：标题 + 右上角铅笔 / 关闭 */
 .mo-detail-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .mo-detail-head-main { min-width: 0; }
-.mo-edit-btn {
-  flex: 0 0 auto; border: 1px solid var(--border); border-radius: 10px; padding: 7px;
+.mo-detail-btns { display: flex; gap: 8px; flex: 0 0 auto; }
+.mo-edit-btn, .mo-close-btn {
+  border: 1px solid var(--border); border-radius: 10px; padding: 7px;
   background: var(--bg-soft); color: var(--text-soft);
 }
-.mo-edit-btn:active { transform: scale(0.94); }
-.md-sheet-sub { font-size: 12px; color: var(--text-soft); margin: -6px 0 12px; }
+.mo-edit-btn:active, .mo-close-btn:active { transform: scale(0.94); }
+.mo-detail-head + .mo-detail, .mo-detail-head + .mo-block { margin-top: 12px; }
 /* 详情：两人的记录卡片 */
 .mo-detail { display: flex; flex-direction: column; gap: 10px; margin-bottom: 4px; }
 .mo-detail-card { border: 1px solid var(--border); border-radius: 14px; padding: 12px; }
