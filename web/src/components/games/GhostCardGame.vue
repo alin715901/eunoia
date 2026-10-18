@@ -194,7 +194,7 @@ function fanStyle(i, n, flip) {
   const spread = Math.min(60, n * 7) /* 整扇总张角 */
   const k = n > 1 ? spread / (n - 1) : 0
   const ang = t * k * (flip ? -1 : 1)
-  const dip = 26 / Math.max(1, mid * mid) /* 边缘最多下垂 26px */
+  const dip = 34 / Math.max(1, mid * mid) /* 边缘最多下垂 34px */
   const y = t * t * dip * (flip ? -1 : 1)
   return { transform: `translateY(${y.toFixed(2)}px) rotate(${ang.toFixed(2)}deg)` }
 }
@@ -202,8 +202,8 @@ function fanStyle(i, n, flip) {
 /* 洗牌：散乱的牌堆，每张随机散布 + 旋转，定时重掷像在桌面上搅牌 */
 function washStyle() {
   void washTick.value /* 依赖 tick：每次自增触发全部重掷 */
-  const dx = (Math.random() * 2 - 1) * 88
-  const dy = (Math.random() * 2 - 1) * 34
+  const dx = (Math.random() * 2 - 1) * 104
+  const dy = (Math.random() * 2 - 1) * 42
   const rot = (Math.random() * 2 - 1) * 52
   return { transform: `translate(${dx.toFixed(1)}px, ${dy.toFixed(1)}px) rotate(${rot.toFixed(1)}deg)` }
 }
@@ -492,23 +492,26 @@ build()
    inner 用 margin:auto 居中，牌多溢出时从左起可滑 */
 .gh-fan { overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
 .gh-fan::-webkit-scrollbar { display: none; }
-.gh-fan-inner { display: flex; margin: 0 auto; width: max-content; padding: 0 26px; }
+.gh-fan-inner { display: flex; margin: 0 auto; width: max-content; padding: 0 30px; }
 /* 对方的扇（弧口朝下，牌底边对齐底缘）；我的扇（弧口朝上，顶边对齐顶缘） */
 .gh-hand.opp .gh-fan-inner { align-items: flex-end; }
 .gh-hand.mine .gh-fan-inner { align-items: flex-start; }
-.gh-slot { width: 54px; height: 76px; flex: none; transition: transform 0.22s ease; }
-.gh-slot + .gh-slot { margin-left: -24px; }
-.gh-hand .gh-fan { height: 104px; }
+.gh-slot { width: 66px; height: 96px; flex: none; transition: transform 0.22s ease; }
+.gh-slot + .gh-slot { margin-left: -30px; }
+.gh-hand .gh-fan { height: 132px; }
+/* 手牌区不参与压缩：屏幕再挤也保住扇形高度，不被中间的抽牌展示挤占 */
+.gh-hand { flex: 0 0 auto; }
+.gh-mid { flex: 0 0 auto; }
 
 .gh-card {
-  width: 54px; height: 76px; border-radius: 9px; border: 1px solid var(--border);
+  width: 66px; height: 96px; border-radius: 9px; border: 1px solid var(--border);
   background: var(--bg-screen); display: flex; flex-direction: column; align-items: center; justify-content: center;
   font-size: 14px; color: var(--text); padding: 0;
   -webkit-appearance: none; appearance: none;
   transition: transform 0.16s ease, box-shadow 0.16s ease;
 }
-.gh-card b { font-size: 14px; line-height: 1.1; }
-.gh-card i { font-style: normal; font-size: 16px; line-height: 1; }
+.gh-card b { font-size: 17px; line-height: 1.1; }
+.gh-card i { font-style: normal; font-size: 19px; line-height: 1; }
 .gh-card.red { color: #e53935; }
 .gh-card.joker { border-color: var(--accent); color: var(--accent); background: var(--bg-soft); }
 /* 牌背：固定经典深蓝 + 斜纹 + 外圈白边（不用主题色），
@@ -523,7 +526,7 @@ build()
     0 0 0 2px #f2f5f9,
     inset 0 0 0 1px rgba(255, 255, 255, 0.5),
     0 1px 3px rgba(0, 0, 0, 0.18);
-  color: #fff; font-size: 15px; cursor: pointer;
+  color: #fff; font-size: 18px; cursor: pointer;
 }
 .gh-card.back span { pointer-events: none; color: rgba(255, 255, 255, 0.9); }
 .gh-card.back:not(:disabled):active { transform: scale(0.94); }
@@ -556,13 +559,13 @@ build()
   box-shadow: 0 0 0 2px var(--accent), 0 4px 10px rgba(0, 0, 0, 0.18);
   z-index: 2;
 }
-.gh-hand.opp .gh-card.sel { transform: translateY(14px); }
-.gh-hand.mine .gh-card.sel { transform: translateY(-14px); }
+.gh-hand.opp .gh-card.sel { transform: translateY(16px); }
+.gh-hand.mine .gh-card.sel { transform: translateY(-16px); }
 
 /* 中间桌面区：固定高度 + 独立底板，洗牌堆/抽牌展示/骰子出现消失都不引起布局抖动 */
 .gh-mid {
   display: flex; align-items: center; justify-content: center; gap: 10px;
-  padding: 10px; min-height: 150px; width: 100%;
+  padding: 10px; min-height: 156px; width: 100%;
   background: var(--bg-soft); border: 1px solid var(--border); border-radius: 14px;
   overflow: hidden;
 }
@@ -585,17 +588,17 @@ build()
 }
 .gh-dice-pts { font-size: 13px; color: var(--accent); min-width: 40px; }
 /* 洗牌动画：散乱的牌堆（每张随机散布 + 旋转），定时重掷像在桌面搅牌 */
-.gh-wash { position: relative; width: 240px; height: 126px; }
+.gh-wash { position: relative; width: 268px; height: 152px; }
 .gh-card.wash {
-  position: absolute; left: 50%; top: 50%; margin: -38px 0 0 -27px;
+  position: absolute; left: 50%; top: 50%; margin: -48px 0 0 -33px;
   transition: transform 0.18s ease; pointer-events: none;
 }
 .gh-deal-count { font-size: 13px; color: var(--text-soft); }
 /* 抽牌展示区：固定宽度，牌在里面亮相，不撑动上下布局 */
 .gh-draw { display: flex; gap: 10px; align-items: center; justify-content: center; min-width: 128px; }
-.gh-card.big { width: 52px; height: 72px; }
-.gh-card.big b { font-size: 17px; }
-.gh-card.big i { font-size: 19px; }
+.gh-card.big { width: 64px; height: 88px; }
+.gh-card.big b { font-size: 20px; }
+.gh-card.big i { font-size: 23px; }
 .gh-card.pair { box-shadow: 0 0 0 2px var(--accent); }
 .gh-card.discard { animation: gh-discard 0.6s ease-in forwards; }
 @keyframes gh-discard {

@@ -47,39 +47,53 @@ function fillTemplate(text, name) {
 
 // 为单个联系人生成一封来信（已确认开启且到时间）。
 function generateForContact(cid, st) {
-  const now = Math.floor(Date.now() / 1000);
-  let sMin = Number(st.letter_sentences_min) || 1;
-  let sMax = Number(st.letter_sentences_max) || 1;
-  if (sMax < sMin) [sMin, sMax] = [sMax, sMin];
-  const count = randInt(Math.max(1, sMin), Math.max(1, sMax));
-
-  // 从 TA 的字卡库（专属 + 通用，按 gen_ratio/权重混抽）抽 count 条
-  const cards = drawCards(db, cid, count);
-  const sentences = (cards || [])
-    .map((c) => (c && c.content ? String(c.content).trim() : ''))
-    .filter(Boolean);
-  if (!sentences.length) {
-    sentences.push('今天也想跟你说说话，哪怕只是写写闲事。');
-  }
-
-  // 开头结尾：设置里填了就用设置的（替换 {name}），否则给个温柔默认
-  const { recipient, sender } = resolveNames(cid);
-  const openingRaw = (st.letter_opening && String(st.letter_opening).trim()) || '亲爱的，';
-  const closingRaw = (st.letter_closing && String(st.letter_closing).trim()) || '';
-  let opening = fillTemplate(openingRaw, recipient);
-  // 收件人未设真名时（回落到「我」），"致我" 不通顺，改用通用称呼
-  if (recipient === '我' && opening === '致我') opening = '亲爱的，';
-  const closing = fillTemplate(closingRaw, sender);
-
-  const info = db
-    .prepare(
-      'INSERT INTO letters(contact_id, sender, opening, closing, sentences, reply_to, created_at) VALUES(?,?,?,?,?,?,?)'
-    )
-    .run(cid, 'contact', opening, closing, JSON.stringify(sentences), null, Date.now());
-
+  const id = composeLetter(cid, st, null)
+  if (!id) return null
+  const now = Math.floor(Date.now() / 1000)
   const nextAt = now + (nextLetterIntervalSec(st) || 7 * 24 * 3600);
   db.prepare('UPDATE contact_settings SET letter_next_at = ? WHERE contact_id = ?').run(nextAt, cid);
-  return info.lastInsertRowid;
+  return id
+}
+
+// 信件的生成核心：从 TA 的字卡库抽句 + 开头结尾组装入库。
+// replyTo 非空时这是一封回信（指向我寄出的信）；为空时是主动来信。
+// 返回新信 id；字卡库不可用等异常时返回 null。
+function composeLetter(cid, st, replyTo) {
+  try {
+    let sMin = Number(st && st.letter_sentences_min) || 1;
+    let sMax = Number(st && st.letter_sentences_max) || 1;
+    if (sMax < sMin) [sMin, sMax] = [sMax, sMin];
+    const count = randInt(Math.max(1, sMin), Math.max(1, sMax));
+
+    // 从 TA 的字卡库（专属 + 通用，按 gen_ratio/权重混抽）抽 count 条
+    const cards = drawCards(db, cid, count);
+    const sentences = (cards || [])
+      .map((c) => (c && c.content ? String(c.content).trim() : ''))
+      .filter(Boolean);
+    if (!sentences.length) {
+      sentences.push('今天也想跟你说说话，哪怕只是写写闲事。');
+    }
+
+    // 开头结尾：设置里填了就用设置的（替换 {name}），否则给个温柔默认
+    const { recipient, sender } = resolveNames(cid);
+    const openingRaw = (st && st.letter_opening && String(st.letter_opening).trim()) || '亲爱的，';
+    const closingRaw = (st && st.letter_closing && String(st.letter_closing).trim()) || '';
+    let opening = fillTemplate(openingRaw, recipient);
+    // 收件人未设真名时（回落到「我」），"致我" 不通顺，改用通用称呼
+    if (recipient === '我' && opening === '致我') opening = '亲爱的，';
+    const closing = fillTemplate(closingRaw, sender);
+
+    const info = db
+      .prepare(
+        'INSERT INTO letters(contact_id, sender, opening, closing, sentences, reply_to, created_at) VALUES(?,?,?,?,?,?,?)'
+      )
+      .run(cid, 'contact', opening, closing, JSON.stringify(sentences), replyTo ? Number(replyTo) : null, Date.now());
+    return info.lastInsertRowid;
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error('[composeLetter]', cid, e.message);
+    return null;
+  }
 }
 
 // 每分钟由 cron 调用一次：扫描所有单人联系人，到点就自动寄信。
@@ -127,4 +141,42 @@ function letterTick() {
   }
 }
 
-export { letterTick, generateForContact }
+// 每分钟由 cron 调用一次：我寄出的信到点后，对方回一封。
+// 回信时间窗 48 小时（reply_due_at 由 createLetter 随机排定），
+// 关页期间到点的信会在下次开页时立即补回（时间戳天然支持离线补偿）。
+// 只回还没被回过的信（NOT EXISTS reply_to），群聊不参与，屏蔽的联系人跳过。
+function replyTick() {
+  try {
+    const now = Date.now();
+    const pendings = db
+      .prepare(
+        `SELECT l.id, l.contact_id FROM letters l
+         WHERE l.sender = 'me'
+           AND l.reply_due_at IS NOT NULL
+           AND l.reply_due_at <= ?
+           AND NOT EXISTS (SELECT 1 FROM letters r WHERE r.reply_to = l.id)
+         ORDER BY l.reply_due_at ASC
+         LIMIT 5`
+      )
+      .all(now);
+    for (const p of pendings) {
+      const c = db.prepare('SELECT id, kind FROM contacts WHERE id = ?').get(p.contact_id);
+      if (!c || c.kind === 'group') continue;
+      const st = db.prepare('SELECT * FROM contact_settings WHERE contact_id = ?').get(p.contact_id);
+      if (st && st.blocked) continue;
+      // 回信不要求对方开启「主动来信」：回复我寄出的信是基本互动，与主动频率设置无关
+      const id = composeLetter(p.contact_id, st, p.id);
+      if (id) {
+        db.prepare('UPDATE letters SET reply_due_at = NULL WHERE id = ?').run(p.id);
+        // eslint-disable-next-line no-console
+        console.log(`[letter] contact=${p.contact_id} 回复了我寄出的信（原信 id=${p.id}，回信 id=${id}）`);
+        notification.broadcast('badge_update', settingsRepo.getBadges());
+      }
+    }
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.error('[replyTick]', e.message);
+  }
+}
+
+export { letterTick, replyTick, generateForContact }

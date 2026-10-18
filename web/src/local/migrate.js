@@ -92,6 +92,8 @@ export function migrate() {
   // 信件：收藏标记 + 回信关联
   addCol('letters', 'favorite', 'INTEGER DEFAULT 0')
   addCol('letters', 'reply_to', 'INTEGER DEFAULT NULL')
+  // 信件：我寄出的信，对方回信的截止时刻（ms）；到点由 letterTick 的 replyTick 生成回信
+  addCol('letters', 'reply_due_at', 'INTEGER DEFAULT NULL')
   // 收藏表记录来源信件 id
   addCol('favorites', 'letter_id', 'INTEGER DEFAULT NULL')
 

@@ -703,6 +703,9 @@ export async function getLetters(contactId = null) {
     .all(cid, cid)
   const repliedQ = db.prepare('SELECT id FROM letters WHERE reply_to = ? LIMIT 1')
   const origQ = db.prepare('SELECT id, sender, opening, sentences FROM letters WHERE id = ?')
+  const replyListQ = db.prepare(
+    'SELECT id, sender, opening, sentences, created_at FROM letters WHERE reply_to = ? ORDER BY created_at ASC'
+  )
   const parseArr = (s) => { try { return s ? JSON.parse(s) : [] } catch (e) { return [] } }
   return rows.map((l) => {
     const hasReply = !!repliedQ.get(l.id)
@@ -714,15 +717,25 @@ export async function getLetters(contactId = null) {
         replyOrig = { id: o.id, sender: o.sender, excerpt: os[0] || o.opening || '' }
       }
     }
-    return { ...l, sentences: parseArr(l.sentences), hasReply, replyOrig }
+    /* 这封信收到的全部回信（我回 TA 的 / TA 回我的），供原信下展示「回信」跳转入口 */
+    const replyList = replyListQ.all(l.id).map((r) => {
+      const rs = parseArr(r.sentences)
+      return { id: r.id, sender: r.sender, created_at: r.created_at, excerpt: rs[0] || r.opening || '' }
+    })
+    return { ...l, sentences: parseArr(l.sentences), hasReply, replyOrig, replyList }
   })
 }
+
+/* 我寄出的信：对方回信时间窗（48 小时内随时回复） */
+const REPLY_WINDOW_MS = 48 * 60 * 60 * 1000
 
 export async function createLetter(payload = {}) {
   const { contactId, sender, opening, closing, sentences, replyTo } = payload
   const arr = Array.isArray(sentences) ? sentences : String(sentences || '').split('\n').map((s) => s.trim()).filter(Boolean)
+  /* 凡是我寄出的信（主动写的 + 回信），都排一个 48 小时内的对方回信 */
+  const replyDueAt = (sender || 'me') === 'me' ? Date.now() + Math.floor(Math.random() * REPLY_WINDOW_MS) : null
   const info = db
-    .prepare('INSERT INTO letters(contact_id, sender, opening, closing, sentences, reply_to, created_at) VALUES(?,?,?,?,?,?,?)')
+    .prepare('INSERT INTO letters(contact_id, sender, opening, closing, sentences, reply_to, reply_due_at, created_at) VALUES(?,?,?,?,?,?,?,?)')
     .run(
       contactId ? Number(contactId) : null,
       sender || 'me',
@@ -730,6 +743,7 @@ export async function createLetter(payload = {}) {
       closing || '',
       JSON.stringify(arr),
       replyTo ? Number(replyTo) : null,
+      replyDueAt,
       Date.now()
     )
   const l = db.prepare('SELECT * FROM letters WHERE id=?').get(info.lastInsertRowid)

@@ -53,6 +53,19 @@
                   <span class="lo-text">{{ l.replyOrig.excerpt || '（无正文）' }}</span>
                   <AppIcon name="chevron-right" :size="14" color="var(--text-soft)" />
                 </div>
+                <!-- 这封信收到了回信：逐条列出（我回 TA 的 / TA 回我的），点击可跳转查看 -->
+                <div v-if="l.replyList && l.replyList.length" class="l-replies">
+                  <span class="lr-label">回信</span>
+                  <span
+                    v-for="r in l.replyList"
+                    :key="r.id"
+                    class="lr-item"
+                    @click.stop="viewReply(r)"
+                  >
+                    <span class="lr-text">{{ r.excerpt || '（无正文）' }}</span>
+                    <AppIcon name="chevron-right" :size="14" color="var(--text-soft)" />
+                  </span>
+                </div>
               </div>
               <div class="lc-actions">
                 <template v-if="view === 'inbox'">
@@ -91,6 +104,7 @@
         </label>
 
         <div class="wv-hint">
+          <span class="wv-hint-reply">你寄出的信，对方将会在48小时内随时回复。</span>
           <template v-if="cfg.letter_enabled">对方会按 TA 的信件设置主动来信：每周 {{ cfg.letter_week_min }}~{{ cfg.letter_week_max }} 封，每封 {{ cfg.letter_sentences_min }}~{{ cfg.letter_sentences_max }} 句话</template>
           <template v-else>对方未开启主动来信（可在 TA 的信件设置中开启）</template>
         </div>
@@ -280,6 +294,20 @@ function viewOriginal(l) {
   })
 }
 
+/* 点击原信里挂着的回信：跳到回信所在页签并展开定位 */
+function viewReply(r) {
+  const t = list.value.find((x) => x.id === r.id)
+  if (!t) {
+    toast.pushToast({ title: '回信不存在', text: '可能已被删除' })
+    return
+  }
+  view.value = t.sender === 'me' ? 'sent' : 'inbox'
+  expandedId.value = t.id
+  nextTick(() => {
+    document.querySelector('.letter-card.is-open')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  })
+}
+
 function openWrite() {
   replyTarget.value = null
   form.value = { opening: '亲爱的，', body: '', closing: '' }
@@ -342,7 +370,7 @@ async function send() {
     replyTarget.value = null
     view.value = 'sent'
     await load()
-    toast.pushToast({ title: '已寄出', text: `已放进「${contact.value?.name || ''}」的信箱` })
+    toast.pushToast({ title: '已寄出', text: '对方将会在48小时内随时回复' })
   } catch (e) {
     toast.pushToast({ title: '寄出失败', text: e.message })
   } finally {
@@ -514,6 +542,38 @@ onMounted(async () => {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* 原信下收到的回信入口列表：点击跳转查看那封回信 */
+.l-replies {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+.lr-label {
+  flex: 0 0 auto;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent);
+}
+.lr-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg-soft);
+  border-radius: 10px;
+  font-size: 12px;
+  color: var(--text-soft);
+  cursor: pointer;
+}
+.lr-item:active { background: var(--border); }
+.lr-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* 写信视图 */
 .write-view { display: flex; flex-direction: column; }
@@ -606,7 +666,11 @@ onMounted(async () => {
   border: 1px solid var(--border);
   border-radius: 10px;
   padding: 9px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
+.wv-hint-reply { font-weight: 600; color: var(--text); }
 
 /* 底部寄出条 */
 .write-bar { flex: 0 0 auto; padding: 10px 14px calc(10px + env(safe-area-inset-bottom)); background: var(--bg-screen); border-top: 1px solid var(--border); }
