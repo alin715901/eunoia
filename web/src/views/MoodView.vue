@@ -183,6 +183,7 @@
           </div>
         </div>
 
+        <div class="mo-form-scroll">
         <p class="mo-fld-label">{{ formToday ? '今天的心情' : '这天的心情' }}</p>
         <div class="md-chips">
           <button
@@ -298,6 +299,7 @@
           rows="3"
           placeholder="写一点今天的小心情（可选）"
         />
+        </div>
 
         <div class="md-actions">
           <button class="md-btn ghost" type="button" @click="close">取消</button>
@@ -1231,7 +1233,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 
 /* 记录表单弹窗 */
 /* 记录表单弹窗：整体收短，内容多了内部滑动；头部吸顶 */
-.mo-form-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; position: sticky; top: -16px; z-index: 1; background: var(--bg-screen); padding: 4px 0 8px; margin-bottom: 0; }
+.mo-form-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; position: relative; z-index: 1; background: var(--bg-screen); padding: 4px 0 8px; margin-bottom: 0; }
 /* 标题与日期同行：日期紧跟「我的记录」 */
 .mo-form-left { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
 .mo-form-date { font-size: 11px; color: var(--text-soft); white-space: nowrap; }
@@ -1259,8 +1261,13 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
   width: 100%; max-width: none;
   border-radius: 18px 18px 0 0;
   max-height: 78vh;
+  display: flex; flex-direction: column; overflow: hidden;
   animation: mo-slide-up 0.26s cubic-bezier(0.2, 0.9, 0.3, 1.02);
 }
+/* 头部（我的记录+日期+关闭）固定，中间内容滚动，取消/保存固定底部 */
+.mo-form-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex: 0 0 auto; padding: 4px 0 8px; margin-bottom: 0; }
+.mo-form-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+.md-actions { flex: 0 0 auto; margin-top: 12px; }
 @keyframes mo-slide-up { from { transform: translateY(100%) } to { transform: none } }
 /* 事件 chips 与碎碎念输入框之间留间距 */
 .md-textarea { margin-top: 12px; }
@@ -1284,10 +1291,10 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.25);
 }
 /* 自定义标签入口与输入（按钮收窄，和输入框拉开距离） */
-.mo-add { border-style: dashed; display: inline-flex; align-items: center; gap: 4px; }
-.mo-ev-add { border-style: dashed; padding: 4px 10px; }
+.mo-add { border-style: dashed; display: inline-flex; align-items: center; gap: 4px; padding: 4px 9px; font-size: 11.5px; }
+.mo-ev-add { border-style: dashed; padding: 4px 9px; font-size: 11.5px; }
 /* 「删除/完成」整列删除态开关：激活时实底，一眼看出在删档模式 */
-.mo-del-mode { border-style: dashed; display: inline-flex; align-items: center; gap: 4px; color: var(--text-soft); }
+.mo-del-mode { border-style: dashed; display: inline-flex; align-items: center; gap: 4px; color: var(--text-soft); padding: 4px 9px; font-size: 11.5px; }
 .mo-del-mode.on { background: #c0576b; border-color: #c0576b; border-style: solid; color: #fff; }
 .mo-add-input {
   width: 84px; padding: 5px 10px; font-size: 12px; border: 1px solid var(--accent);

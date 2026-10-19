@@ -100,6 +100,7 @@
       <div class="mm-sheet">
         <h3 class="mm-sheet-title">{{ editing ? '编辑' : '新建备忘' }}</h3>
 
+        <div class="mm-scroll">
         <div class="mm-type-pick">
           <button class="mm-type-btn" :class="{ on: form.type === 'todo' }" @click="form.type = 'todo'">待办清单</button>
           <button class="mm-type-btn" :class="{ on: form.type === 'note' }" @click="form.type = 'note'">自由便签</button>
@@ -139,6 +140,7 @@
         <div class="mm-pin-row">
           <span class="row-title">置顶</span>
           <ToggleSwitch v-model="form.pinned" />
+        </div>
         </div>
 
         <div class="mm-actions">
@@ -437,7 +439,7 @@ onMounted(load)
 
 /* 弹层 */
 .mm-mask { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: flex-end; z-index: 50; }
-.mm-sheet { width: 100%; background: var(--bg-screen); border-radius: 16px 16px 0 0; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); max-height: 86vh; overflow-y: auto; }
+.mm-sheet { width: 100%; background: var(--bg-screen); border-radius: 16px 16px 0 0; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); max-height: 86vh; display: flex; flex-direction: column; overflow: hidden; }
 .mm-sheet-title { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
 .mm-type-pick { display: flex; gap: 8px; margin-bottom: 12px; }
 .mm-type-btn { flex: 1; border: 1px solid var(--border); background: var(--bg-soft); border-radius: 10px; padding: 10px; font-size: 14px; color: var(--text-soft); }
@@ -456,14 +458,10 @@ onMounted(load)
 .mm-color.on { border-color: var(--accent); }
 .mm-pin-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0 14px; }
 .mm-pin-row .row-title { font-size: 14px; }
-/* 取消/保存固定底部，不随内容滚动 */
-.mm-actions {
-  position: sticky; bottom: 0; z-index: 3;
-  margin: 0 -16px calc(-16px - env(safe-area-inset-bottom));
-  padding: 10px 16px calc(14px + env(safe-area-inset-bottom));
-  background: var(--bg-screen);
-  border-radius: 0 0 16px 16px;
-}
+/* 中间内容滚动；标题与按钮固定不随滚动 */
+.mm-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+/* 取消/保存固定底部，按钮大小与心情弹窗一致 */
+.mm-actions { display: flex; gap: 10px; flex: 0 0 auto; margin-top: 12px; }
 .mm-btn { flex: 1; border: none; border-radius: 10px; padding: 12px; font-size: 15px; }
 .mm-btn.ghost { background: var(--bg-soft); color: var(--text); }
 .mm-btn.primary { background: var(--accent); color: #fff; }

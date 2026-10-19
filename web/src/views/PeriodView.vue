@@ -61,6 +61,7 @@
     <div v-if="cycleShow" class="pr-mask" @click.self="cycleShow = false">
       <div class="pr-sheet">
         <h3 class="pr-sheet-title">{{ cycleEditing ? '编辑经期记录' : '新建经期记录' }}</h3>
+        <div class="pr-scroll">
         <div class="pr-fld">
           <span class="pr-fld-label">开始日（经期开始）</span>
           <input v-model="cycleForm.start" class="pr-input" type="date" />
@@ -73,6 +74,7 @@
           <span class="pr-fld-label">备注（可选）</span>
           <textarea v-model="cycleForm.note" class="pr-textarea" placeholder="身体状态、心情…" />
         </div>
+        </div>
         <div class="pr-actions">
           <button class="pr-btn ghost" @click="cycleShow = false">取消</button>
           <button class="pr-btn primary" @click="saveCycle">保存</button>
@@ -84,7 +86,7 @@
     <div v-if="dayShow" class="pr-mask" @click.self="dayShow = false">
       <div class="pr-sheet">
         <h3 class="pr-sheet-title">{{ dayLabel }}</h3>
-
+        <div class="pr-scroll">
         <template v-if="dayCycle">
           <div class="pr-fld">
             <span class="pr-fld-label">流量</span>
@@ -107,11 +109,6 @@
             <button class="pr-day-op" @click="setDayStart">设为开始日</button>
             <button class="pr-day-op" @click="setDayEnd">设为结束日</button>
           </div>
-          <div class="pr-actions">
-            <button class="pr-btn danger" @click="removeDay">移除这一天</button>
-            <button class="pr-btn ghost" @click="dayShow = false">取消</button>
-            <button class="pr-btn primary" @click="saveDay">保存</button>
-          </div>
         </template>
 
         <template v-else>
@@ -132,11 +129,19 @@
               <button class="pr-seg-btn" :class="{ on: dayForm.pain === 'severe' }" @click="dayForm.pain = 'severe'">严重</button>
             </div>
           </div>
-          <div class="pr-actions">
+        </template>
+        </div>
+        <div class="pr-actions">
+          <template v-if="dayCycle">
+            <button class="pr-btn danger" @click="removeDay">移除这一天</button>
+            <button class="pr-btn ghost" @click="dayShow = false">取消</button>
+            <button class="pr-btn primary" @click="saveDay">保存</button>
+          </template>
+          <template v-else>
             <button class="pr-btn ghost" @click="dayShow = false">取消</button>
             <button class="pr-btn primary" @click="createCycleHere">新建并保存</button>
-          </div>
-        </template>
+          </template>
+        </div>
       </div>
     </div>
   </div>
@@ -391,7 +396,7 @@ onMounted(load)
 
 /* 弹层 */
 .pr-mask { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: flex-end; z-index: 50; }
-.pr-sheet { width: 100%; background: var(--bg-screen); border-radius: 16px 16px 0 0; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); max-height: 86vh; overflow-y: auto; }
+.pr-sheet { width: 100%; background: var(--bg-screen); border-radius: 16px 16px 0 0; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); max-height: 86vh; display: flex; flex-direction: column; overflow: hidden; }
 .pr-sheet-title { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
 .pr-fld { margin-bottom: 12px; }
 .pr-fld-label { display: block; font-size: 13px; color: var(--text-soft); margin-bottom: 6px; }
@@ -402,14 +407,10 @@ onMounted(load)
 .pr-seg-btn.on { background: #c98891; border-color: #c98891; color: #fff; }
 .pr-day-ops { display: flex; gap: 10px; margin-bottom: 12px; }
 .pr-day-op { flex: 1; border: 1px solid var(--border); background: transparent; color: #8a5a5a; border-radius: 10px; padding: 10px; font-size: 13px; }
-/* 取消/保存固定底部，不随内容滚动 */
-.pr-actions {
-  position: sticky; bottom: 0; z-index: 3;
-  margin: 0 -16px calc(-16px - env(safe-area-inset-bottom));
-  padding: 10px 16px calc(14px + env(safe-area-inset-bottom));
-  background: var(--bg-screen);
-  border-radius: 0 0 16px 16px;
-}
+/* 中间内容滚动；标题与按钮固定不随滚动 */
+.pr-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+/* 取消/保存固定底部，按钮大小与心情弹窗一致 */
+.pr-actions { display: flex; gap: 10px; flex: 0 0 auto; margin-top: 12px; }
 .pr-btn { flex: 1; border: none; border-radius: 10px; padding: 12px; font-size: 15px; }
 .pr-btn.ghost { background: var(--bg-soft); color: var(--text); }
 .pr-btn.primary { background: #c98891; color: #fff; }
