@@ -3,14 +3,6 @@
     <AppHeader title="经期" back />
 
     <div class="pr-body">
-      <div class="pr-summary">
-        <span class="pr-sum-ic"><AppIcon name="drop" :size="26" color="#c98891" /></span>
-        <span class="pr-sum-main">
-          <span class="pr-sum-title">{{ summaryTitle }}</span>
-          <span class="pr-sum-sub">{{ summarySub }}</span>
-        </span>
-      </div>
-
       <!-- 日历 -->
       <div class="pr-nav">
         <button class="pr-today" @click="goToday">回到今天</button>
@@ -90,7 +82,7 @@
             <button class="pr-btn danger" type="button" @click="removeDay">移除这一天</button>
           </div>
         </template>
-        <p v-else class="pr-record-tip">这一天不在经期记录中，打开上方「经期开始了吗」即可从这天开始记录。</p>
+        <p v-else class="pr-record-tip">这一天不在本次经期记录范围内。</p>
       </div>
 
       <!-- 日历下方：全局经期开关条（开=进行中，关=未开始/结束封存） -->
@@ -98,8 +90,8 @@
         <div class="pr-toggle-left">
           <span class="pr-toggle-ic"><AppIcon name="drop" :size="18" color="#c98891" /></span>
           <span class="pr-toggle-txt">
-            <span class="pr-toggle-title">{{ periodOn ? '经期进行中' : '经期开始了' }}</span>
-            <span class="pr-toggle-sub">{{ periodOn ? '已持续 ' + ongoingDays + ' 天 · 点开关结束并封存本次经期' : '点开关，从今天开始记录本次经期' }}</span>
+            <span class="pr-toggle-title">{{ periodOn ? '经期进行中 · 第 ' + ongoingDays + ' 天' : '经期开始了' }}</span>
+            <span class="pr-toggle-sub">{{ periodOn ? toggleSub : '点开关，从今天开始记录本次经期' }}</span>
           </span>
         </div>
         <ToggleSwitch :model-value="periodOn" @update:model-value="onToggle" />
@@ -119,7 +111,7 @@ import { useItems } from '@/composables/useItems'
 import { useNotificationsStore } from '@/stores/notifications'
 import {
   cyclesFromItems, cycleOf, predictedDates, avgCycle as calcCycle, avgLen as calcLen,
-  predictNext, fmtDate, addDays, parseDate, dayDiff,
+  fmtDate, addDays, parseDate, dayDiff,
   ongoingCycle, durationOf, ovulationWindow
 } from '@/utils/period'
 
@@ -178,22 +170,10 @@ const cells = computed(() => {
 const avgCycle = computed(() => calcCycle(cycles.value))
 const avgLen = computed(() => calcLen(cycles.value))
 
-/* 顶部卡片：进行中优先，否则（记录够多时）显示下次预测；天数只显示平均周期/平均持续 */
-const summaryTitle = computed(() => {
-  if (periodOn.value) return `经期进行中 · 第 ${ongoingDays.value} 天`
-  if (!enough.value) return '记录后为你预测（默认周期 28 天）'
-  const pred = predictNext(cycles.value)
-  if (!pred) return '记录后为你预测'
-  const diff = dayDiff(pred.start, todayStr())
-  if (diff === 0) return '预测今天是预计开始日'
-  if (diff > 0) return `预计 ${diff} 天后（${pred.start.slice(5).replace('-', '月')}日）开始`
-  return `已过预计日 ${Math.abs(diff)} 天（${pred.start.slice(5).replace('-', '月')}日）`
-})
-const summarySub = computed(() => {
-  /* 只显示平均周期与平均持续；记录不足时为默认周期规律，记录够多后为真实统计 */
-  if (!enough.value) return '平均周期 28 天 · 平均持续 7 天'
-  return `平均周期 ${avgCycle.value} 天 · 平均持续 ${avgLen.value} 天`
-})
+/* 开关条副文案：进行中时显示平均周期/平均持续（默认规律，记录够多后为真实统计） */
+const toggleSub = computed(() => enough.value
+  ? `平均周期 ${avgCycle.value} 天 · 平均持续 ${avgLen.value} 天`
+  : '平均周期 28 天 · 平均持续 7 天')
 
 /* 开关：开 = 开始本次经期，关 = 结束并封存（记录持续天数，自动参与预测） */
 async function onToggle(val) {
@@ -349,11 +329,6 @@ onMounted(load)
 <style scoped>
 .pr-page { min-height: 100%; background: #fbf7f4; }
 .pr-body { padding: 12px; }
-.pr-summary { display: flex; align-items: center; gap: 12px; background: #fff; border-radius: 14px; padding: 14px; margin-bottom: 14px; box-shadow: 0 1px 3px rgba(180,120,120,.08); }
-.pr-sum-ic { flex: 0 0 auto; }
-.pr-sum-main { display: flex; flex-direction: column; }
-.pr-sum-title { font-size: 15px; font-weight: 600; color: #8a5a5a; }
-.pr-sum-sub { font-size: 12px; color: var(--text-soft); margin-top: 3px; }
 
 .pr-nav { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin: 4px 0 10px; }
 .pr-today { justify-self: start; border: 1px solid var(--border); background: rgba(255,255,255,.6); color: var(--text-soft); border-radius: 999px; padding: 4px 12px; font-size: 12px; }
