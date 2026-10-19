@@ -152,8 +152,18 @@
     <!-- 备忘录 / 经期：独立卡片，不再塞进卡片 B -->
         <div class="cb-boxes">
           <button class="cb-box" @click="onMemoCardClick">
-            <span class="cb-label">备忘录</span>
-            <span class="cb-text" :class="{ empty: !memoPinnedText }">{{ memoPinnedText || '记点什么…' }}</span>
+            <span class="cb-label">备忘录<span v-if="memoPin" class="cb-memo-type" :class="{ todo: memoPin.type === 'todo' }">{{ memoPin.type === 'todo' ? '待办' : '便签' }}</span></span>
+            <!-- 待办：标题 + 方框事项（无标题直接列事项），超量省略，卡片大小不变 -->
+            <template v-if="memoPin && memoPin.type === 'todo' && (memoPin.title || memoPin.todos.length)">
+              <span class="cb-todos">
+                <span v-if="memoPin.title" class="cb-todo-title">{{ memoPin.title }}</span>
+                <span v-for="t in memoPinTodos" :key="t.text" class="cb-todo-item" :class="{ done: t.done }">
+                  <i class="cb-todo-box" /><span class="cb-todo-txt">{{ t.text }}</span>
+                </span>
+                <span v-if="memoTodosMore" class="cb-todo-item more">…</span>
+              </span>
+            </template>
+            <span v-else class="cb-text" :class="{ empty: !memoPinnedText }">{{ memoPinnedText || '记点什么…' }}</span>
           </button>
           <button class="cb-box" @click="openEdit('period')">
             <span class="cb-label">经期</span>
@@ -500,15 +510,28 @@ function openEdit(key) {
 /* ═══ 桌面备忘录卡：展示已置顶的待办/便签，多个置顶时点击来回切换 ═══ */
 const memoPins = ref([])
 const memoPinIdx = ref(0)
-const memoPinnedText = computed(() => {
+const memoPin = computed(() => {
   const pins = memoPins.value
-  if (!pins.length) return ''
-  const m = pins[memoPinIdx.value % pins.length]
-  const tag = m.type === 'todo' ? '待办' : '便签'
-  let body = ''
-  if (m.type === 'todo') body = m.title || m.todos.find((t) => !t.done)?.text || '已完成'
-  else body = String(m.note || '').split('\n')[0]
-  return `${tag} · ${body}`
+  if (!pins.length) return null
+  return pins[memoPinIdx.value % pins.length]
+})
+/* 便签：首行文本；待办无标题时兜底取第一条未完成事项 */
+const memoPinnedText = computed(() => {
+  const m = memoPin.value
+  if (!m) return ''
+  if (m.type === 'todo') return m.title || m.todos.find((t) => !t.done)?.text || '已完成'
+  return String(m.note || '').split('\n')[0]
+})
+/* 待办事项展示：有标题显 2 条、无标题显 3 条，超出的收进「…」，卡片大小不变 */
+const memoPinTodos = computed(() => {
+  const m = memoPin.value
+  if (!m || m.type !== 'todo') return []
+  return m.todos.slice(0, m.title ? 2 : 3)
+})
+const memoTodosMore = computed(() => {
+  const m = memoPin.value
+  if (!m || m.type !== 'todo') return false
+  return m.todos.length > (m.title ? 2 : 3)
 })
 async function loadMemoPins() {
   try {
@@ -1241,6 +1264,23 @@ function onUnmountedClear(t) {
   overflow: hidden;
 }
 .cb-text.empty { color: var(--text-soft); }
+/* 备忘录卡类型角标：标签右侧标注「待办/便签」 */
+.cb-memo-type {
+  margin-left: 6px; font-size: 10px; letter-spacing: 0; vertical-align: 1px;
+  padding: 1px 7px; border-radius: 999px;
+  border: 1px solid var(--border); color: var(--text-soft);
+}
+.cb-memo-type.todo { color: #5b8def; border-color: rgba(91, 141, 239, 0.45); }
+/* 待办卡内容：标题 + 方框事项，超高截断，保持卡片尺寸不变 */
+.cb-todos { display: flex; flex-direction: column; gap: 4px; overflow: hidden; }
+.cb-todo-title { font-size: 12px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cb-todo-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text); line-height: 1.4; }
+.cb-todo-item .cb-todo-txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cb-todo-item.done .cb-todo-txt { color: var(--text-soft); text-decoration: line-through; }
+.cb-todo-item.more { color: var(--text-soft); }
+/* 事项前的方框：完成后填充主题色打勾感 */
+.cb-todo-box { flex: none; width: 11px; height: 11px; border: 1.5px solid var(--text-soft); border-radius: 3px; box-sizing: border-box; }
+.cb-todo-item.done .cb-todo-box { background: var(--accent); border-color: var(--accent); }
 
 /* 4×2 迷你应用（与第一页一致的应用图标） */
 .cb-mini {

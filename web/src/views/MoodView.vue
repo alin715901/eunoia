@@ -52,6 +52,7 @@
           @click="c.day && pick(c)"
         >
           <span class="mo-day">{{ c.day || '' }}</span>
+          <i v-if="c.ann" class="mo-ann-dot" :class="{ passed: c.ann.passed }" />
           <span class="mo-dots">
             <i v-if="c.him" :style="{ background: colorOf(c.him) }" />
             <i v-if="c.me" :style="{ background: colorOf(c.me) }" />
@@ -100,6 +101,15 @@
 
       <!-- 当日双方记录：不弹窗，直接在日历下方（我的便签卡片） -->
       <div v-else class="mo-day">
+        <!-- 纪念日提示：查看的日期命中的是 TA/共用的纪念日（每年/倒数、公农历自动换算） -->
+        <div v-if="selAnn" class="mo-ann-banner">
+          <AppIcon :name="selAnn.type === 'countdown' ? 'hourglass' : 'calendar'" :size="14" :color="selAnn.type === 'countdown' ? '#5b8def' : 'var(--accent)'" />
+          <b class="mo-ann-title">{{ selAnn.title }}</b>
+          <span class="mo-ann-tag main" :class="{ cd: selAnn.type === 'countdown' }">{{ selAnn.type === 'countdown' ? '倒数日' : '纪念日' }}</span>
+          <span class="mo-ann-tag">{{ selAnn.calendar === 'lunar' ? '农历' : '公历' }}</span>
+          <span v-if="selAnn.repeat_yearly" class="mo-ann-tag">每年</span>
+          <span v-if="selAnn.passed" class="mo-ann-tag passed">已过</span>
+        </div>
         <p v-if="!myItem && !hisItem" class="mo-day-empty">
           这天还没有记录<br /><span class="md-empty-sub">点日历上的任意一天，或点右上角 ＋ 开始记录</span>
         </p>
@@ -307,6 +317,8 @@ import { getCards } from '@/api/cards'
 import { getContactSettings, getDesktop } from '@/api/contacts'
 import { useContactsStore } from '@/stores/contacts'
 import { useNotificationsStore } from '@/stores/notifications'
+import { getAnniversaries } from '@/api/anniversary'
+import { annDatesInMonth } from '@/utils/anniversary'
 
 /* 心情手账（双人共记）：
    我的记录：12 个预设心情标签（各配极简线条表情）+ 自定义标签（长按删除）
@@ -571,6 +583,13 @@ async function reload() {
   } catch (e) {
     items.value = []
   }
+  /* 该联系人的纪念日：用于日历标识与当日提示（随记录一起刷新） */
+  const cid = curContact.value ? curContact.value.id : null
+  try {
+    anns.value = await getAnniversaries(cid != null ? { contactId: cid } : {})
+  } catch (e) {
+    anns.value = []
+  }
 }
 
 /* 旧数据一次性迁移：① 无联系人归属的记录归到第一个梦角；② 旧心情 key/中文名 → 新标签 key */
@@ -707,6 +726,22 @@ watch(curContact, async (c) => {
   await ensureHisToday()
 })
 
+/* 当前联系人的纪念日（含公农历与每年/倒数设置，随 reload 刷新） */
+const anns = ref([])
+/* 本月纪念日落点：dateStr -> 条目（含 passed=已过） */
+const monthAnns = computed(() => {
+  const map = {}
+  const t = todayStr()
+  for (const a of anns.value) {
+    for (const ds of annDatesInMonth(a, year.value, month.value)) {
+      if (!map[ds]) map[ds] = { ...a, date: ds, passed: ds < t }
+    }
+  }
+  return map
+})
+/* 当前查看日期命中的纪念日（在「我的便签纸」上方提示） */
+const selAnn = computed(() => monthAnns.value[dayDate.value] || null)
+
 /* 月历格子：周一为第一列；同一天取两人的记录（左 TA 右我，多条时取最新一条） */
 const cells = computed(() => {
   const y = year.value
@@ -726,6 +761,7 @@ const cells = computed(() => {
       day: d,
       date: ds,
       today: ds === t,
+      ann: monthAnns.value[ds] || null,
       me: mine ? moodKeyOf(mine.extra && mine.extra.mood) : null,
       him: his ? moodKeyOf(his.extra && his.extra.mood) : null
     })
@@ -1083,6 +1119,27 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 .mo-cell.selected { border-color: var(--accent); }
 .mo-cell.selected .mo-day { font-weight: 700; }
 .mo-cell.selected.today { outline: none; }
+/* 纪念日角标：格内右上角小圆点（已过置灰），有心情点时错开排布 */
+.mo-ann-dot {
+  position: absolute; top: 4px; right: 4px;
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--accent);
+}
+.mo-ann-dot.passed { background: var(--border); }
+/* 日历下方、我的便签纸上方的纪念日提示条 */
+.mo-ann-banner {
+  display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
+  border: 1px solid var(--border); background: var(--bg-soft);
+  border-radius: 12px; padding: 8px 12px; margin-bottom: 10px;
+}
+.mo-ann-title { font-size: 13px; color: var(--text); }
+.mo-ann-tag {
+  font-size: 10px; color: var(--text-soft);
+  border: 1px solid var(--border); border-radius: 999px; padding: 1px 7px;
+}
+.mo-ann-tag.main { color: var(--accent); border-color: var(--accent); }
+.mo-ann-tag.main.cd { color: #5b8def; border-color: #5b8def; }
+.mo-ann-tag.passed { color: var(--text-soft); background: var(--border); border-color: var(--border); }
 .mo-day { font-size: 13px; color: var(--text); }
 /* 同一天并排两个半透明小圆点：左 TA 右我，颜色各取当日最新心情色 */
 .mo-dots { display: flex; align-items: center; gap: 3px; height: 6px; }
@@ -1183,9 +1240,15 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 .mo-del-btn { color: #c0576b; }
 .mo-form-sub { font-size: 11px; color: var(--text-soft); margin: 6px 0 0; }
 .mo-fld-label { font-size: 12px; color: var(--text-soft); margin: 16px 0 8px; }
-/* 弹窗收短：一屏放不下就内部滑动（从底部滑入） */
-.md-sheet { max-height: 60vh; animation: mo-slide-up 0.24s cubic-bezier(0.2, 0.9, 0.3, 1.05); }
-@keyframes mo-slide-up { from { opacity: 0; transform: translateY(28px) } to { opacity: 1; transform: none } }
+/* 弹窗改从底部弹出：遮罩对齐底部，面板全宽、上圆角，向上滑入 */
+.md-mask { align-items: flex-end; padding: 0; }
+.md-sheet {
+  width: 100%; max-width: none;
+  border-radius: 18px 18px 0 0;
+  max-height: 78vh;
+  animation: mo-slide-up 0.26s cubic-bezier(0.2, 0.9, 0.3, 1.02);
+}
+@keyframes mo-slide-up { from { transform: translateY(100%) } to { transform: none } }
 /* 事件 chips 与碎碎念输入框之间留间距 */
 .md-textarea { margin-top: 12px; }
 /* 心情 / 事件标签都做小一点 */
