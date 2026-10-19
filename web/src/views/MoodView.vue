@@ -169,7 +169,10 @@
     <div v-if="show" class="md-mask" @click.self="close">
       <div class="md-sheet">
         <div class="mo-form-head">
-          <span class="mo-form-title"><i class="mo-idot me" />我的记录</span>
+          <div class="mo-form-left">
+            <span class="mo-form-title"><i class="mo-idot me" />我的记录</span>
+            <span class="mo-form-date">{{ formDateLabel }}{{ formToday ? ' · 今天' : '' }}</span>
+          </div>
           <div class="mo-form-btns">
             <button v-if="editingId" class="mo-close-btn mo-del-btn" type="button" aria-label="删除这条记录" @click="removeCur">
               <AppIcon name="trash" :size="14" />
@@ -179,7 +182,6 @@
             </button>
           </div>
         </div>
-        <p class="mo-form-sub">{{ formDateLabel }}{{ formToday ? ' · 今天' : '' }}</p>
 
         <p class="mo-fld-label">{{ formToday ? '今天的心情' : '这天的心情' }}</p>
         <div class="md-chips">
@@ -1229,6 +1231,9 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 /* 记录表单弹窗 */
 /* 记录表单弹窗：整体收短，内容多了内部滑动；头部吸顶 */
 .mo-form-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; position: sticky; top: -16px; z-index: 1; background: var(--bg-screen); padding: 4px 0 8px; margin-bottom: 0; }
+/* 标题与日期同行：日期紧跟「我的记录」 */
+.mo-form-left { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+.mo-form-date { font-size: 11px; color: var(--text-soft); white-space: nowrap; }
 .mo-form-title { display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 600; }
 .mo-form-btns { display: flex; gap: 8px; flex: 0 0 auto; }
 .mo-close-btn {
@@ -1238,7 +1243,14 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 }
 .mo-close-btn:active { transform: scale(0.94); }
 .mo-del-btn { color: #c0576b; }
-.mo-form-sub { font-size: 11px; color: var(--text-soft); margin: 6px 0 0; }
+/* 取消/保存固定在弹窗底部，不随内容滚动 */
+.md-actions {
+  position: sticky; bottom: 0; z-index: 3;
+  margin: 14px -16px calc(-16px - env(safe-area-inset-bottom));
+  padding: 10px 16px calc(14px + env(safe-area-inset-bottom));
+  background: var(--bg-screen);
+  border-radius: 0 0 18px 18px;
+}
 .mo-fld-label { font-size: 12px; color: var(--text-soft); margin: 16px 0 8px; }
 /* 弹窗改从底部弹出：遮罩对齐底部，面板全宽、上圆角，向上滑入 */
 .md-mask { align-items: flex-end; padding: 0; }

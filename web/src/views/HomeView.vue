@@ -151,16 +151,15 @@
 
     <!-- 备忘录 / 经期：独立卡片，不再塞进卡片 B -->
         <div class="cb-boxes">
-          <button class="cb-box" @click="onMemoCardClick">
+          <button class="cb-box" :class="{ 'is-todo': memoPin && memoPin.type === 'todo' && (memoPin.title || memoPin.todos.length) }" @click="onMemoCardClick">
             <span class="cb-label">备忘录<span v-if="memoPin" class="cb-memo-type" :class="{ todo: memoPin.type === 'todo' }">{{ memoPin.type === 'todo' ? '待办' : '便签' }}</span></span>
-            <!-- 待办：标题 + 方框事项（无标题直接列事项），超量省略，卡片大小不变 -->
+            <!-- 待办：标题 + 方框事项（无标题直接列事项），超量淡出省略，卡片大小恒定 -->
             <template v-if="memoPin && memoPin.type === 'todo' && (memoPin.title || memoPin.todos.length)">
-              <span class="cb-todos">
+              <span class="cb-todos" :class="{ faded: memoTodosMore }">
                 <span v-if="memoPin.title" class="cb-todo-title">{{ memoPin.title }}</span>
                 <span v-for="t in memoPinTodos" :key="t.text" class="cb-todo-item" :class="{ done: t.done }">
                   <i class="cb-todo-box" /><span class="cb-todo-txt">{{ t.text }}</span>
                 </span>
-                <span v-if="memoTodosMore" class="cb-todo-item more">…</span>
               </span>
             </template>
             <span v-else class="cb-text" :class="{ empty: !memoPinnedText }">{{ memoPinnedText || '记点什么…' }}</span>
@@ -1264,20 +1263,20 @@ function onUnmountedClear(t) {
   overflow: hidden;
 }
 .cb-text.empty { color: var(--text-soft); }
-/* 备忘录卡类型角标：标签右侧标注「待办/便签」 */
+/* 备忘录卡类型角标：标签右侧纯文字标注「待办/便签」（无外框） */
 .cb-memo-type {
-  margin-left: 6px; font-size: 10px; letter-spacing: 0; vertical-align: 1px;
-  padding: 1px 7px; border-radius: 999px;
-  border: 1px solid var(--border); color: var(--text-soft);
+  margin-left: 6px; font-size: 10px; letter-spacing: 1px; vertical-align: 1px;
+  color: var(--text-soft);
 }
-.cb-memo-type.todo { color: #5b8def; border-color: rgba(91, 141, 239, 0.45); }
-/* 待办卡内容：标题 + 方框事项，超高截断，保持卡片尺寸不变 */
-.cb-todos { display: flex; flex-direction: column; gap: 4px; overflow: hidden; }
-.cb-todo-title { font-size: 12px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.cb-todo-item { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text); line-height: 1.4; }
+.cb-memo-type.todo { color: #5b8def; }
+/* 待办卡内容：标题 + 方框事项；卡片高度与普通状态恒定（96px），放不下淡出省略 */
+.cb-box.is-todo { height: 96px; padding-top: 10px; padding-bottom: 10px; gap: 6px; }
+.cb-todos { display: flex; flex-direction: column; gap: 3px; flex: 1; min-height: 0; overflow: hidden; }
+.cb-todos.faded { -webkit-mask-image: linear-gradient(to bottom, #000 62%, transparent 96%); mask-image: linear-gradient(to bottom, #000 62%, transparent 96%); }
+.cb-todo-title { font-size: 11px; line-height: 1.35; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cb-todo-item { display: flex; align-items: center; gap: 6px; font-size: 11px; line-height: 1.35; color: var(--text); min-height: 0; flex: none; }
 .cb-todo-item .cb-todo-txt { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .cb-todo-item.done .cb-todo-txt { color: var(--text-soft); text-decoration: line-through; }
-.cb-todo-item.more { color: var(--text-soft); }
 /* 事项前的方框：完成后填充主题色打勾感 */
 .cb-todo-box { flex: none; width: 11px; height: 11px; border: 1.5px solid var(--text-soft); border-radius: 3px; box-sizing: border-box; }
 .cb-todo-item.done .cb-todo-box { background: var(--accent); border-color: var(--accent); }
