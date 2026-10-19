@@ -16,6 +16,7 @@
         <button class="mm-chip" :class="{ on: filter === 'all' }" @click="filter = 'all'">全部</button>
         <button class="mm-chip" :class="{ on: filter === 'todo' }" @click="filter = 'todo'">待办</button>
         <button class="mm-chip" :class="{ on: filter === 'note' }" @click="filter = 'note'">便签</button>
+        <button class="mm-chip" :class="{ on: filter === 'done' }" @click="filter = 'done'">已完成</button>
         <button class="mm-sort" :aria-label="sortAsc ? '切换为最新在上' : '切换为最早在上'" @click="sortAsc = !sortAsc">
           {{ sortAsc ? '时间 ↑' : '时间 ↓' }}
         </button>
@@ -69,16 +70,20 @@
                 <div class="mm-note-text">{{ m.note }}</div>
               </template>
 
-              <!-- 卡片底部：创建日期（待办另显截止日期） -->
+              <!-- 卡片底部：创建日期（待办另显截止日期，时间在日期下面） -->
               <div class="mm-foot">
                 <span class="mm-date">{{ fmtCreated(m) }}</span>
-                <span v-if="m.type === 'todo' && m.due" class="mm-due">截止 {{ fmtDue(m.due) }}</span>
+                <span v-if="m.type === 'todo' && m.due" class="mm-due">
+                  <span class="mm-due-date">截止 {{ fmtDue(m.due) }}</span>
+                  <span v-if="dueTimeOf(m.due)" class="mm-due-time">{{ dueTimeOf(m.due) }}</span>
+                </span>
               </div>
             </div>
           </div>
 
           <p v-if="!board.length" class="mm-empty">
-            这里还很空<br /><span class="mm-empty-sub">点右上角「＋」写一张随手贴</span>
+            {{ filter === 'done' ? '还没有已完成的事项' : '这里还很空' }}<br />
+            <span class="mm-empty-sub">{{ filter === 'done' ? '把待办都勾完，就会收进这里' : '点右上角「＋」写一张随手贴' }}</span>
           </p>
         </div>
       </template>
@@ -104,8 +109,8 @@
             <button class="mm-te-add" @click="addTodo">＋ 添加一项</button>
           </div>
           <div class="mm-fld">
-            <span class="mm-fld-label">截止日期（可选）</span>
-            <input v-model="form.due" class="mm-input" type="date" />
+            <span class="mm-fld-label">截止日期（可选，可精确到时间）</span>
+            <input v-model="form.due" class="mm-input" type="datetime-local" />
           </div>
         </template>
         <template v-else>
@@ -171,8 +176,15 @@ function normalize(it) {
 }
 
 const all = computed(() => items.value.map(normalize))
+/* 待办卡「已完成」：有子任务且全部勾完（便签无完成概念） */
+function isDone(m) {
+  return m.type === 'todo' && m.todos.length > 0 && m.todos.every((t) => t.done)
+}
 const board = computed(() => {
-  const list = filter.value === 'all' ? all.value : all.value.filter((m) => m.type === filter.value)
+  let list
+  if (filter.value === 'all') list = all.value
+  else if (filter.value === 'done') list = all.value.filter(isDone)
+  else list = all.value.filter((m) => m.type === filter.value && !isDone(m))
   const dir = sortAsc.value ? 1 : -1
   return list.slice().sort((a, b) => {
     if (!!b.pinned !== !!a.pinned) return b.pinned ? 1 : -1
@@ -187,11 +199,15 @@ function fmtCreated(m) {
   const d = new Date(sec * 1000)
   return `${d.getMonth() + 1}月${d.getDate()}日创建`
 }
-/* 截止日期：YYYY-MM-DD → M月D日 */
+/* 截止日期：'YYYY-MM-DD' 或 'YYYY-MM-DDTHH:mm' → M月D日（时间部分单独一行） */
 function fmtDue(s) {
-  const d = new Date(`${s}T00:00:00`)
+  const d = new Date(`${s.split('T')[0]}T00:00:00`)
   if (Number.isNaN(d.getTime())) return s
   return `${d.getMonth() + 1}月${d.getDate()}日`
+}
+function dueTimeOf(s) {
+  const t = String(s || '').split('T')[1]
+  return t ? t.slice(0, 5) : ''
 }
 
 /* ═══ 手势：长按删除 / 左滑露出删除 / 点击编辑 ═══ */
@@ -223,7 +239,8 @@ function move(e) {
   if (!g.id) return
   const dx = e.clientX - g.x0
   const dy = e.clientY - g.y0
-  if (Math.abs(dx) > 8 || Math.abs(dy) > 8) {
+  /* 阈值放宽：触摸点按的轻微晃动仍算「点击」，不至于误判成滑动 */
+  if (Math.abs(dx) > 12 || Math.abs(dy) > 12) {
     g.moved = true
     clearTimeout(pressTimer)
   }
@@ -364,6 +381,9 @@ onMounted(load)
   radial-gradient(circle at 82% 30%, rgba(201,160,150,.08), transparent 42%),
   #f7f2e7;
 }
+/* 右上角＋：无边框，仅细线图标 */
+.mm-op { border: none; background: transparent; color: var(--text); padding: 6px; display: inline-flex; align-items: center; justify-content: center; }
+.mm-op:active { transform: scale(0.92); }
 .mm-body { padding: 12px; }
 .mm-filter { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; }
 .mm-chip { border: 1px solid var(--border); background: rgba(255,255,255,.5); color: var(--text-soft); border-radius: 999px; padding: 5px 16px; font-size: 13px; }
@@ -393,11 +413,12 @@ onMounted(load)
 .mm-empty-sub { font-size: 12px; color: var(--text-soft); margin-top: 6px; }
 .mm-note-text { font-size: 13.5px; line-height: 1.7; color: #4a3f33; white-space: pre-wrap; word-break: break-word; }
 
-/* 卡片底部：创建日期 + 截止日期 */
-.mm-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
+/* 卡片底部：创建日期 + 截止日期（时间显示在日期下面） */
+.mm-foot { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; margin-top: 10px; }
 .mm-date { font-size: 10.5px; color: rgba(74, 63, 51, .38); }
-.mm-due { font-size: 10.5px; color: #c0724f; white-space: nowrap; }
-.mm-due::before { content: '⏳ '; font-size: 9px; }
+.mm-due { display: flex; flex-direction: column; align-items: flex-end; gap: 1px; white-space: nowrap; }
+.mm-due-date { font-size: 10.5px; color: #c0724f; }
+.mm-due-time { font-size: 10px; color: #c0724f; opacity: .8; }
 
 .mm-del {
   position: absolute; top: 0; right: 0; height: 100%; width: 76px;
