@@ -44,7 +44,6 @@
         <span><i class="pr-lg pr-lg-flow-heavy" /> 多</span>
         <span><i class="pr-lg pr-lg-pain-mild" /> 轻微</span>
         <span><i class="pr-lg pr-lg-pain-severe" /> 严重</span>
-        <span v-if="enough"><i class="pr-lg pr-lg-pred" /> 预测经期</span>
         <span v-if="enough"><i class="pr-lg pr-lg-ovu" /> 排卵期</span>
       </div>
 
@@ -119,7 +118,7 @@ import { useItems } from '@/composables/useItems'
 import { useNotificationsStore } from '@/stores/notifications'
 import { confirmDialog } from '@/utils/dialog'
 import {
-  cyclesFromItems, cycleOf, predictedDates,
+  cyclesFromItems, cycleOf,
   fmtDate, addDays, parseDate, dayDiff,
   ongoingCycle, ongoingDisplayEnd, ovulationWindow,
   avgCycle, avgLen, predictNext
@@ -137,7 +136,6 @@ const dayDate = ref(fmtDate(now))
 const cycles = computed(() => cyclesFromItems(items.value))
 /* 有任意经期记录即按规律预测（封存 <2 条时用默认 28/7 天，够后按真实统计） */
 const enough = computed(() => cycles.value.length > 0)
-const predSet = computed(() => enough.value ? new Set(predictedDates(cycles.value)) : new Set())
 /* 排卵期窗口（下次经期开始 - 14 天 ±2 天）所有日期 */
 const ovuSet = computed(() => {
   if (!enough.value) return new Set()
@@ -196,8 +194,7 @@ const cells = computed(() => {
       date,
       today: date === todayStr(),
       inCycle: !!cyc,
-      pred: predSet.value.has(date) && !cyc,
-      ovu: ovuSet.value.has(date) && !cyc && !predSet.value.has(date),
+      ovu: ovuSet.value.has(date) && !cyc,
       dayRec: cyc ? cyc.days[date] || null : null,
       cyc
     })
@@ -236,9 +233,16 @@ const endTarget = computed(() => {
     if (c.ongoing) return c
     return t <= (c.end || c.start) ? c : null
   }
-  /* 2. 晚于某条进行中经期的第一天 → 补/封存该进行中周期 */
+  /* 2. 晚于某条进行中经期的第一天 → 补/封存该进行中周期（仅限该周期排卵期开始前）。
+     排卵期开始之后临近预测经期的日子，更可能是下一次经期的开始
+     （一个月可能来两次经期），改显示开始开关——不能把进行中经期封成
+     跨越排卵期的超长经期 */
   const ongoingBefore = [...cycles.value].reverse().find((c) => c.ongoing && c.start < t)
-  if (ongoingBefore) return ongoingBefore
+  if (ongoingBefore) {
+    const ovuStart = addDays(ongoingBefore.start, avgCycle(cycles.value) - 16)
+    if (!ovuStart || t < ovuStart) return ongoingBefore
+    return null
+  }
   /* 3. 最近已封存周期结束后的补/延长（结束日次日或排卵期开始前） */
   const sealedLast = [...cycles.value].reverse().find((c) => !c.ongoing)
   if (sealedLast && t > (sealedLast.end || sealedLast.start) && t <= todayStr()) {
@@ -262,7 +266,10 @@ const showStartSwitch = computed(() => {
   if (isFuture.value) return false
   if (endTarget.value) return false
   if (selCycle.value) return selCycle.value.start === targetDate.value
-  if (oc.value) return targetDate.value <= oc.value.start
+  /* 进行中经期开始日当天/之前 → 开始开关（撤销/改开始日）；
+     开始日之后且 endTarget 为空 = 已超过本次排卵期边界（临近预测经期），
+     更可能是下一次经期开始 → 同样显示开始开关（点开新建，不污染原记录） */
+  if (oc.value && targetDate.value <= oc.value.start) return true
   return !inCycle.value
 })
 /* 开关状态：
@@ -465,7 +472,6 @@ function goToday() {
 
 function cellStyle(c) {
   if (c.inCycle) return { background: 'rgba(201,136,145,.20)' }
-  if (c.pred) return { border: '1.5px dashed rgba(201,136,145,.65)' }
   if (c.ovu) return { background: 'rgba(150,120,200,.14)' }
   return null
 }
@@ -611,7 +617,6 @@ onMounted(load)
 .pr-lg-flow-heavy { width: 9px; height: 9px; }
 .pr-lg-pain-mild::after { content: '△'; font-size: 9px; color: #a85b5b; }
 .pr-lg-pain-severe::after { content: '✕'; font-size: 9px; color: #a85b5b; }
-.pr-lg-pred { background: transparent; border: 1.5px dashed rgba(201,136,145,.65); }
 
 /* 排卵窗口小紫点 */
 .pr-ovu-dot { width: 6px; height: 6px; border-radius: 50%; background: #9b7fd0; display: inline-block; margin-top: 3px; }

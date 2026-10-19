@@ -66,12 +66,15 @@ export function avgCycle(cycles) {
 }
 
 /* 平均持续天数：已封存周期的 (end-start+1) 均值。无任何封存记录时沿用默认 7 天，
-   有记录就按自己的真实统计（一个月一次，依据用户记录的经期周期） */
+   有记录就按自己的真实统计（一个月一次，依据用户记录的经期周期）。
+   钳制到 [1, 10]：经期持续一般 2～7 天，极端也少于 10 天；
+   异常长记录（误操作产生的十几天）不参与预测，避免污染「变红显示」 */
 export function avgLen(cycles) {
   const sealed = cycles.filter((c) => !c.ongoing && c.end)
   if (!sealed.length) return 7
   const sum = sealed.reduce((s, c) => s + (dayDiff(c.end, c.start) + 1), 0)
-  return Math.round(sum / sealed.length)
+  const avg = Math.round(sum / sealed.length)
+  return Math.min(10, Math.max(1, avg))
 }
 
 /* 预测下次经期：基于最近一次开始日 + 平均周期；结束日 = 开始日 + 平均持续 - 1 */
@@ -85,27 +88,19 @@ export function predictNext(cycles) {
   return { start, end, cycle, len }
 }
 
-/* 预测区间的所有日期（用于日历浅色圈出） */
-export function predictedDates(cycles, limit = 31) {
-  const pred = predictNext(cycles)
-  if (!pred) return []
-  const out = []
-  let cur = pred.start
-  for (let i = 0; i < pred.len && i < limit; i++) {
-    out.push(cur)
-    cur = addDays(cur, 1)
-  }
-  return out
-}
-
 /* 进行中周期的「变红显示终点」：严格按周期规律预测（开始日 + 平均持续 - 1），
    不延伸到今天——默认持续几天就只红几天；
-   实际结束以结束开关为准（提前/延后结束则相应减少/增加变红天数） */
+   实际结束以结束开关为准（提前/延后结束则相应减少/增加变红天数）。
+   上限：不超过本次周期自身推算的排卵期窗口起点前一天
+   （排卵期 = 下次经期 - 14 天 ±2，经期先于排卵期，显示不能吞掉排卵期） */
 export function ongoingDisplayEnd(cycles, cycle) {
   if (!cycle || !cycle.ongoing) return cycle ? cycle.end || cycle.start : ''
   const predEnd = addDays(cycle.start, avgLen(cycles) - 1)
+  const cap = addDays(cycle.start, avgCycle(cycles) - 17)
   const curEnd = cycle.end || cycle.start
-  return predEnd > curEnd ? predEnd : curEnd
+  let end = predEnd > curEnd ? predEnd : curEnd
+  if (cap && end > cap) end = cap
+  return end
 }
 
 /* 某天是否处于已记录周期内（返回该 cycle 或 null）。
