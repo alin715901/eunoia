@@ -49,13 +49,14 @@ export function cyclesFromItems(items) {
     .sort((a, b) => a.start.localeCompare(b.start))
 }
 
-/* 平均周期：相邻两次开始日的间隔（不足 2 条回落 28） */
+/* 平均周期：相邻两次开始日的间隔。封存记录 <2 条时沿用默认 28 天，之后按真实统计 */
 export function avgCycle(cycles) {
-  if (cycles.length < 2) return 28
+  const sealed = cycles.filter((c) => !c.ongoing && c.end)
+  if (sealed.length < 2) return 28
   let sum = 0
   let n = 0
-  for (let i = 1; i < cycles.length; i++) {
-    const d = dayDiff(cycles[i].start, cycles[i - 1].start)
+  for (let i = 1; i < sealed.length; i++) {
+    const d = dayDiff(sealed[i].start, sealed[i - 1].start)
     if (d > 0) {
       sum += d
       n++
@@ -64,12 +65,12 @@ export function avgCycle(cycles) {
   return n ? Math.round(sum / n) : 28
 }
 
-/* 平均持续天数：有结束日的「已封存」cycle 的 (end-start+1) 均值（进行中的不计入；无数据回落默认 7） */
+/* 平均持续天数：已封存周期的 (end-start+1) 均值。封存记录 <2 条时沿用默认 7 天，之后按真实统计 */
 export function avgLen(cycles) {
-  const withEnd = cycles.filter((c) => !c.ongoing && c.end && c.end >= c.start)
-  if (!withEnd.length) return 7
-  const sum = withEnd.reduce((s, c) => s + (dayDiff(c.end, c.start) + 1), 0)
-  return Math.round(sum / withEnd.length)
+  const sealed = cycles.filter((c) => !c.ongoing && c.end)
+  if (sealed.length < 2) return 7
+  const sum = sealed.reduce((s, c) => s + (dayDiff(c.end, c.start) + 1), 0)
+  return Math.round(sum / sealed.length)
 }
 
 /* 预测下次经期：基于最近一次开始日 + 平均周期；结束日 = 开始日 + 平均持续 - 1 */

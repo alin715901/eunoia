@@ -52,10 +52,15 @@
 
       <!-- 常驻记录卡：开关 + 流量 + 痛经（默认记录今天，点选日期后记录该日） -->
       <div v-else class="pr-record">
+        <div class="pr-card-head">
+          <button class="pr-trash" type="button" :disabled="!inCycle" aria-label="删除这一天的记录" @click="askDeleteDay">
+            <AppIcon name="trash" :size="17" color="#b08d8d" />
+          </button>
+        </div>
         <div class="pr-row">
           <span class="pr-row-ic"><AppIcon name="drop" :size="18" color="#c98891" /></span>
           <span class="pr-row-label">{{ isOngoing ? '经期结束了吗？' : '经期开始了吗？' }}</span>
-          <ToggleSwitch :key="switchKey" :model-value="false" @update:model-value="onSwitch" />
+          <ToggleSwitch :model-value="isOngoing" @update:model-value="onSwitch" />
         </div>
         <div class="pr-row">
           <span class="pr-row-ic"><AppIcon name="drop" :size="18" color="#e0a4ad" /></span>
@@ -75,19 +80,18 @@
             </button>
           </div>
         </div>
-        <div class="pr-row">
-          <span class="pr-row-ic"><AppIcon name="bolt" :size="18" color="#d9909a" /></span>
-          <span class="pr-row-label">痛经</span>
-          <div class="pr-seg">
-            <button class="pr-seg-btn" :class="{ on: dayForm.pain === 'none' }" :disabled="!inCycle" @click="setPain('none')">无</button>
-            <button class="pr-seg-btn" :class="{ on: dayForm.pain === 'mild' }" :disabled="!inCycle" @click="setPain('mild')">轻微</button>
-            <button class="pr-seg-btn" :class="{ on: dayForm.pain === 'severe' }" :disabled="!inCycle" @click="setPain('severe')">严重</button>
+          <div class="pr-row">
+            <span class="pr-row-ic"><AppIcon name="bolt" :size="18" color="#d9909a" /></span>
+            <span class="pr-row-label">痛经</span>
+            <div class="pr-seg">
+              <button class="pr-seg-btn" :class="{ on: dayForm.pain === 'none' }" :disabled="!inCycle" @click="setPain('none')">无</button>
+              <button class="pr-seg-btn" :class="{ on: dayForm.pain === 'mild' }" :disabled="!inCycle" @click="setPain('mild')">轻微</button>
+              <button class="pr-seg-btn" :class="{ on: dayForm.pain === 'severe' }" :disabled="!inCycle" @click="setPain('severe')">严重</button>
+            </div>
           </div>
-        </div>
-        <div v-if="hasDayRec" class="pr-record-actions">
-          <button class="pr-btn danger" type="button" @click="removeDay">移除这一天</button>
-        </div>
       </div>
+
+      <button class="pr-clear" type="button" @click="askClearAll">清空经期记录</button>
     </div>
   </div>
 </template>
@@ -99,6 +103,7 @@ import AppIcon from '@/components/common/AppIcon.vue'
 import ToggleSwitch from '@/components/common/ToggleSwitch.vue'
 import { useItems } from '@/composables/useItems'
 import { useNotificationsStore } from '@/stores/notifications'
+import { confirmDialog } from '@/utils/dialog'
 import {
   cyclesFromItems, cycleOf, predictedDates,
   fmtDate, addDays, parseDate, dayDiff,
@@ -161,10 +166,6 @@ const targetDate = computed(() => selectedDate.value || todayStr())
 const isFuture = computed(() => targetDate.value > todayStr())
 const selCycle = computed(() => cycleOf(cycles.value, targetDate.value))
 const inCycle = computed(() => !!selCycle.value)
-const hasDayRec = computed(() => {
-  const c = selCycle.value
-  return !!(c && c.days && c.days[targetDate.value])
-})
 
 const FLOWS = [
   { v: 'light', t: '少' },
@@ -179,13 +180,10 @@ watch([targetDate, cycles], () => {
   Object.assign(dayForm, { flow: rec ? rec.flow || '' : '', pain: rec ? rec.pain || 'none' : 'none' })
 }, { immediate: true })
 
-/* 开关：点开即执行（未开始 → 从目标日开始；进行中 → 在目标日结束并封存） */
-const switchTick = ref(0)
-const switchKey = computed(() => (isOngoing.value ? 'end' : 'start') + '-' + switchTick.value)
-function onSwitch() {
-  switchTick.value++
-  if (isOngoing.value) endPeriod(targetDate.value)
-  else startPeriod(targetDate.value)
+/* 开关：ON = 经期进行中，OFF = 未开始/已结束（状态即时可见） */
+function onSwitch(val) {
+  if (val) startPeriod(targetDate.value)
+  else endPeriod(targetDate.value)
 }
 
 async function startPeriod(date) {
@@ -284,12 +282,50 @@ async function removeDay() {
   delete days[targetDate.value]
   let { start, end } = raw.extra
   const d = targetDate.value
-  if (d === start && start < end) start = addDays(start, 1)
-  else if (d === end && end > start) end = addDays(end, -1)
   try {
-    if (start > end) await removeItem(cyc.id)
-    else await update(cyc.id, { extra: { ...raw.extra, start, end, days }, title: start })
-    toast.pushToast({ title: '已移除' })
+    if (d === start && d === end) {
+      /* 单天周期：删除该日即整条移除 */
+      await removeItem(cyc.id)
+    } else {
+      if (d === start && start < end) start = addDays(start, 1)
+      else if (d === end && end > start) end = addDays(end, -1)
+      if (start > end) await removeItem(cyc.id)
+      else await update(cyc.id, { extra: { ...raw.extra, start, end, days }, title: start })
+    }
+    toast.pushToast({ title: '已删除这一天的记录' })
+  } catch (e) {
+    toast.pushToast({ title: '失败', text: e.message })
+  }
+}
+
+/* 右上垃圾桶：删除这一天的记录（该日也不再计入经期） */
+async function askDeleteDay() {
+  if (!inCycle.value) return
+  const d = parseDate(targetDate.value)
+  const label = d ? `${d.getMonth() + 1}月${d.getDate()}日` : '这一天'
+  const ok = await confirmDialog({
+    title: '删除这一天的记录？',
+    text: `将删除 ${label} 的流量/痛经记录，该日也不再计入经期。`,
+    danger: true
+  })
+  if (ok) await removeDay()
+}
+
+/* 一键清空全部经期记录 */
+async function askClearAll() {
+  if (!items.value.length) {
+    toast.pushToast({ title: '暂无经期记录' })
+    return
+  }
+  const ok = await confirmDialog({
+    title: '清空全部经期记录？',
+    text: '所有经期记录与统计数据都会被删除，且无法恢复。',
+    danger: true
+  })
+  if (!ok) return
+  try {
+    for (const it of items.value) await removeItem(it.id)
+    toast.pushToast({ title: '已清空经期记录' })
   } catch (e) {
     toast.pushToast({ title: '失败', text: e.message })
   }
@@ -352,6 +388,9 @@ onMounted(load)
 
 /* 常驻记录卡（行式列表） */
 .pr-record { background: #fff; border-radius: 14px; padding: 4px 14px; margin: 12px 0 4px; box-shadow: 0 1px 3px rgba(180,120,120,.08); }
+.pr-card-head { display: flex; justify-content: flex-end; padding: 6px 0 2px; }
+.pr-trash { border: none; background: transparent; padding: 6px; display: flex; align-items: center; justify-content: center; border-radius: 50%; }
+.pr-trash:disabled { opacity: .35; }
 .pr-row { display: flex; align-items: center; gap: 12px; padding: 13px 0; border-bottom: 1px solid #f6ecea; }
 .pr-row:last-of-type { border-bottom: none; }
 .pr-row-ic { flex: 0 0 auto; width: 34px; height: 34px; border-radius: 50%; background: #fbeef0; display: flex; align-items: center; justify-content: center; }
@@ -364,7 +403,6 @@ onMounted(load)
 .pr-drops { display: flex; gap: 14px; flex: 0 0 auto; align-items: center; }
 .pr-drop { border: none; background: transparent; padding: 4px; display: flex; align-items: center; justify-content: center; border-radius: 50%; }
 .pr-drop:disabled { opacity: .45; }
-.pr-record-actions { display: flex; gap: 10px; padding: 10px 0 12px; }
-.pr-btn { flex: 1; border: none; border-radius: 10px; padding: 12px; font-size: 15px; }
-.pr-btn.danger { background: #fbe9e8; color: #d9534f; }
+/* 一键清空 */
+.pr-clear { display: block; margin: 16px auto 8px; border: none; background: transparent; color: var(--text-soft); font-size: 12px; text-decoration: underline; padding: 6px 10px; }
 </style>
