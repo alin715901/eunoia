@@ -122,7 +122,7 @@ import {
   cyclesFromItems, cycleOf, predictedDates,
   fmtDate, addDays, parseDate, dayDiff,
   ongoingCycle, ongoingDisplayEnd, ovulationWindow,
-  avgCycle, predictNext
+  avgCycle, avgLen, predictNext
 } from '@/utils/period'
 
 const { items, loading, load, add, update, remove: removeItem } = useItems('period')
@@ -170,11 +170,11 @@ const calStatus = computed(() => {
   if (ovu && t >= ovu.start && t <= ovu.end) {
     return { main: `排卵期第 ${dayDiff(t, ovu.start) + 1} 天`, sub }
   }
-  /* 3. 距预测经期 X 天（记录少时按默认 28/7 规律预测） */
+  /* 3. 距离预测经期 X 天（记录少时按默认 28/7 规律预测） */
   const pred = predictNext(cycles.value)
   if (pred) {
     const du = dayDiff(pred.start, t)
-    if (du > 0) return { main: `距预测经期 ${du} 天`, sub }
+    if (du > 0) return { main: `距离预测经期 ${du} 天`, sub }
     if (du === 0) return { main: '预测经期今天来', sub }
     return { main: `预测经期已过 ${-du} 天`, sub }
   }
@@ -220,47 +220,54 @@ const dayIndex = computed(() => {
 /* 进行中的经期 */
 const oc = computed(() => ongoingCycle(cycles.value))
 /* 结束开关的目标周期：
-   - 进行中 → 目标日 ∈ (第一天, 今天]（第一天归开始开关；含超过预测最后一天的补结束）
-   - 已封存 → 目标日 ∈ [第一天, 结束日]（开关 ON，可提前）
-   - 最近一条已封存 → 仅「结束日次日」或「排卵期开始前」可补/延长结束（开关 OFF）；
-     排卵期开始之后的日子临近预测经期，更可能是下一次经期的开始
-     （一个月可能来两次经期），应显示开始开关而不是结束开关 */
+   1. 目标日在某条已记录周期内（第一天归开始开关）：
+      - 进行中 → 结束开关 OFF（点开以该日为最后一天，含超过预测结束日的补结束）
+      - 已封存且该日 ≤ 结束日 → 结束开关 ON（点关提前一天）
+   2. 不在任何周期内、但晚于某条进行中经期的第一天 → 该进行中周期的结束开关 OFF（补封存）
+   3. 不在任何周期内、但晚于最近已封存周期的结束日 → 仅「结束日次日」或「该周期自身的排卵期开始前」
+      可补/延长结束（OFF）；排卵期之后临近预测经期的日子更可能是下一次经期的开始
+      （一个月可能来两次经期），显示开始开关 */
 const endTarget = computed(() => {
   if (isFuture.value) return null
   const t = targetDate.value
-  if (oc.value) {
-    return t > oc.value.start && t <= todayStr() ? oc.value : null
-  }
-  if (selCycle.value) {
+  /* 1. 目标日在已记录周期内（第一天除外）→ 该周期的结束开关 */
+  if (selCycle.value && t > selCycle.value.start) {
     const c = selCycle.value
-    return t >= c.start && t <= (c.end || c.start) ? c : null
+    if (c.ongoing) return c
+    return t <= (c.end || c.start) ? c : null
   }
-  const last = cycles.value[cycles.value.length - 1]
-  if (last && t > (last.end || last.start) && t <= todayStr()) {
-    const lastEnd = last.end || last.start
-    if (t <= addDays(lastEnd, 1)) return last
-    const ovu = ovulationWindow(cycles.value)
-    if (ovu && t >= ovu.start) return null
-    return last
+  /* 2. 晚于某条进行中经期的第一天 → 补/封存该进行中周期 */
+  const ongoingBefore = [...cycles.value].reverse().find((c) => c.ongoing && c.start < t)
+  if (ongoingBefore) return ongoingBefore
+  /* 3. 最近已封存周期结束后的补/延长（结束日次日或排卵期开始前） */
+  const sealedLast = [...cycles.value].reverse().find((c) => !c.ongoing)
+  if (sealedLast && t > (sealedLast.end || sealedLast.start) && t <= todayStr()) {
+    const lastEnd = sealedLast.end || sealedLast.start
+    if (t <= addDays(lastEnd, 1)) return sealedLast
+    /* 以该周期自身推算的下一次排卵期起点为界（而非更晚的记录） */
+    const ovuStart = addDays(sealedLast.start, avgCycle(cycles.value) - 16)
+    if (ovuStart && t >= ovuStart) return null
+    return sealedLast
   }
   return null
 })
 const showEndSwitch = computed(() => !!endTarget.value)
 /* 开关显示规则：
-   - 目标日 ≤ 进行中经期的第一天（含当天）→ 「经期开始了吗？」（打开 → 该日记为/改为第一天）
-   - 目标日 ∈ (第一天, 结束日/今天] → 「经期结束了吗？」（打开 → 该日为最后一天）
-   - 无进行中经期且该日不在任何记录中 → 「经期开始了吗？」（打开 → 新建经期）
+   - 目标日是任一经期的第一天（含已封存历史）→ 「经期开始了吗？」ON（点关撤销/确认删除）
+   - 目标日 ≤ 进行中经期的第一天 → 「经期开始了吗？」OFF（点开改开始日，附近才弹窗确认）
+   - 无进行中经期且该日不在任何记录中 → 「经期开始了吗？」OFF（点开新建；补录以前的月份不弹窗不限制）
    - 历史经期内的天 / 结束日次日 / 排卵期开始前 → 结束开关（可提前或补/延长结束）
    - 排卵期开始之后 → 开始开关（临近预测经期，可能是下一次经期开始） */
 const showStartSwitch = computed(() => {
   if (isFuture.value) return false
   if (endTarget.value) return false
+  if (selCycle.value) return selCycle.value.start === targetDate.value
   if (oc.value) return targetDate.value <= oc.value.start
   return !inCycle.value
 })
 /* 开关状态：
    - 结束开关：已封存且该日 ≤ 结束日 → ON；进行中（未确认结束）→ OFF
-   - 开始开关：进行中经期的第一天就是该日 → ON（刚标记过），否则 OFF */
+   - 开始开关：目标日是任一经期的第一天 → ON（刚标记过），否则 OFF */
 const switchOn = computed(() => {
   if (showEndSwitch.value) {
     const c = endTarget.value
@@ -268,6 +275,7 @@ const switchOn = computed(() => {
     if (c.ongoing) return false
     return targetDate.value <= (c.end || c.start)
   }
+  if (selCycle.value && selCycle.value.start === targetDate.value) return true
   return !!oc.value && oc.value.start === targetDate.value
 })
 
@@ -294,6 +302,7 @@ watch([targetDate, cycles], () => {
      - 再点关 → 撤销（改过的恢复原开始日，新建的确认后删除） */
 async function onSwitch(val) {
   if (isFuture.value) return
+  if (val === switchOn.value) return /* 状态未变，忽略重复点击 */
   const t = targetDate.value
   if (showEndSwitch.value) {
     const c = endTarget.value
@@ -320,17 +329,32 @@ async function onSwitch(val) {
   if (showStartSwitch.value) {
     if (val) {
       if (oc.value) {
-        /* 该日已落在其他经期记录里时，不允许再把开始日改过来 */
+        /* 该日已落在其他经期记录里时，不允许再记为开始日 */
         if (selCycle.value && selCycle.value.id !== oc.value.id) {
           toast.pushToast({ title: '该日已在其他经期记录中' })
           return
         }
-        await askMoveStart(t)
+        /* 仅在进行中经期开始日附近（一个平均持续天数内）才视为「更改开始日」并弹窗确认；
+           更早的日期是补录以前的经期，直接新建一条——不弹窗、不限制、不动已有记录 */
+        if (t < oc.value.start && t >= addDays(oc.value.start, -avgLen(cycles.value))) {
+          await askMoveStart(t)
+        } else {
+          await runUpdate(() => startPeriod(t), { title: '已记录经期开始' })
+        }
       } else {
         await runUpdate(() => startPeriod(t), { title: '已记录经期开始' })
       }
     } else if (oc.value && oc.value.start === t) {
       await undoStart()
+    } else if (selCycle.value && selCycle.value.start === t && !selCycle.value.ongoing) {
+      /* 已封存历史经期的第一天：点关 → 确认删除这条经期记录 */
+      const c = selCycle.value
+      const ok = await confirmDialog({
+        title: '取消这次经期？',
+        text: `${CN(c.start)} 将不再是经期开始日，这条经期记录会被删除。`,
+        danger: true
+      })
+      if (ok) await runUpdate(() => removeItem(c.id), { title: '已取消这次经期' })
     }
   }
 }

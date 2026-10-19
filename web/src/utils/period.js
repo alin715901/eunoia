@@ -65,10 +65,11 @@ export function avgCycle(cycles) {
   return n ? Math.round(sum / n) : 28
 }
 
-/* 平均持续天数：已封存周期的 (end-start+1) 均值。封存记录 <2 条时沿用默认 7 天，之后按真实统计 */
+/* 平均持续天数：已封存周期的 (end-start+1) 均值。无任何封存记录时沿用默认 7 天，
+   有记录就按自己的真实统计（一个月一次，依据用户记录的经期周期） */
 export function avgLen(cycles) {
   const sealed = cycles.filter((c) => !c.ongoing && c.end)
-  if (sealed.length < 2) return 7
+  if (!sealed.length) return 7
   const sum = sealed.reduce((s, c) => s + (dayDiff(c.end, c.start) + 1), 0)
   return Math.round(sum / sealed.length)
 }
