@@ -82,7 +82,7 @@
             <button class="pr-btn danger" type="button" @click="removeDay">移除这一天</button>
           </div>
         </template>
-        <p v-else class="pr-record-tip">这一天不在本次经期记录范围内。</p>
+        <p v-else-if="!rowToggle" class="pr-record-tip">这一天不在本次经期记录范围内。</p>
       </div>
 
       <!-- 日历下方：全局经期开关条（开=进行中，关=未开始/结束封存） -->
