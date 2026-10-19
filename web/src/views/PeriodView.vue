@@ -53,14 +53,16 @@
       <!-- 常驻记录卡：开关 + 流量 + 痛经（默认记录今天，点选日期后记录该日） -->
       <div v-else class="pr-record">
         <div class="pr-card-head">
+          <span v-if="dayIndex > 0" class="pr-card-idx">经期第 {{ dayIndex }} 天</span>
+          <span v-else />
           <button class="pr-trash" type="button" :disabled="!inCycle" aria-label="删除这一天的记录" @click="askDeleteDay">
             <AppIcon name="trash" :size="17" color="#b08d8d" />
           </button>
         </div>
-        <div class="pr-row">
+        <div v-if="showStartSwitch || showEndSwitch" class="pr-row">
           <span class="pr-row-ic"><AppIcon name="drop" :size="18" color="#c98891" /></span>
-          <span class="pr-row-label">{{ isOngoing ? '经期结束了吗？' : '经期开始了吗？' }}</span>
-          <ToggleSwitch :model-value="isOngoing" @update:model-value="onSwitch" />
+          <span class="pr-row-label">{{ showEndSwitch ? '经期结束了吗？' : '经期开始了吗？' }}</span>
+          <ToggleSwitch :model-value="switchOn" @update:model-value="onSwitch" />
         </div>
         <div class="pr-row">
           <span class="pr-row-ic"><AppIcon name="drop" :size="18" color="#e0a4ad" /></span>
@@ -107,7 +109,7 @@ import { confirmDialog } from '@/utils/dialog'
 import {
   cyclesFromItems, cycleOf, predictedDates,
   fmtDate, addDays, parseDate, dayDiff,
-  ongoingCycle, ovulationWindow
+  ongoingCycle, ongoingDisplayEnd, ovulationWindow
 } from '@/utils/period'
 
 const { items, loading, load, add, update, remove: removeItem } = useItems('period')
@@ -166,6 +168,32 @@ const targetDate = computed(() => selectedDate.value || todayStr())
 const isFuture = computed(() => targetDate.value > todayStr())
 const selCycle = computed(() => cycleOf(cycles.value, targetDate.value))
 const inCycle = computed(() => !!selCycle.value)
+/* 卡片左上角：目标日在经期内 → 第几天 */
+const dayIndex = computed(() => {
+  const c = selCycle.value
+  if (!c) return 0
+  return dayDiff(targetDate.value, c.start) + 1
+})
+/* 进行中的经期及其系统估计的最后一天 */
+const oc = computed(() => ongoingCycle(cycles.value))
+const ocEnd = computed(() => (oc.value ? ongoingDisplayEnd(cycles.value, oc.value) : ''))
+/* 开关显示规则：
+   - 目标日在进行中经期的第一天之前 → 「经期开始了吗？」（打开 → 该日记为第一天）
+   - 目标日在 [第一天, 系统估计最后一天] → 「经期结束了吗？」（打开 → 该日为最后一天）
+   - 无进行中经期且该日不在任何记录中 → 「经期开始了吗？」（打开 → 新建经期）
+   - 历史经期内的天 / 超出估计经期的天 → 不显示开关（仅可补录流量/痛经） */
+const showStartSwitch = computed(() => {
+  if (isFuture.value) return false
+  if (oc.value) return targetDate.value < oc.value.start
+  return !inCycle.value
+})
+const showEndSwitch = computed(() => {
+  if (isFuture.value || !oc.value) return false
+  const end = ocEnd.value > todayStr() ? ocEnd.value : todayStr()
+  return targetDate.value >= oc.value.start && targetDate.value <= end
+})
+/* 开关状态：结束开关场景 = ON（经期进行中）；开始开关场景 = OFF */
+const switchOn = computed(() => showEndSwitch.value)
 
 const FLOWS = [
   { v: 'light', t: '少' },
@@ -180,10 +208,16 @@ watch([targetDate, cycles], () => {
   Object.assign(dayForm, { flow: rec ? rec.flow || '' : '', pain: rec ? rec.pain || 'none' : 'none' })
 }, { immediate: true })
 
-/* 开关：ON = 经期进行中，OFF = 未开始/已结束（状态即时可见） */
+/* 开关：开始场景点开 = 记录开始日（新建 / 把第一天提前到该日）；结束场景点关 = 该日为最后一天 */
 function onSwitch(val) {
-  if (val) startPeriod(targetDate.value)
-  else endPeriod(targetDate.value)
+  if (showEndSwitch.value) {
+    if (!val) endPeriod(targetDate.value)
+    return
+  }
+  if (showStartSwitch.value && val) {
+    if (oc.value) moveStart(targetDate.value)
+    else startPeriod(targetDate.value)
+  }
 }
 
 async function startPeriod(date) {
@@ -197,6 +231,25 @@ async function startPeriod(date) {
     toast.pushToast({ title: '失败', text: e.message })
   }
 }
+/* 把进行中经期的第一天提前到该日（该日记为第 1 天） */
+async function moveStart(date) {
+  const cyc = ongoingCycle(cycles.value)
+  if (!cyc || date >= cyc.start) return
+  const raw = findRaw(cyc.id)
+  if (!raw) return
+  const ex = raw.extra || {}
+  try {
+    await update(cyc.id, {
+      title: date,
+      body: ex.note || '',
+      extra: { ...ex, start: date }
+    })
+    toast.pushToast({ title: '已记为经期第一天' })
+  } catch (e) {
+    toast.pushToast({ title: '失败', text: e.message })
+  }
+}
+/* 结束：以该日为本次经期最后一天，记录完成并更新统计与预测 */
 async function endPeriod(date) {
   const cyc = ongoingCycle(cycles.value)
   if (!cyc) return
@@ -214,7 +267,7 @@ async function endPeriod(date) {
       body: ex.note || '',
       extra: { ...ex, start: cyc.start, end: t, ongoing: false, duration: dur }
     })
-    toast.pushToast({ title: '经期已结束', text: `本次共 ${dur} 天，已封存并用于预测` })
+    toast.pushToast({ title: '经期已结束', text: `本次共 ${dur} 天，已更新统计与预测` })
   } catch (e) {
     toast.pushToast({ title: '失败', text: e.message })
   }
@@ -388,7 +441,8 @@ onMounted(load)
 
 /* 常驻记录卡（行式列表） */
 .pr-record { background: #fff; border-radius: 14px; padding: 4px 14px; margin: 12px 0 4px; box-shadow: 0 1px 3px rgba(180,120,120,.08); }
-.pr-card-head { display: flex; justify-content: flex-end; padding: 6px 0 2px; }
+.pr-card-head { display: flex; align-items: center; justify-content: space-between; padding: 6px 0 2px; min-height: 30px; }
+.pr-card-idx { font-size: 13px; font-weight: 600; color: #c98891; }
 .pr-trash { border: none; background: transparent; padding: 6px; display: flex; align-items: center; justify-content: center; border-radius: 50%; }
 .pr-trash:disabled { opacity: .35; }
 .pr-row { display: flex; align-items: center; gap: 12px; padding: 13px 0; border-bottom: 1px solid #f6ecea; }
