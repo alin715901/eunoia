@@ -64,10 +64,10 @@ export function avgCycle(cycles) {
   return n ? Math.round(sum / n) : 28
 }
 
-/* 平均持续天数：有结束日的 cycle 的 (end-start+1) 均值（无结束日回落 5） */
+/* 平均持续天数：有结束日的「已封存」cycle 的 (end-start+1) 均值（进行中的不计入；无数据回落默认 7） */
 export function avgLen(cycles) {
-  const withEnd = cycles.filter((c) => c.end && c.end >= c.start)
-  if (!withEnd.length) return 5
+  const withEnd = cycles.filter((c) => !c.ongoing && c.end && c.end >= c.start)
+  if (!withEnd.length) return 7
   const sum = withEnd.reduce((s, c) => s + (dayDiff(c.end, c.start) + 1), 0)
   return Math.round(sum / withEnd.length)
 }
@@ -96,15 +96,24 @@ export function predictedDates(cycles, limit = 31) {
   return out
 }
 
+/* 进行中周期的「变红显示终点」：按周期规律预测（开始日 + 平均持续 - 1），
+   但不早于今天；结束后以实际 end 为准（提前/推后结束则相应减少/增加变红天数） */
+export function ongoingDisplayEnd(cycles, cycle) {
+  const today = fmtDate(new Date())
+  let end = cycle.ongoing && cycle.end < today ? today : cycle.end || cycle.start
+  if (cycle.ongoing) {
+    const predEnd = addDays(cycle.start, avgLen(cycles) - 1)
+    if (predEnd > end) end = predEnd
+    if (today > end) end = today
+  }
+  return end
+}
+
 /* 某天是否处于已记录周期内（返回该 cycle 或 null）。
-   进行中（ongoing）的周期会自动延伸到今天，确保经期中的日期与关怀判断都正确 */
+   进行中（ongoing）的周期会按周期规律预测延伸变红区间，确保显示与关怀判断一致 */
 export function cycleOf(cycles, date) {
   const d = fmtDate(parseDate(date))
-  const today = fmtDate(new Date())
-  return cycles.find((c) => {
-    const end = c.ongoing && c.end < today ? today : c.end
-    return d >= c.start && d <= end
-  }) || null
+  return cycles.find((c) => d >= c.start && d <= ongoingDisplayEnd(cycles, c)) || null
 }
 
 /* 当前正在进行中的周期（未封闭的），没有则返回 null */

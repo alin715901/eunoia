@@ -42,18 +42,6 @@
         </button>
       </div>
 
-      <!-- 日历下方：经期开关条（开=进行中，关=未开始/结束封存） -->
-      <div class="pr-toggle" :class="{ on: periodOn }">
-        <div class="pr-toggle-left">
-          <span class="pr-toggle-ic"><AppIcon name="drop" :size="18" color="#c98891" /></span>
-          <span class="pr-toggle-txt">
-            <span class="pr-toggle-title">{{ periodOn ? '经期进行中' : '经期开始了' }}</span>
-            <span class="pr-toggle-sub">{{ periodOn ? '已持续 ' + ongoingDays + ' 天 · 点开关结束并封存本次经期' : '点开关，开始记录本次经期' }}</span>
-          </span>
-        </div>
-        <ToggleSwitch :model-value="periodOn" @update:model-value="onToggle" />
-      </div>
-
       <div class="pr-legend">
         <span><i class="pr-lg pr-lg-flow-light" /> 少</span>
         <span><i class="pr-lg pr-lg-flow-mid" /> 中</span>
@@ -64,48 +52,60 @@
         <span v-if="enough"><i class="pr-lg pr-lg-ovu" /> 排卵期</span>
       </div>
 
-      <p v-if="!cycles.length" class="pr-tip">点下方开关开始记录经期；点选日历上的某一天，可在下方补记当天的流量与痛经</p>
-
-      <!-- 日历下方：当日记录面板（替代弹窗，内联显示） -->
+      <!-- 日历下方：当日记录面板（行式列表，替代弹窗） -->
       <div v-if="selectedDate" class="pr-record">
         <div class="pr-record-head">
           <span class="pr-record-date">{{ selLabel }}</span>
           <button class="pr-record-close" type="button" @click="selectedDate = ''">收起</button>
         </div>
 
-        <template v-if="selCycle">
-          <div class="pr-fld">
-            <span class="pr-fld-label">流量</span>
-            <div class="pr-seg">
-              <button class="pr-seg-btn" :class="{ on: dayForm.flow === '' }" @click="dayForm.flow = ''">—</button>
-              <button class="pr-seg-btn" :class="{ on: dayForm.flow === 'light' }" @click="dayForm.flow = 'light'">少</button>
-              <button class="pr-seg-btn" :class="{ on: dayForm.flow === 'mid' }" @click="dayForm.flow = 'mid'">中</button>
-              <button class="pr-seg-btn" :class="{ on: dayForm.flow === 'heavy' }" @click="dayForm.flow = 'heavy'">多</button>
-            </div>
-          </div>
-          <div class="pr-fld">
-            <span class="pr-fld-label">痛经</span>
-            <div class="pr-seg">
-              <button class="pr-seg-btn" :class="{ on: dayForm.pain === 'none' }" @click="dayForm.pain = 'none'">无</button>
-              <button class="pr-seg-btn" :class="{ on: dayForm.pain === 'mild' }" @click="dayForm.pain = 'mild'">轻微</button>
-              <button class="pr-seg-btn" :class="{ on: dayForm.pain === 'severe' }" @click="dayForm.pain = 'severe'">严重</button>
-            </div>
-          </div>
-          <div class="pr-record-actions">
-            <button v-if="hasDayRec" class="pr-btn danger" type="button" @click="removeDay">移除这一天</button>
-            <button class="pr-btn ghost" type="button" @click="selectedDate = ''">取消</button>
-            <button class="pr-btn primary" type="button" @click="saveDay">保存</button>
-          </div>
-        </template>
+        <!-- 开关行：未开始 → 「经期开始了吗？」；进行中 → 「经期结束了吗？」 -->
+        <div v-if="rowToggle" class="pr-row">
+          <span class="pr-row-ic"><AppIcon name="drop" :size="18" color="#c98891" /></span>
+          <span class="pr-row-label">{{ rowToggle.label }}</span>
+          <ToggleSwitch :model-value="false" @update:model-value="rowToggle.act" />
+        </div>
 
-        <template v-else>
-          <p class="pr-record-tip">这一天不在任何经期记录中。可把它标记为一次经期记录，再补记流量与痛经。</p>
-          <div class="pr-record-actions">
-            <button class="pr-btn ghost" type="button" @click="selectedDate = ''">取消</button>
-            <button class="pr-btn primary" type="button" @click="newCycleAtSelected">标记为经期这一天</button>
+        <template v-if="selCycle">
+          <div class="pr-row">
+            <span class="pr-row-ic"><AppIcon name="drop" :size="18" color="#e0a4ad" /></span>
+            <span class="pr-row-label">流量</span>
+            <div class="pr-seg">
+              <button class="pr-seg-btn" :class="{ on: dayForm.flow === '' }" @click="setFlow('')">—</button>
+              <button class="pr-seg-btn" :class="{ on: dayForm.flow === 'light' }" @click="setFlow('light')">少</button>
+              <button class="pr-seg-btn" :class="{ on: dayForm.flow === 'mid' }" @click="setFlow('mid')">中</button>
+              <button class="pr-seg-btn" :class="{ on: dayForm.flow === 'heavy' }" @click="setFlow('heavy')">多</button>
+            </div>
+          </div>
+          <div class="pr-row">
+            <span class="pr-row-ic"><AppIcon name="bolt" :size="18" color="#d9909a" /></span>
+            <span class="pr-row-label">痛经</span>
+            <div class="pr-seg">
+              <button class="pr-seg-btn" :class="{ on: dayForm.pain === 'none' }" @click="setPain('none')">无</button>
+              <button class="pr-seg-btn" :class="{ on: dayForm.pain === 'mild' }" @click="setPain('mild')">轻微</button>
+              <button class="pr-seg-btn" :class="{ on: dayForm.pain === 'severe' }" @click="setPain('severe')">严重</button>
+            </div>
+          </div>
+          <div v-if="hasDayRec" class="pr-record-actions">
+            <button class="pr-btn danger" type="button" @click="removeDay">移除这一天</button>
           </div>
         </template>
+        <p v-else class="pr-record-tip">这一天不在经期记录中，打开上方「经期开始了吗」即可从这天开始记录。</p>
       </div>
+
+      <!-- 日历下方：全局经期开关条（开=进行中，关=未开始/结束封存） -->
+      <div class="pr-toggle" :class="{ on: periodOn }">
+        <div class="pr-toggle-left">
+          <span class="pr-toggle-ic"><AppIcon name="drop" :size="18" color="#c98891" /></span>
+          <span class="pr-toggle-txt">
+            <span class="pr-toggle-title">{{ periodOn ? '经期进行中' : '经期开始了' }}</span>
+            <span class="pr-toggle-sub">{{ periodOn ? '已持续 ' + ongoingDays + ' 天 · 点开关结束并封存本次经期' : '点开关，从今天开始记录本次经期' }}</span>
+          </span>
+        </div>
+        <ToggleSwitch :model-value="periodOn" @update:model-value="onToggle" />
+      </div>
+
+      <p v-if="!cycles.length" class="pr-tip">打开开关或点选日期里的「经期开始了吗」开始记录；经期中的日子会按周期规律自动标红，以结束开关为准</p>
     </div>
   </div>
 </template>
@@ -178,7 +178,7 @@ const cells = computed(() => {
 const avgCycle = computed(() => calcCycle(cycles.value))
 const avgLen = computed(() => calcLen(cycles.value))
 
-/* 顶部卡片：进行中优先，否则（记录够多时）预测下次经期 + 排卵期；不足时显示默认周期规律 */
+/* 顶部卡片：进行中优先，否则（记录够多时）显示下次预测；天数只显示平均周期/平均持续 */
 const summaryTitle = computed(() => {
   if (periodOn.value) return `经期进行中 · 第 ${ongoingDays.value} 天`
   if (!enough.value) return '记录后为你预测（默认周期 28 天）'
@@ -190,14 +190,9 @@ const summaryTitle = computed(() => {
   return `已过预计日 ${Math.abs(diff)} 天（${pred.start.slice(5).replace('-', '月')}日）`
 })
 const summarySub = computed(() => {
-  /* 记录不足：显示默认周期规律，不暴露具体天数 */
+  /* 只显示平均周期与平均持续；记录不足时为默认周期规律，记录够多后为真实统计 */
   if (!enough.value) return '平均周期 28 天 · 平均持续 7 天'
-  const parts = []
-  const ovu = ovulationWindow(cycles.value)
-  if (ovu) parts.push(`排卵期 ${ovu.start.slice(5).replace('-', '月')}日-${ovu.end.slice(5).replace('-', '月')}日`)
-  parts.push(`平均周期 ${avgCycle.value} 天`)
-  parts.push(`平均持续 ${avgLen.value} 天`)
-  return parts.join(' · ')
+  return `平均周期 ${avgCycle.value} 天 · 平均持续 ${avgLen.value} 天`
 })
 
 /* 开关：开 = 开始本次经期，关 = 结束并封存（记录持续天数，自动参与预测） */
@@ -205,23 +200,27 @@ async function onToggle(val) {
   if (val) await startPeriod()
   else await endPeriod()
 }
-async function startPeriod() {
+async function startPeriod(date) {
   if (ongoingCycle(cycles.value)) return
-  const t = todayStr()
+  const t = date || todayStr()
   try {
     await add({ title: t, body: '', extra: { start: t, end: t, ongoing: true, days: {} } })
-    toast.pushToast({ title: '已记录经期开始' })
+    toast.pushToast({ title: '已记录经期开始', text: date && date !== todayStr() ? `从 ${date} 开始` : '' })
+    refreshSel()
   } catch (e) {
     toast.pushToast({ title: '失败', text: e.message })
   }
 }
-async function endPeriod() {
+async function endPeriod(date) {
   const cyc = ongoingCycle(cycles.value)
   if (!cyc) return
   const raw = findRaw(cyc.id)
   if (!raw) return
   const ex = raw.extra || {}
-  const t = todayStr()
+  const today = todayStr()
+  let t = date || today
+  if (t > today) t = today
+  if (t < cyc.start) t = cyc.start
   const dur = dayDiff(t, cyc.start) + 1
   try {
     await update(cyc.id, {
@@ -230,6 +229,7 @@ async function endPeriod() {
       extra: { ...ex, start: cyc.start, end: t, ongoing: false, duration: dur }
     })
     toast.pushToast({ title: '经期已结束', text: `本次共 ${dur} 天，已封存并用于预测` })
+    refreshSel()
   } catch (e) {
     toast.pushToast({ title: '失败', text: e.message })
   }
@@ -257,7 +257,7 @@ function cellStyle(c) {
   return null
 }
 
-/* ═══ 当日记录（内联在日历下方，替代弹窗） ═══ */
+/* ═══ 当日记录（内联在日历下方，行式列表） ═══ */
 const selectedDate = ref('')
 const selCycle = ref(null)
 const dayForm = reactive({ flow: '', pain: 'none' })
@@ -271,30 +271,58 @@ const hasDayRec = computed(() => {
   return !!(c && c.days && c.days[selectedDate.value])
 })
 
+/* 面板第一行开关：进行中（且选的是进行中周期内、不晚于今天的日子）显示「经期结束了吗？」；
+   未开始（且所选日不在任何已记录周期内）显示「经期开始了吗？」 */
+const rowToggle = computed(() => {
+  if (!selectedDate.value) return null
+  const oc = ongoingCycle(cycles.value)
+  if (oc) {
+    if (selectedDate.value >= oc.start && selectedDate.value <= todayStr())
+      return { label: '经期结束了吗？', act: () => endPeriod(selectedDate.value) }
+    return null
+  }
+  if (!cycleOf(cycles.value, selectedDate.value))
+    return { label: '经期开始了吗？', act: () => startPeriod(selectedDate.value) }
+  return null
+})
+
 function selectDay(c) {
   dayDate.value = c.date
   selectedDate.value = c.date
-  const cyc = cycleOf(cycles.value, c.date)
+  refreshSel()
+}
+function refreshSel() {
+  if (!selectedDate.value) return
+  const cyc = cycleOf(cycles.value, selectedDate.value)
   selCycle.value = cyc
-  const rec = cyc ? cyc.days[c.date] : null
+  const rec = cyc ? cyc.days[selectedDate.value] : null
   Object.assign(dayForm, { flow: rec ? rec.flow || '' : '', pain: rec ? rec.pain || 'none' : 'none' })
 }
 function findRaw(id) { return items.value.find((x) => x.id === id) }
 
-async function saveDay() {
+/* 点选即保存（无保存/取消按钮） */
+async function setFlow(v) {
+  dayForm.flow = v
+  await persistDay()
+}
+async function setPain(v) {
+  dayForm.pain = v
+  await persistDay()
+}
+async function persistDay() {
   const cyc = selCycle.value
   if (!cyc) return
   const raw = findRaw(cyc.id)
   if (!raw) return
   const days = { ...(raw.extra.days || {}) }
-  if (dayForm.flow) days[selectedDate.value] = { flow: dayForm.flow, pain: dayForm.pain }
+  if (dayForm.flow || dayForm.pain !== 'none') days[selectedDate.value] = { flow: dayForm.flow, pain: dayForm.pain }
   else delete days[selectedDate.value]
   try {
     await update(cyc.id, { extra: { ...raw.extra, days } })
-    toast.pushToast({ title: '已保存' })
   } catch (e) {
-    toast.pushToast({ title: '失败', text: e.message })
+    toast.pushToast({ title: '保存失败', text: e.message })
   }
+  refreshSel()
 }
 async function removeDay() {
   const cyc = selCycle.value
@@ -305,7 +333,6 @@ async function removeDay() {
   let { start, end } = raw.extra
   if (selectedDate.value === start && start < end) start = addDays(start, 1)
   else if (selectedDate.value === end && end > start) end = addDays(end, -1)
-  selectedDate.value = ''
   try {
     if (start > end) await removeItem(cyc.id)
     else await update(cyc.id, { extra: { ...raw.extra, start, end, days }, title: start })
@@ -313,18 +340,7 @@ async function removeDay() {
   } catch (e) {
     toast.pushToast({ title: '失败', text: e.message })
   }
-}
-async function newCycleAtSelected() {
-  const date = selectedDate.value
-  if (!date) return
-  try {
-    await add({ title: date, body: '', extra: { start: date, end: date, ongoing: false, duration: 1, days: {} } })
-    toast.pushToast({ title: '已新建经期记录' })
-    selCycle.value = cycleOf(cycles.value, date)
-    Object.assign(dayForm, { flow: '', pain: 'none' })
-  } catch (e) {
-    toast.pushToast({ title: '失败', text: e.message })
-  }
+  refreshSel()
 }
 
 onMounted(load)
@@ -379,7 +395,28 @@ onMounted(load)
 
 .pr-tip { font-size: 12px; color: var(--text-soft); text-align: center; margin-top: 16px; line-height: 1.7; }
 
-/* 日历下方：经期开关条（开=进行中，关=未开始） */
+/* 排卵窗口小紫点 */
+.pr-ovu-dot { width: 6px; height: 6px; border-radius: 50%; background: #9b7fd0; display: inline-block; margin-top: 3px; }
+.pr-lg-ovu { background: #9b7fd0; }
+
+/* 日历下方：当日记录面板（行式列表，参考系统生理周期样式） */
+.pr-record { background: #fff; border-radius: 14px; padding: 4px 14px; margin: 12px 0 4px; box-shadow: 0 1px 3px rgba(180,120,120,.08); }
+.pr-record-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 0 6px; }
+.pr-record-date { font-size: 15px; font-weight: 600; color: #8a5a5a; }
+.pr-record-close { border: none; background: transparent; color: var(--text-soft); font-size: 13px; padding: 4px 8px; }
+.pr-record-tip { font-size: 12px; color: var(--text-soft); line-height: 1.7; margin: 0; padding: 4px 0 12px; }
+.pr-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #f6ecea; }
+.pr-row:last-of-type { border-bottom: none; }
+.pr-row-ic { flex: 0 0 auto; width: 34px; height: 34px; border-radius: 50%; background: #fbeef0; display: flex; align-items: center; justify-content: center; }
+.pr-row-label { flex: 1; font-size: 15px; font-weight: 500; color: #8a5a5a; min-width: 0; }
+.pr-seg { display: flex; gap: 6px; flex: 0 0 auto; }
+.pr-seg-btn { border: 1px solid var(--border); background: var(--bg-soft); border-radius: 999px; padding: 6px 12px; font-size: 13px; color: var(--text-soft); }
+.pr-seg-btn.on { background: #c98891; border-color: #c98891; color: #fff; }
+.pr-record-actions { display: flex; gap: 10px; padding: 10px 0 12px; }
+.pr-btn { flex: 1; border: none; border-radius: 10px; padding: 12px; font-size: 15px; }
+.pr-btn.danger { background: #fbe9e8; color: #d9534f; }
+
+/* 日历下方：全局经期开关条（开=进行中，关=未开始） */
 .pr-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: #fff; border-radius: 14px; padding: 12px 14px; margin: 12px 0; box-shadow: 0 1px 3px rgba(180,120,120,.08); }
 .pr-toggle.on { box-shadow: 0 2px 8px rgba(201,136,145,.28); }
 .pr-toggle-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
@@ -388,25 +425,4 @@ onMounted(load)
 .pr-toggle-title { font-size: 15px; font-weight: 600; color: #8a5a5a; }
 .pr-toggle.on .pr-toggle-title { color: #c98891; }
 .pr-toggle-sub { font-size: 11.5px; color: var(--text-soft); margin-top: 2px; line-height: 1.4; }
-/* 排卵窗口小紫点 */
-.pr-ovu-dot { width: 6px; height: 6px; border-radius: 50%; background: #9b7fd0; display: inline-block; margin-top: 3px; }
-.pr-lg-ovu { background: #9b7fd0; }
-
-/* 日历下方：当日记录面板（内联，非弹窗） */
-.pr-record { background: #fff; border-radius: 14px; padding: 14px; margin: 12px 0 4px; box-shadow: 0 1px 3px rgba(180,120,120,.08); }
-.pr-record-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
-.pr-record-date { font-size: 15px; font-weight: 600; color: #8a5a5a; }
-.pr-record-close { border: none; background: transparent; color: var(--text-soft); font-size: 13px; padding: 4px 8px; }
-.pr-record-tip { font-size: 12px; color: var(--text-soft); line-height: 1.7; margin: 0 0 10px; }
-.pr-fld { margin-bottom: 12px; }
-.pr-fld-label { display: block; font-size: 13px; color: var(--text-soft); margin-bottom: 6px; }
-.pr-seg { display: flex; gap: 8px; }
-.pr-seg-btn { flex: 1; border: 1px solid var(--border); background: var(--bg-soft); border-radius: 10px; padding: 9px; font-size: 14px; color: var(--text-soft); }
-.pr-seg-btn.on { background: #c98891; border-color: #c98891; color: #fff; }
-/* 取消/保存固定底部，按钮大小与心情弹窗一致 */
-.pr-record-actions { display: flex; gap: 10px; }
-.pr-btn { flex: 1; border: none; border-radius: 10px; padding: 12px; font-size: 15px; }
-.pr-btn.ghost { background: var(--bg-soft); color: var(--text); }
-.pr-btn.primary { background: #c98891; color: #fff; }
-.pr-btn.danger { background: #fbe9e8; color: #d9534f; }
 </style>
