@@ -32,7 +32,9 @@
           <span class="pr-day">{{ c.day || '' }}</span>
           <span v-if="c.dayRec" class="pr-marks">
             <i class="pr-flow" :class="c.dayRec.flow" />
-            <i v-if="c.dayRec.pain && c.dayRec.pain !== 'none'" class="pr-pain" :class="c.dayRec.pain" />
+            <span v-if="c.dayRec.pain && c.dayRec.pain !== 'none'" class="pr-pain" :class="c.dayRec.pain">
+              <AppIcon v-for="n in c.dayRec.pain === 'severe' ? 2 : 1" :key="n" name="bolt" :size="9" color="#a85b5b" />
+            </span>
           </span>
         </button>
       </div>
@@ -42,8 +44,9 @@
         <span><i class="pr-lg pr-lg-flow-light" /> 少</span>
         <span><i class="pr-lg pr-lg-flow-mid" /> 中</span>
         <span><i class="pr-lg pr-lg-flow-heavy" /> 多</span>
-        <span><i class="pr-lg pr-lg-pain-mild" /> 轻微</span>
-        <span><i class="pr-lg pr-lg-pain-severe" /> 严重</span>
+        <span class="pr-lg-txt"><AppIcon name="bolt" :size="10" color="#a85b5b" /> 轻微</span>
+        <span class="pr-lg-txt"><AppIcon name="bolt" :size="10" color="#a85b5b" /><AppIcon name="bolt" :size="10" color="#a85b5b" /> 严重</span>
+        <span v-if="enough"><i class="pr-lg pr-lg-ovu-day" /> 排卵日</span>
         <span v-if="enough"><i class="pr-lg pr-lg-ovu" /> 排卵期</span>
       </div>
 
@@ -57,7 +60,7 @@
       <div v-else class="pr-record">
         <div class="pr-card-head">
           <span v-if="dayIndex > 0" class="pr-card-idx">经期第 {{ dayIndex }} 天</span>
-          <span v-else />
+          <span v-else class="pr-card-idx pr-card-date">{{ cardDateLabel }}</span>
           <button class="pr-trash" type="button" :disabled="!inCycle" aria-label="删除这一天的记录" @click="askDeleteDay">
             <AppIcon name="trash" :size="17" color="#b08d8d" />
           </button>
@@ -88,10 +91,25 @@
           <div class="pr-row">
             <span class="pr-row-ic"><AppIcon name="bolt" :size="18" color="#d9909a" /></span>
             <span class="pr-row-label">痛经</span>
-            <div class="pr-seg">
-              <button class="pr-seg-btn" :class="{ on: dayForm.pain === 'none' }" :disabled="!inCycle" @click="setPain('none')">无</button>
-              <button class="pr-seg-btn" :class="{ on: dayForm.pain === 'mild' }" :disabled="!inCycle" @click="setPain('mild')">轻微</button>
-              <button class="pr-seg-btn" :class="{ on: dayForm.pain === 'severe' }" :disabled="!inCycle" @click="setPain('severe')">严重</button>
+            <div class="pr-drops">
+              <button
+                v-for="p in PAINS"
+                :key="p.v"
+                type="button"
+                class="pr-drop"
+                :class="{ on: dayForm.pain === p.v }"
+                :disabled="!inCycle"
+                :aria-label="p.t"
+                @click="setPain(p.v)"
+              >
+                <AppIcon
+                  v-for="n in p.n"
+                  :key="n"
+                  name="bolt"
+                  :size="p.n === 1 ? 14 : 12"
+                  :color="dayForm.pain === p.v ? '#c98891' : '#cfc7c5'"
+                />
+              </button>
             </div>
           </div>
       </div>
@@ -146,6 +164,12 @@ const ovuSet = computed(() => {
   for (let i = 0; i < 5; i++) { s.add(cur); cur = addDays(cur, 1) }
   return s
 })
+/* 排卵日：下次经期开始往前推 14 天（窗口正中那天，颜色更深） */
+const ovuDay = computed(() => {
+  if (!enough.value) return ''
+  const ovu = ovulationWindow(cycles.value)
+  return ovu ? ovu.day : ''
+})
 const isOngoing = computed(() => !!ongoingCycle(cycles.value))
 
 function todayStr() { return fmtDate(new Date()) }
@@ -195,6 +219,7 @@ const cells = computed(() => {
       today: date === todayStr(),
       inCycle: !!cyc,
       ovu: ovuSet.value.has(date) && !cyc,
+      ovuDay: date === ovuDay.value && !cyc,
       dayRec: cyc ? cyc.days[date] || null : null,
       cyc
     })
@@ -208,11 +233,16 @@ const targetDate = computed(() => selectedDate.value || todayStr())
 const isFuture = computed(() => targetDate.value > todayStr())
 const selCycle = computed(() => cycleOf(cycles.value, targetDate.value))
 const inCycle = computed(() => !!selCycle.value)
-/* 卡片左上角：目标日在经期内 → 第几天 */
+/* 卡片左上角：目标日在经期内 → 第几天；否则显示目标日期 */
 const dayIndex = computed(() => {
   const c = selCycle.value
   if (!c) return 0
   return dayDiff(targetDate.value, c.start) + 1
+})
+const cardDateLabel = computed(() => {
+  const d = parseDate(targetDate.value)
+  if (!d) return ''
+  return `${d.getMonth() + 1}月${d.getDate()}日 周${'日一二三四五六'[d.getDay()]}`
 })
 /* 进行中的经期 */
 const oc = computed(() => ongoingCycle(cycles.value))
@@ -290,6 +320,11 @@ const FLOWS = [
   { v: 'light', t: '少' },
   { v: 'mid', t: '中' },
   { v: 'heavy', t: '多' }
+]
+/* 痛经程度用闪电符号：1 个闪电 = 轻微，2 个 = 严重；都不选 = 无（再点一次取消） */
+const PAINS = [
+  { v: 'mild', t: '轻微', n: 1 },
+  { v: 'severe', t: '严重', n: 2 }
 ]
 const dayForm = reactive({ flow: '', pain: 'none' })
 
@@ -472,6 +507,7 @@ function goToday() {
 
 function cellStyle(c) {
   if (c.inCycle) return { background: 'rgba(201,136,145,.20)' }
+  if (c.ovuDay) return { background: 'rgba(150,120,200,.30)' }
   if (c.ovu) return { background: 'rgba(150,120,200,.14)' }
   return null
 }
@@ -490,7 +526,7 @@ async function setFlow(v) {
 }
 async function setPain(v) {
   if (!inCycle.value) return
-  dayForm.pain = v
+  dayForm.pain = dayForm.pain === v ? 'none' : v
   await persistDay()
 }
 async function persistDay() {
@@ -604,9 +640,7 @@ onMounted(load)
 .pr-flow.light { width: 5px; height: 5px; }
 .pr-flow.mid { width: 7px; height: 7px; }
 .pr-flow.heavy { width: 9px; height: 9px; }
-.pr-pain { font-size: 9px; line-height: 1; color: #a85b5b; }
-.pr-pain.mild::after { content: '△'; }
-.pr-pain.severe::after { content: '✕'; }
+.pr-pain { display: inline-flex; align-items: center; gap: 1px; line-height: 1; }
 
 .pr-legend { display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 2px 4px; font-size: 11px; color: var(--text-soft); align-items: center; }
 .pr-legend span { display: inline-flex; align-items: center; gap: 4px; }
@@ -615,12 +649,12 @@ onMounted(load)
 .pr-lg-flow-light { width: 5px; height: 5px; }
 .pr-lg-flow-mid { width: 7px; height: 7px; }
 .pr-lg-flow-heavy { width: 9px; height: 9px; }
-.pr-lg-pain-mild::after { content: '△'; font-size: 9px; color: #a85b5b; }
-.pr-lg-pain-severe::after { content: '✕'; font-size: 9px; color: #a85b5b; }
-
 /* 排卵窗口小紫点 */
 .pr-ovu-dot { width: 6px; height: 6px; border-radius: 50%; background: #9b7fd0; display: inline-block; margin-top: 3px; }
 .pr-lg-ovu { background: #9b7fd0; }
+.pr-lg-ovu-day { background: rgba(150,120,200,.55); }
+/* 图例中用图标（AppIcon）代替色块的项 */
+.pr-lg-txt svg { display: block; }
 
 /* 未来日期提示 */
 .pr-future { background: #fff; border-radius: 14px; padding: 34px 14px; margin: 12px 0 4px; box-shadow: 0 1px 3px rgba(180,120,120,.08); display: flex; flex-direction: column; align-items: center; gap: 12px; }
@@ -637,11 +671,7 @@ onMounted(load)
 .pr-row:last-of-type { border-bottom: none; }
 .pr-row-ic { flex: 0 0 auto; width: 34px; height: 34px; border-radius: 50%; background: #fbeef0; display: flex; align-items: center; justify-content: center; }
 .pr-row-label { flex: 1; font-size: 15px; font-weight: 500; color: #8a5a5a; min-width: 0; }
-.pr-seg { display: flex; gap: 6px; flex: 0 0 auto; }
-.pr-seg-btn { border: 1px solid var(--border); background: var(--bg-soft); border-radius: 999px; padding: 6px 12px; font-size: 13px; color: var(--text-soft); }
-.pr-seg-btn.on { background: #c98891; border-color: #c98891; color: #fff; }
-.pr-seg-btn:disabled { opacity: .45; }
-/* 流量：三颗水滴按钮 */
+/* 流量：三颗水滴按钮；痛经：闪电符号按钮（同一套样式） */
 .pr-drops { display: flex; gap: 14px; flex: 0 0 auto; align-items: center; }
 .pr-drop { border: none; background: transparent; padding: 4px; display: flex; align-items: center; justify-content: center; border-radius: 50%; }
 .pr-drop:disabled { opacity: .45; }
