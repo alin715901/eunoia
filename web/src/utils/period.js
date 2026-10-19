@@ -88,6 +88,19 @@ export function predictNext(cycles) {
   return { start, end, cycle, len }
 }
 
+/* 预测区间的所有日期（用于日历虚线圈出） */
+export function predictedDates(cycles, limit = 31) {
+  const pred = predictNext(cycles)
+  if (!pred) return []
+  const out = []
+  let cur = pred.start
+  for (let i = 0; i < pred.len && i < limit; i++) {
+    out.push(cur)
+    cur = addDays(cur, 1)
+  }
+  return out
+}
+
 /* 进行中周期的「变红显示终点」：严格按周期规律预测（开始日 + 平均持续 - 1），
    不延伸到今天——默认持续几天就只红几天；
    实际结束以结束开关为准（提前/延后结束则相应减少/增加变红天数）。

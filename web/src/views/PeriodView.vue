@@ -1,6 +1,10 @@
 <template>
   <div class="pr-page">
-    <AppHeader title="经期" back />
+    <AppHeader title="经期" back>
+      <template #right>
+        <button class="pr-clear-top" type="button" @click="askClearAll">清空</button>
+      </template>
+    </AppHeader>
 
     <div class="pr-body">
       <!-- 日历 -->
@@ -33,21 +37,26 @@
           <span v-if="c.dayRec" class="pr-marks">
             <i class="pr-flow" :class="c.dayRec.flow" />
             <span v-if="c.dayRec.pain && c.dayRec.pain !== 'none'" class="pr-pain" :class="c.dayRec.pain">
-              <AppIcon v-for="n in c.dayRec.pain === 'severe' ? 2 : 1" :key="n" name="bolt" :size="9" color="#a85b5b" />
+              <AppIcon name="bolt" :size="c.dayRec.pain === 'severe' ? 11 : c.dayRec.pain === 'moderate' ? 9 : 7" color="#a85b5b" />
             </span>
+          </span>
+          <span v-else-if="c.ovuDay" class="pr-marks">
+            <AppIcon name="flower" :size="9" color="#9b7fd0" filled />
           </span>
         </button>
       </div>
 
       <div class="pr-legend">
         <span><i class="pr-lg pr-lg-cycle" /> 经期</span>
-        <span><i class="pr-lg pr-lg-flow-light" /> 少</span>
-        <span><i class="pr-lg pr-lg-flow-mid" /> 中</span>
-        <span><i class="pr-lg pr-lg-flow-heavy" /> 多</span>
-        <span class="pr-lg-txt"><AppIcon name="bolt" :size="10" color="#a85b5b" /> 轻微</span>
-        <span class="pr-lg-txt"><AppIcon name="bolt" :size="10" color="#a85b5b" /><AppIcon name="bolt" :size="10" color="#a85b5b" /> 严重</span>
-        <span v-if="enough"><i class="pr-lg pr-lg-ovu-day" /> 排卵日</span>
         <span v-if="enough"><i class="pr-lg pr-lg-ovu" /> 排卵期</span>
+        <span v-if="enough"><i class="pr-lg pr-lg-pred" /> 预测经期</span>
+        <span v-if="enough" class="pr-lg-txt"><AppIcon name="flower" :size="10" color="#9b7fd0" filled /> 排卵日</span>
+        <span class="pr-lg-txt"><AppIcon name="drop" :size="8" color="#c98891" /> 少</span>
+        <span class="pr-lg-txt"><AppIcon name="drop" :size="10" color="#c98891" /> 中</span>
+        <span class="pr-lg-txt"><AppIcon name="drop" :size="12" color="#c98891" /> 多</span>
+        <span class="pr-lg-txt"><AppIcon name="bolt" :size="8" color="#a85b5b" /> 轻微</span>
+        <span class="pr-lg-txt"><AppIcon name="bolt" :size="10" color="#a85b5b" /> 中度</span>
+        <span class="pr-lg-txt"><AppIcon name="bolt" :size="12" color="#a85b5b" /> 严重</span>
       </div>
 
       <!-- 未来日期：不能记录 -->
@@ -102,19 +111,16 @@
                 :aria-label="p.t"
                 @click="setPain(p.v)"
               >
-                <AppIcon
-                  v-for="n in p.n"
-                  :key="n"
-                  name="bolt"
-                  :size="p.n === 1 ? 14 : 12"
-                  :color="dayForm.pain === p.v ? '#c98891' : '#cfc7c5'"
-                />
+              <AppIcon
+                name="bolt"
+                :size="p.s"
+                :color="dayForm.pain === p.v ? '#c98891' : '#cfc7c5'"
+              />
               </button>
             </div>
           </div>
       </div>
 
-      <button class="pr-clear" type="button" @click="askClearAll">清空经期记录</button>
 
       <!-- 更新预测加载反馈（参考华为「正在更新预测...」） -->
       <div v-if="updating" class="pr-updating">
@@ -136,7 +142,7 @@ import { useItems } from '@/composables/useItems'
 import { useNotificationsStore } from '@/stores/notifications'
 import { confirmDialog } from '@/utils/dialog'
 import {
-  cyclesFromItems, cycleOf,
+  cyclesFromItems, cycleOf, predictedDates,
   fmtDate, addDays, parseDate, dayDiff,
   ongoingCycle, ongoingDisplayEnd, ovulationWindow,
   avgCycle, avgLen, predictNext
@@ -154,6 +160,8 @@ const dayDate = ref(fmtDate(now))
 const cycles = computed(() => cyclesFromItems(items.value))
 /* 有任意经期记录即按规律预测（封存 <2 条时用默认 28/7 天，够后按真实统计） */
 const enough = computed(() => cycles.value.length > 0)
+/* 预测经期区间（下次经期开始 + 平均持续天数），日历虚线圈出 */
+const predSet = computed(() => enough.value ? new Set(predictedDates(cycles.value)) : new Set())
 /* 排卵期窗口（下次经期开始 - 14 天 ±2 天）所有日期 */
 const ovuSet = computed(() => {
   if (!enough.value) return new Set()
@@ -218,8 +226,9 @@ const cells = computed(() => {
       date,
       today: date === todayStr(),
       inCycle: !!cyc,
-      ovu: ovuSet.value.has(date) && !cyc,
-      ovuDay: date === ovuDay.value && !cyc,
+      pred: predSet.value.has(date) && !cyc,
+      ovu: ovuSet.value.has(date) && !cyc && !predSet.value.has(date),
+      ovuDay: date === ovuDay.value && !cyc && !predSet.value.has(date),
       dayRec: cyc ? cyc.days[date] || null : null,
       cyc
     })
@@ -321,10 +330,11 @@ const FLOWS = [
   { v: 'mid', t: '中' },
   { v: 'heavy', t: '多' }
 ]
-/* 痛经程度用闪电符号：1 个闪电 = 轻微，2 个 = 严重；都不选 = 无（再点一次取消） */
+/* 痛经程度用闪电符号，大小递增（参考流量水滴）：轻微 < 中度 < 严重；都不选 = 无（再点一次取消） */
 const PAINS = [
-  { v: 'mild', t: '轻微', n: 1 },
-  { v: 'severe', t: '严重', n: 2 }
+  { v: 'mild', t: '轻微', s: 15 },
+  { v: 'moderate', t: '中度', s: 18 },
+  { v: 'severe', t: '严重', s: 21 }
 ]
 const dayForm = reactive({ flow: '', pain: 'none' })
 
@@ -507,8 +517,9 @@ function goToday() {
 
 function cellStyle(c) {
   if (c.inCycle) return { background: 'rgba(201,136,145,.20)' }
-  if (c.ovuDay) return { background: 'rgba(150,120,200,.30)' }
-  if (c.ovu) return { background: 'rgba(150,120,200,.14)' }
+  /* 排卵期窗口浅紫（排卵日不加深，仅日期下加小花标识） */
+  if (c.ovu || c.ovuDay) return { background: 'rgba(150,120,200,.14)' }
+  if (c.pred) return { border: '1.5px dashed rgba(201,136,145,.65)' }
   return null
 }
 
@@ -642,17 +653,15 @@ onMounted(load)
 .pr-flow.heavy { width: 9px; height: 9px; }
 .pr-pain { display: inline-flex; align-items: center; gap: 1px; line-height: 1; }
 
-.pr-legend { display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 2px 4px; font-size: 11px; color: var(--text-soft); align-items: center; }
+.pr-legend { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 2px 4px; font-size: 11px; color: var(--text-soft); align-items: center; }
 .pr-legend span { display: inline-flex; align-items: center; gap: 4px; }
 .pr-lg { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #c98891; }
 .pr-lg-cycle { width: 10px; height: 10px; border-radius: 3px; background: rgba(201,136,145,.30); }
-.pr-lg-flow-light { width: 5px; height: 5px; }
-.pr-lg-flow-mid { width: 7px; height: 7px; }
-.pr-lg-flow-heavy { width: 9px; height: 9px; }
-/* 排卵窗口小紫点 */
+/* 排卵期：方形紫块（与经期同款方形） */
 .pr-ovu-dot { width: 6px; height: 6px; border-radius: 50%; background: #9b7fd0; display: inline-block; margin-top: 3px; }
-.pr-lg-ovu { background: #9b7fd0; }
-.pr-lg-ovu-day { background: rgba(150,120,200,.55); }
+.pr-lg-ovu { width: 10px; height: 10px; border-radius: 3px; background: #9b7fd0; }
+/* 预测经期：虚线框 */
+.pr-lg-pred { background: transparent; border: 1.5px dashed rgba(201,136,145,.65); }
 /* 图例中用图标（AppIcon）代替色块的项 */
 .pr-lg-txt svg { display: block; }
 
@@ -676,5 +685,6 @@ onMounted(load)
 .pr-drop { border: none; background: transparent; padding: 4px; display: flex; align-items: center; justify-content: center; border-radius: 50%; }
 .pr-drop:disabled { opacity: .45; }
 /* 一键清空 */
-.pr-clear { display: block; margin: 16px auto 8px; border: none; background: transparent; color: var(--text-soft); font-size: 12px; text-decoration: underline; padding: 6px 10px; }
+/* 清空：顶部导航栏右侧 */
+.pr-clear-top { border: none; background: transparent; color: var(--text-soft); font-size: 14px; padding: 4px 2px; }
 </style>
