@@ -69,7 +69,7 @@
         <!-- 我的记录：铅笔入口可修改/删除 -->
         <div v-if="myItem" class="mo-card me">
           <div class="mo-card-head">
-            <AppAvatar name="我" :size="30" />
+            <AppAvatar name="我" :avatar="myAvatar" :size="30" />
             <span class="mo-card-name">我</span>
             <button class="mo-card-edit" type="button" aria-label="修改这条记录" @click="openEdit(myItem)">
               <AppIcon name="edit" :size="13" />
@@ -79,16 +79,14 @@
             <MoodFace v-if="!myTag.custom" :name="myTag.key" :size="17" :color="myTag.color" />
             <i v-else class="mo-tag-dot mo-tag-dot-lg" :style="{ background: myTag.color }" />
             <b>{{ myTag.name }}</b>
-            <span v-if="myTime" class="mo-card-time">{{ myTime }}</span>
-          </div>
-          <div v-if="myEvents.length" class="mo-card-events">
             <span v-for="ev in myEvents" :key="ev" class="mo-ev">{{ ev }}</span>
+            <span v-if="myTime" class="mo-card-time">{{ myTime }}</span>
           </div>
           <p v-if="myItem.body" class="mo-note">{{ myItem.body }}</p>
         </div>
         <div v-else-if="hisItem" class="mo-card me empty">
           <div class="mo-card-head">
-            <AppAvatar name="我" :size="30" />
+            <AppAvatar name="我" :avatar="myAvatar" :size="30" />
             <span class="mo-card-name">我</span>
           </div>
           <p class="mo-card-empty">还没记录</p>
@@ -104,10 +102,8 @@
             <MoodFace v-if="!hisTag.custom" :name="hisTag.key" :size="17" :color="hisTag.color" />
             <i v-else class="mo-tag-dot mo-tag-dot-lg" :style="{ background: hisTag.color }" />
             <b>{{ hisTag.name }}</b>
-            <span v-if="hisTime" class="mo-card-time">{{ hisTime }}</span>
-          </div>
-          <div v-if="hisEvents.length" class="mo-card-events">
             <span v-for="ev in hisEvents" :key="ev" class="mo-ev">{{ ev }}</span>
+            <span v-if="hisTime" class="mo-card-time">{{ hisTime }}</span>
           </div>
           <p v-if="hisItem.body" class="mo-note">{{ hisItem.body }}</p>
         </div>
@@ -242,6 +238,7 @@ import AppAvatar from '@/components/common/AppAvatar.vue'
 import MoodFace from '@/components/mood/MoodFace.vue'
 import { listItems, createItem, updateItem, removeItem } from '@/api/items'
 import { getCards } from '@/api/cards'
+import { getContactSettings, getDesktop } from '@/api/contacts'
 import { useContactsStore } from '@/stores/contacts'
 import { useNotificationsStore } from '@/stores/notifications'
 
@@ -331,6 +328,22 @@ const curContact = computed(
 )
 /* 界面上的「他」一律显示当前联系人名（无联系人时兜底 TA） */
 const himName = computed(() => (curContact.value && curContact.value.name) || 'TA')
+/* 「我」的头像：与一起听歌/聊天同一套规则——开启「同步人物卡头像到聊天」时优先桌面 my_avatar，
+   否则用联系人设置里的 my_avatar，最后桌面 my_avatar 兜底；都没有就显示「我」字 */
+const myAvatar = ref('')
+async function loadMyAvatar() {
+  const cid = curContact.value ? curContact.value.id : null
+  if (!cid) { myAvatar.value = ''; return }
+  try {
+    const [settings, desk] = await Promise.all([
+      getContactSettings(cid).catch(() => null),
+      getDesktop(cid).catch(() => null)
+    ])
+    const deskMy = (desk && desk.my_avatar) || ''
+    const setMy = (settings && settings.my_avatar) || ''
+    myAvatar.value = (desk && desk.sync_chat_avatar && deskMy) ? deskMy : (setMy || deskMy)
+  } catch (e) { /* 忽略：读取失败就显示「我」字兜底 */ }
+}
 
 const items = ref([])
 const now = new Date()
@@ -550,10 +563,11 @@ async function ensureHisToday() {
   if (created) await reload()
 }
 
-/* 切换联系人：记住选择并重载该梦角的记录与字卡 */
+/* 切换联系人：记住选择并重载该梦角的记录、字卡与我的头像 */
 watch(curContact, async (c) => {
   if (c) localStorage.setItem(LAST_CID_KEY, String(c.id))
   await loadCardTexts()
+  await loadMyAvatar()
   await reload()
   await ensureHisToday()
 })
@@ -841,6 +855,7 @@ onMounted(async () => {
   await migrateLegacy()
   dayDate.value = todayStr() /* 日历下方默认展示今天 */
   await loadCardTexts() /* 字卡素材（TA 的碎碎念从这里抽） */
+  await loadMyAvatar() /* 我的头像（跟随当前联系人，规则同一齐听歌） */
   await reload()
   await ensureHisToday()
 })
@@ -911,10 +926,10 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 }
 .mo-card-edit:active { background: var(--bg-soft); transform: scale(0.94); }
 .mo-card-mood { display: flex; align-items: center; gap: 7px; margin-top: 10px; font-size: 15px; font-weight: 600; color: var(--text); }
+.mo-card-mood { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 7px; margin-top: 10px; font-size: 15px; font-weight: 600; color: var(--text); }
+/* 卡片心情行里的事件小签（只读，跟在心情词旁边） */
+.mo-card-mood .mo-ev { background: var(--bg-soft); color: var(--text-soft); border-radius: 999px; line-height: 1.4; font-weight: 400; }
 .mo-card-time { margin-left: auto; font-size: 11px; font-weight: 400; color: var(--text-soft); font-variant-numeric: tabular-nums; letter-spacing: .03em; }
-.mo-card-events { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
-/* 事件小签（卡片里的只读样式） */
-.mo-ev { font-size: 11px; line-height: 1.4; padding: 3px 9px; border-radius: 999px; background: var(--bg-soft); color: var(--text-soft); }
 .mo-card-empty { margin: 8px 0 0; font-size: 12px; color: var(--text-soft); }
 .mo-day-empty { text-align: center; font-size: 12px; color: var(--text-soft); padding: 20px 0 8px; line-height: 1.9; }
 
@@ -923,7 +938,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
   position: relative;
   margin: 10px 0 0; padding: 10px 12px; max-width: 100%;
   background: var(--bg-soft);
-  background: color-mix(in srgb, #f8f2df 72%, var(--bg-screen));
+  background: color-mix(in srgb, #f8f2df 80%, var(--bg-screen));
   border: 1px solid var(--border);
   border: 1px solid color-mix(in srgb, #d9cca6 55%, var(--border));
   border-radius: 2px;
@@ -931,22 +946,23 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
   white-space: pre-wrap; word-break: break-word;
   box-shadow: 0 1px 2px rgba(0, 0, 0, .07);
 }
-/* 顶部斜贴的一小截透明胶带 */
+/* 顶部斜贴的一小截透明胶带（做大做实，存在感更强） */
 .mo-note::before {
-  content: ''; position: absolute; top: -7px; left: 16px;
-  width: 36px; height: 13px;
-  background: rgba(255, 255, 255, .5);
-  background: color-mix(in srgb, #ffffff 42%, transparent);
+  content: ''; position: absolute; top: -8px; left: 18px;
+  width: 46px; height: 15px;
+  background: rgba(255, 255, 255, .58);
+  background: color-mix(in srgb, #ffffff 58%, transparent);
   border-left: 1px dashed rgba(0, 0, 0, .06); border-right: 1px dashed rgba(0, 0, 0, .06);
-  transform: rotate(-3deg);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, .08);
+  transform: rotate(-2.5deg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .12);
 }
 /* 自定义标签的纯色小点（无表情） */
 .mo-tag-dot { width: 5px; height: 5px; border-radius: 50%; flex: 0 0 auto; }
 .mo-tag-dot-lg { width: 8px; height: 8px; }
 
 /* 记录表单弹窗 */
-.mo-form-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+/* 记录表单弹窗：整体收短，内容多了内部滑动；头部吸顶 */
+.mo-form-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; position: sticky; top: -16px; z-index: 1; background: var(--bg-screen); padding: 4px 0 8px; margin-bottom: 0; }
 .mo-form-title { display: flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 600; }
 .mo-form-btns { display: flex; gap: 8px; flex: 0 0 auto; }
 .mo-close-btn {
@@ -958,6 +974,11 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 .mo-del-btn { color: #c0576b; }
 .mo-form-sub { font-size: 11px; color: var(--text-soft); margin: 6px 0 0; }
 .mo-fld-label { font-size: 12px; color: var(--text-soft); margin: 16px 0 8px; }
+/* 弹窗收短：一屏放不下就内部滑动（从底部滑入） */
+.md-sheet { max-height: 60vh; animation: mo-slide-up 0.24s cubic-bezier(0.2, 0.9, 0.3, 1.05); }
+@keyframes mo-slide-up { from { opacity: 0; transform: translateY(28px) } to { opacity: 1; transform: none } }
+/* 事件 chips 与碎碎念输入框之间留间距 */
+.md-textarea { margin-top: 12px; }
 /* 心情 / 事件标签都做小一点 */
 .mo-mood, .mo-ev {
   position: relative;
