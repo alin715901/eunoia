@@ -155,6 +155,10 @@
             <span v-if="pendingDel === t.key" class="mo-del" @click.stop="delTag(t)">
               <AppIcon name="close" :size="10" />
             </span>
+            <!-- 删除态：每个标签右上角都有 × -->
+            <span v-else-if="delMode === 'mood'" class="mo-del" @click.stop="delTagAny(t)">
+              <AppIcon name="close" :size="10" />
+            </span>
           </button>
 
           <button v-if="!adding" class="md-chip mo-add" type="button" @click="startAdd">
@@ -173,6 +177,16 @@
             <button class="mo-add-ok" type="button" @click="confirmAdd">添加</button>
             <button class="mo-add-cancel" type="button" @click="cancelAdd">取消</button>
           </template>
+          <!-- 删除态开关：点「删除」每个标签右上角出 ×，变成「完成」，点完成退出 -->
+          <button
+            class="md-chip mo-del-mode"
+            :class="{ on: delMode === 'mood' }"
+            type="button"
+            :aria-label="delMode === 'mood' ? '完成删除' : '删除标签'"
+            @click="toggleDelMode('mood')"
+          >
+            {{ delMode === 'mood' ? '完成' : '删除' }}
+          </button>
         </div>
 
         <p class="mo-fld-label">{{ formToday ? '今天做了什么' : '这天做了什么' }}</p>
@@ -194,6 +208,10 @@
             <span v-if="pendingDelEv === ev" class="mo-del" @click.stop="delEvent(ev)">
               <AppIcon name="close" :size="10" />
             </span>
+            <!-- 删除态：每个事件右上角都有 × -->
+            <span v-else-if="delMode === 'event'" class="mo-del" @click.stop="delEventAny(ev)">
+              <AppIcon name="close" :size="10" />
+            </span>
           </button>
 
           <button v-if="!addingEv" class="md-chip mo-ev mo-ev-add" type="button" aria-label="自定义事件" @click="startAddEv">
@@ -212,6 +230,16 @@
             <button class="mo-add-ok" type="button" @click="confirmAddEv">添加</button>
             <button class="mo-add-cancel" type="button" @click="cancelAddEv">取消</button>
           </template>
+          <!-- 删除态开关：点「删除」每个事件右上角出 ×，变成「完成」，点完成退出 -->
+          <button
+            class="md-chip mo-ev mo-del-mode"
+            :class="{ on: delMode === 'event' }"
+            type="button"
+            :aria-label="delMode === 'event' ? '完成删除' : '删除事件'"
+            @click="toggleDelMode('event')"
+          >
+            {{ delMode === 'event' ? '完成' : '删除' }}
+          </button>
         </div>
 
         <textarea
@@ -245,12 +273,15 @@ import { useNotificationsStore } from '@/stores/notifications'
 /* 心情手账（双人共记）：
    我的记录：12 个预设心情标签（各配极简线条表情）+ 自定义标签（长按删除）
              + 「今天做了什么」事件标签（多选，24 个预设 + 自定义）+ 碎碎念；
+             自定义旁有「删除」开关：点删除每个标签右上角出 ×（预设删了进隐藏清单，
+             跨会话保留），按钮变「完成」，点完成退出删除态；
    TA 的记录：独立于我——当天一个随机时刻（8:00~21:59，按日期派生）自主记录，
               从全部可选标签里随机选一个心情、按日期派生 1~2 个事件，
               碎碎念从字卡里随机抽 1~3 张拼成，不在弹窗里手动填；
    月历同一天并排两个半透明小圆点（左 TA 右我，颜色各取当日最新心情色）；
    点日期不弹窗：日历下方直接展示当天两人的记录卡片
              （头像 + 名称 + 心情 + 事件 + 便签条碎碎念，我的卡片带铅笔可改）；
+   保存/修改我的记录：时刻刷新为当前（改了心情/事件，时间就算最新一次）；
    联系人切换在顶部导航栏最右侧；记录按当前互动的联系人分开（全局可绑多个梦角）。 */
 
 const WEEK = ['一', '二', '三', '四', '五', '六', '日']
@@ -273,7 +304,9 @@ const PRESET_MOODS = [
 /* 自定义标签的循环取色 */
 const CUSTOM_COLORS = ['#a393c0', '#7fa8a0', '#c9a05f', '#b58bb0', '#c07f7f', '#7f9ec4']
 const CUSTOM_KEY = 'mood_custom_tags'
+const HIDDEN_KEY = 'mood_hidden_tags'
 const EVENT_KEY = 'mood_custom_events'
+const HIDDEN_EV_KEY = 'mood_hidden_events'
 const LAST_CID_KEY = 'mood_last_contact'
 
 /* 24 个预设事件标签（「今天做了什么」） */
@@ -303,7 +336,16 @@ try {
   const raw = JSON.parse(localStorage.getItem(CUSTOM_KEY) || '[]')
   if (Array.isArray(raw)) customTags.value = raw.filter((t) => t && t.key && t.name)
 } catch (e) { /* 忽略损坏数据 */ }
-const allTags = computed(() => [...PRESET_MOODS, ...customTags.value])
+/* 被删除的预设标签：记 key 隐藏起来（删除态里删预设也生效，跨会话保留） */
+const hiddenTags = ref([])
+try {
+  const raw = JSON.parse(localStorage.getItem(HIDDEN_KEY) || '[]')
+  if (Array.isArray(raw)) hiddenTags.value = raw.filter((k) => typeof k === 'string')
+} catch (e) { /* 忽略损坏数据 */ }
+function persistHidden() {
+  try { localStorage.setItem(HIDDEN_KEY, JSON.stringify(hiddenTags.value)) } catch (e) { /* ignore */ }
+}
+const allTags = computed(() => [...PRESET_MOODS.filter((t) => !hiddenTags.value.includes(t.key)), ...customTags.value])
 function persistCustom() {
   try { localStorage.setItem(CUSTOM_KEY, JSON.stringify(customTags.value)) } catch (e) { /* ignore */ }
 }
@@ -314,7 +356,16 @@ try {
   const raw = JSON.parse(localStorage.getItem(EVENT_KEY) || '[]')
   if (Array.isArray(raw)) customEvents.value = raw.filter((e) => typeof e === 'string' && e.trim())
 } catch (e) { /* 忽略损坏数据 */ }
-const allEvents = computed(() => [...PRESET_EVENTS, ...customEvents.value])
+/* 被删除的预设事件：记名字隐藏起来 */
+const hiddenEvents = ref([])
+try {
+  const raw = JSON.parse(localStorage.getItem(HIDDEN_EV_KEY) || '[]')
+  if (Array.isArray(raw)) hiddenEvents.value = raw.filter((e) => typeof e === 'string')
+} catch (e) { /* 忽略损坏数据 */ }
+function persistHiddenEvents() {
+  try { localStorage.setItem(HIDDEN_EV_KEY, JSON.stringify(hiddenEvents.value)) } catch (e) { /* ignore */ }
+}
+const allEvents = computed(() => [...PRESET_EVENTS.filter((e) => !hiddenEvents.value.includes(e)), ...customEvents.value])
 function persistCustomEvents() {
   try { localStorage.setItem(EVENT_KEY, JSON.stringify(customEvents.value)) } catch (e) { /* ignore */ }
 }
@@ -362,6 +413,15 @@ const contactOpen = ref(false)
 /* 长按后进入「待删除」状态的标签 key / 事件名（右上角显示 ×） */
 const pendingDel = ref(null)
 const pendingDelEv = ref(null)
+/* 「删除」按钮进入的整列删除态：'mood' / 'event' / null（此时每个标签右上角都有 ×） */
+const delMode = ref(null)
+function toggleDelMode(kind) {
+  delMode.value = delMode.value === kind ? null : kind
+  pendingDel.value = null
+  pendingDelEv.value = null
+  if (adding.value) cancelAdd()
+  if (addingEv.value) cancelAddEv()
+}
 
 /* 自定义标签的添加输入 */
 const adding = ref(false)
@@ -631,6 +691,7 @@ function pick(c) {
   dayDate.value = c.date
   pendingDel.value = null
   pendingDelEv.value = null
+  delMode.value = null
 }
 /* ＋ 记录心情：为当前浏览的日期开一张空白新记录表单（保存即新增一条） */
 function plusRecord() {
@@ -646,6 +707,7 @@ function plusRecord() {
   newEv.value = ''
   pendingDel.value = null
   pendingDelEv.value = null
+  delMode.value = null
   show.value = true
 }
 /* 卡片铅笔：编辑这条记录（保存=更新它自己） */
@@ -662,6 +724,7 @@ function openEdit(it) {
   newEv.value = ''
   pendingDel.value = null
   pendingDelEv.value = null
+  delMode.value = null
   show.value = true
 }
 function close() {
@@ -669,6 +732,7 @@ function close() {
   editingId.value = null
   pendingDel.value = null
   pendingDelEv.value = null
+  delMode.value = null
 }
 
 async function save() {
@@ -681,10 +745,8 @@ async function save() {
       extra: { mood: myForm.mood, moodName: tagName(myForm.mood), owner: 'me', events: myForm.events.slice() }
     }
     if (editingId.value) {
-      /* 更新这条记录：保留原记录时刻 */
-      const old = items.value.find((x) => x.id === editingId.value)
-      const oldTime = old && old.extra && old.extra.time
-      await updateItem(editingId.value, { ...payload, extra: { ...payload.extra, time: oldTime || nowHM() } })
+      /* 更新这条记录：时刻刷新为当前（改了心情/事件，时间就算最新一次） */
+      await updateItem(editingId.value, { ...payload, extra: { ...payload.extra, time: nowHM() } })
     } else {
       await createItem({ module: 'mood', contactId: cid, ...payload, extra: { ...payload.extra, time: nowHM() } })
     }
@@ -754,6 +816,33 @@ function removeTag(tag) {
   if (myForm.mood === tag.key) myForm.mood = PRESET_MOODS[0].key
 }
 
+/* 删除态里删任意标签：自定义 → 直接移除；预设 → 记入隐藏清单（跨会话保留，可随时再加回来暂不支持，删了就是删了） */
+function delTagAny(t) {
+  if (t.custom) {
+    const i = customTags.value.findIndex((x) => x.key === t.key)
+    if (i >= 0) { customTags.value.splice(i, 1); persistCustom() }
+  } else if (!hiddenTags.value.includes(t.key)) {
+    hiddenTags.value.push(t.key)
+    persistHidden()
+  }
+  /* 选中的正好是被删的标签 → 回退到剩下里的第一个 */
+  if (myForm.mood === t.key) myForm.mood = (allTags.value[0] || PRESET_MOODS[0]).key
+  toast.pushToast({ title: `已删除标签「${t.name}」` })
+}
+/* 删除态里删任意事件：自定义 → 移除；预设 → 记入隐藏清单；已勾选的一并取消 */
+function delEventAny(ev) {
+  if (customEvents.value.includes(ev)) {
+    const i = customEvents.value.indexOf(ev)
+    if (i >= 0) { customEvents.value.splice(i, 1); persistCustomEvents() }
+  } else if (!hiddenEvents.value.includes(ev)) {
+    hiddenEvents.value.push(ev)
+    persistHiddenEvents()
+  }
+  const j = myForm.events.indexOf(ev)
+  if (j >= 0) myForm.events.splice(j, 1)
+  toast.pushToast({ title: `已删除事件「${ev}」` })
+}
+
 /* 自定义事件：添加 / 删除 */
 function startAddEv() {
   addingEv.value = true
@@ -794,7 +883,7 @@ function delEvent(name) {
 let pressTimer = null
 let longFired = false
 function chipDown(t) {
-  if (!t.custom) return
+  if (!t.custom || delMode.value) return
   longFired = false
   clearTimeout(pressTimer)
   pressTimer = setTimeout(() => {
@@ -808,10 +897,11 @@ function chipUp() {
 function selectTag(t) {
   if (longFired) return /* 长按抬手的 click：吞掉选中，保留待删除态 */
   pendingDel.value = null
+  if (delMode.value) return /* 删除态：点标签本体不选中，只删右上角 × */
   myForm.mood = t.key
 }
 function evDown(ev) {
-  if (!customEvents.value.includes(ev)) return
+  if (!customEvents.value.includes(ev) || delMode.value) return
   longFired = false
   clearTimeout(pressTimer)
   pressTimer = setTimeout(() => {
@@ -826,6 +916,7 @@ function evUp() {
 function toggleEvent(ev) {
   if (longFired) return
   pendingDelEv.value = null
+  if (delMode.value) return /* 删除态：点事件本体不勾选，只删右上角 × */
   const i = myForm.events.indexOf(ev)
   if (i >= 0) myForm.events.splice(i, 1)
   else myForm.events.push(ev)
@@ -885,8 +976,8 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 .mo-select-empty { padding: 12px; text-align: center; font-size: 12px; color: var(--text-soft); }
 .mo-select-opt .mo-select-name { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* 日期行：‹ 年月 › 居中，＋ 在最右 */
-.mo-nav { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin: 14px 0 10px; }
+/* 日期行：‹ 年月 › 居中，＋ 在最右（上方留白收窄，标题贴着头部） */
+.mo-nav { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin: 4px 0 8px; }
 .mo-nav-mid { display: flex; align-items: center; justify-content: center; gap: 6px; }
 .mo-nav-side { min-width: 0; }
 .mo-nav-arrow { border: none; background: transparent; font-size: 20px; color: var(--text-soft); padding: 0 4px; line-height: 1; }
@@ -913,9 +1004,30 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 .mo-idot.me { background: var(--accent); }
 .mo-idot.him { background: #7d8ba0; }
 
-/* 日历下方：当天两人的记录卡片 */
+/* 日历下方：当天两人的记录卡片（整张卡片便签化：暖纸底 + 方角 + 顶部胶带） */
 .mo-day { display: flex; flex-direction: column; gap: 12px; }
-.mo-card { border: 1px solid var(--border); border-radius: 14px; padding: 12px; background: var(--bg-screen); }
+.mo-card {
+  position: relative;
+  border: 1px solid color-mix(in srgb, #d9cca6 55%, var(--border));
+  border-radius: 2px; padding: 12px 12px 14px;
+  background: var(--bg-screen);
+  background: color-mix(in srgb, #f8f2df 80%, var(--bg-screen));
+  box-shadow: 0 1px 2px rgba(0, 0, 0, .07);
+}
+/* 顶部斜贴的一小截透明胶带（做大做实，存在感更强） */
+.mo-card::before {
+  content: ''; position: absolute; top: -8px; left: calc(50% - 23px);
+  width: 46px; height: 15px;
+  background: color-mix(in srgb, #ffffff 58%, transparent);
+  border-left: 1px dashed rgba(0, 0, 0, .06); border-right: 1px dashed rgba(0, 0, 0, .06);
+  transform: rotate(-2.5deg);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, .12);
+}
+/* TA 的卡片：冷调纸 */
+.mo-card.him {
+  background: color-mix(in srgb, #e9eef5 82%, var(--bg-screen));
+  border-color: color-mix(in srgb, #aebccd 55%, var(--border));
+}
 .mo-card-head { display: flex; align-items: center; gap: 8px; }
 .mo-card-name { font-size: 13px; font-weight: 600; }
 .mo-card.me .mo-card-name { color: var(--accent); }
@@ -933,28 +1045,11 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 .mo-card-empty { margin: 8px 0 0; font-size: 12px; color: var(--text-soft); }
 .mo-day-empty { text-align: center; font-size: 12px; color: var(--text-soft); padding: 20px 0 8px; line-height: 1.9; }
 
-/* 碎碎念：一张便签条（纸黄底 + 方角 + 顶部一截胶带），不是气泡 */
+/* 碎碎念：卡片内的普通段落（便签感由整张卡片承担，不再单独贴条） */
 .mo-note {
-  position: relative;
-  margin: 10px 0 0; padding: 10px 12px; max-width: 100%;
-  background: var(--bg-soft);
-  background: color-mix(in srgb, #f8f2df 80%, var(--bg-screen));
-  border: 1px solid var(--border);
-  border: 1px solid color-mix(in srgb, #d9cca6 55%, var(--border));
-  border-radius: 2px;
+  margin: 10px 0 0; max-width: 100%;
   font-size: 12.5px; font-weight: 400; line-height: 1.8; color: var(--text);
   white-space: pre-wrap; word-break: break-word;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, .07);
-}
-/* 顶部斜贴的一小截透明胶带（做大做实，存在感更强） */
-.mo-note::before {
-  content: ''; position: absolute; top: -8px; left: 18px;
-  width: 46px; height: 15px;
-  background: rgba(255, 255, 255, .58);
-  background: color-mix(in srgb, #ffffff 58%, transparent);
-  border-left: 1px dashed rgba(0, 0, 0, .06); border-right: 1px dashed rgba(0, 0, 0, .06);
-  transform: rotate(-2.5deg);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, .12);
 }
 /* 自定义标签的纯色小点（无表情） */
 .mo-tag-dot { width: 5px; height: 5px; border-radius: 50%; flex: 0 0 auto; }
@@ -1001,6 +1096,9 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 /* 自定义标签入口与输入（按钮收窄，和输入框拉开距离） */
 .mo-add { border-style: dashed; display: inline-flex; align-items: center; gap: 4px; }
 .mo-ev-add { border-style: dashed; padding: 4px 10px; }
+/* 「删除/完成」整列删除态开关：激活时实底，一眼看出在删档模式 */
+.mo-del-mode { border-style: dashed; display: inline-flex; align-items: center; gap: 4px; color: var(--text-soft); }
+.mo-del-mode.on { background: #c0576b; border-color: #c0576b; border-style: solid; color: #fff; }
 .mo-add-input {
   width: 84px; padding: 5px 10px; font-size: 12px; border: 1px solid var(--accent);
   border-radius: 999px; background: var(--bg-screen); color: var(--text); outline: none;
