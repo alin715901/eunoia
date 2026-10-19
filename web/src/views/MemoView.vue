@@ -2,16 +2,23 @@
   <div class="mm-page" :class="{ dragging: !!g.id }">
     <AppHeader title="备忘录" back>
       <template #right>
-        <button class="mm-op" @click="openAdd" aria-label="添加"><AppIcon name="plus" :size="22" /></button>
+        <button class="mm-op" @click="openAdd" aria-label="添加">
+          <svg viewBox="0 0 24 24" width="21" height="21">
+            <path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" fill="none" />
+          </svg>
+        </button>
       </template>
     </AppHeader>
 
     <div class="mm-body">
-      <!-- 类型筛选 -->
+      <!-- 类型筛选 + 时间排序 -->
       <div class="mm-filter">
         <button class="mm-chip" :class="{ on: filter === 'all' }" @click="filter = 'all'">全部</button>
         <button class="mm-chip" :class="{ on: filter === 'todo' }" @click="filter = 'todo'">待办</button>
         <button class="mm-chip" :class="{ on: filter === 'note' }" @click="filter = 'note'">便签</button>
+        <button class="mm-sort" :aria-label="sortAsc ? '切换为最新在上' : '切换为最早在上'" @click="sortAsc = !sortAsc">
+          {{ sortAsc ? '时间 ↑' : '时间 ↓' }}
+        </button>
       </div>
 
       <p v-if="loading" class="mm-tip">加载中…</p>
@@ -33,11 +40,11 @@
               @pointerup="up(m, $event)"
               @pointercancel="cancel"
             >
-              <!-- 右上角图钉 -->
+              <!-- 右上角图钉：未置顶时极淡，不抢视觉 -->
               <button class="mm-pin" :class="{ on: m.pinned }" @click.stop="togglePin(m)" :aria-label="m.pinned ? '取消置顶' : '置顶'">
                 <svg viewBox="0 0 24 24" width="15" height="15">
                   <path d="M14.5 3.5l6 6-2 2-1.3-1.3-4.2 4.2.7 3.1-1.6 1.6-2.4-2.4-3.4 3.4-1.4-1.4 3.4-3.4-2.4-2.4 1.6-1.6 3.1.7 4.2-4.2L5.5 9.5z"
-                    :fill="m.pinned ? '#d98a3d' : 'none'" :stroke="m.pinned ? '#d98a3d' : 'rgba(0,0,0,.28)'" stroke-width="1.4" stroke-linejoin="round" />
+                    :fill="m.pinned ? '#d98a3d' : 'none'" :stroke="m.pinned ? '#d98a3d' : 'rgba(0,0,0,.14)'" stroke-width="1.4" stroke-linejoin="round" />
                 </svg>
               </button>
 
@@ -61,6 +68,12 @@
               <template v-else>
                 <div class="mm-note-text">{{ m.note }}</div>
               </template>
+
+              <!-- 卡片底部：创建日期（待办另显截止日期） -->
+              <div class="mm-foot">
+                <span class="mm-date">{{ fmtCreated(m) }}</span>
+                <span v-if="m.type === 'todo' && m.due" class="mm-due">截止 {{ fmtDue(m.due) }}</span>
+              </div>
             </div>
           </div>
 
@@ -89,6 +102,10 @@
               <button class="mm-te-del" @click="form.todos.splice(i, 1)" aria-label="删除该项">×</button>
             </div>
             <button class="mm-te-add" @click="addTodo">＋ 添加一项</button>
+          </div>
+          <div class="mm-fld">
+            <span class="mm-fld-label">截止日期（可选）</span>
+            <input v-model="form.due" class="mm-input" type="date" />
           </div>
         </template>
         <template v-else>
@@ -135,6 +152,7 @@ import { confirmDialog } from '@/utils/dialog'
 const { items, loading, load, add, update, remove: removeItem } = useItems('memo')
 const toast = useNotificationsStore()
 const filter = ref('all')
+const sortAsc = ref(false) /* false：最新在上（默认）；true：最早在上 */
 
 const PALETTE = ['#fff7e6', '#fdeef0', '#eef4fb', '#eaf5ee', '#f3eefb', '#fdf3e3', '#eef7f6', '#f6eef4']
 
@@ -149,17 +167,32 @@ function normalize(it) {
     type = 'todo'
     todos = it.title ? [{ text: it.title, done: !!Number(it.done) }] : []
   }
-  return { ...it, type, todos, color, pinned, note: it.body || '' }
+  return { ...it, type, todos, color, pinned, due: ex.due || '', note: it.body || '' }
 }
 
 const all = computed(() => items.value.map(normalize))
 const board = computed(() => {
   const list = filter.value === 'all' ? all.value : all.value.filter((m) => m.type === filter.value)
+  const dir = sortAsc.value ? 1 : -1
   return list.slice().sort((a, b) => {
     if (!!b.pinned !== !!a.pinned) return b.pinned ? 1 : -1
-    return Number(b.updated_at || 0) - Number(a.updated_at || 0)
+    return (Number(a.updated_at || 0) - Number(b.updated_at || 0)) * dir
   })
 })
+
+/* 日期文案：创建时间（秒级时间戳 → M月D日） */
+function fmtCreated(m) {
+  const sec = Number(m.created_at || 0)
+  if (!sec) return ''
+  const d = new Date(sec * 1000)
+  return `${d.getMonth() + 1}月${d.getDate()}日创建`
+}
+/* 截止日期：YYYY-MM-DD → M月D日 */
+function fmtDue(s) {
+  const d = new Date(`${s}T00:00:00`)
+  if (Number.isNaN(d.getTime())) return s
+  return `${d.getMonth() + 1}月${d.getDate()}日`
+}
 
 /* ═══ 手势：长按删除 / 左滑露出删除 / 点击编辑 ═══ */
 const g = reactive({ id: null, x0: 0, y0: 0, t0: 0, moved: false, tx: 0, long: false })
@@ -260,11 +293,11 @@ async function confirmDelete(m) {
 /* ═══ 新建 / 编辑 ═══ */
 const show = ref(false)
 const editing = ref(null)
-const form = reactive({ id: null, type: 'todo', title: '', todos: [], note: '', color: PALETTE[0], pinned: false })
+const form = reactive({ id: null, type: 'todo', title: '', todos: [], note: '', color: PALETTE[0], pinned: false, due: '' })
 
 function openAdd() {
   editing.value = null
-  Object.assign(form, { id: null, type: 'todo', title: '', todos: [{ text: '', done: false }], note: '', color: PALETTE[0], pinned: false })
+  Object.assign(form, { id: null, type: 'todo', title: '', todos: [{ text: '', done: false }], note: '', color: PALETTE[0], pinned: false, due: '' })
   openId.value = null
   show.value = true
 }
@@ -277,7 +310,8 @@ function openEdit(m) {
     todos: (m.todos || []).map((t) => ({ ...t })),
     note: m.note || '',
     color: m.color,
-    pinned: m.pinned
+    pinned: m.pinned,
+    due: m.due || ''
   })
   show.value = true
 }
@@ -302,7 +336,7 @@ async function save() {
   }
   const payload =
     form.type === 'todo'
-      ? { title: form.title.trim(), body: '', extra: { type: 'todo', color: form.color, pinned: form.pinned ? 1 : 0, todos: form.todos } }
+      ? { title: form.title.trim(), body: '', extra: { type: 'todo', color: form.color, pinned: form.pinned ? 1 : 0, todos: form.todos, due: form.due || '' } }
       : { title: '', body: form.note.trim(), extra: { type: 'note', color: form.color, pinned: form.pinned ? 1 : 0, todos: [] } }
   const id = editing.value
   close()
@@ -331,9 +365,11 @@ onMounted(load)
   #f7f2e7;
 }
 .mm-body { padding: 12px; }
-.mm-filter { display: flex; gap: 8px; margin-bottom: 12px; }
+.mm-filter { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; }
 .mm-chip { border: 1px solid var(--border); background: rgba(255,255,255,.5); color: var(--text-soft); border-radius: 999px; padding: 5px 16px; font-size: 13px; }
 .mm-chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.mm-sort { margin-left: auto; border: 1px solid var(--border); background: rgba(255,255,255,.5); color: var(--text-soft); border-radius: 999px; padding: 5px 12px; font-size: 12px; }
+.mm-sort:active { transform: scale(0.95); }
 
 /* 瀑布流：CSS 多列 */
 .mm-board { column-count: 2; column-gap: 10px; }
@@ -350,12 +386,18 @@ onMounted(load)
 .mm-head { font-size: 14px; font-weight: 600; color: #4a3f33; margin: 2px 18px 8px 0; line-height: 1.4; }
 .mm-todos { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 7px; }
 .mm-todo { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: #4a3f33; cursor: pointer; }
-.mm-todo.done .mm-todo-text { color: #b6ab98; text-decoration: line-through; }
+.mm-todo.done .mm-todo-text { color: #c3baa9; text-decoration: line-through; }
 .mm-box { flex: 0 0 auto; width: 16px; height: 16px; border-radius: 4px; border: 1.5px solid #c9bca6; background: transparent; display: flex; align-items: center; justify-content: center; margin-top: 1px; }
 .mm-box.on { background: #8fb98a; border-color: #8fb98a; }
 .mm-todo-text { flex: 1; line-height: 1.45; word-break: break-word; }
 .mm-empty-sub { font-size: 12px; color: var(--text-soft); margin-top: 6px; }
 .mm-note-text { font-size: 13.5px; line-height: 1.7; color: #4a3f33; white-space: pre-wrap; word-break: break-word; }
+
+/* 卡片底部：创建日期 + 截止日期 */
+.mm-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 10px; }
+.mm-date { font-size: 10.5px; color: rgba(74, 63, 51, .38); }
+.mm-due { font-size: 10.5px; color: #c0724f; white-space: nowrap; }
+.mm-due::before { content: '⏳ '; font-size: 9px; }
 
 .mm-del {
   position: absolute; top: 0; right: 0; height: 100%; width: 76px;
@@ -378,6 +420,8 @@ onMounted(load)
 .mm-te-row { display: flex; gap: 8px; align-items: center; }
 .mm-te-del { width: 30px; height: 36px; border: none; background: transparent; color: #d9534f; font-size: 20px; }
 .mm-te-add { align-self: flex-start; border: 1px dashed var(--border); background: transparent; color: var(--text-soft); border-radius: 10px; padding: 8px 14px; font-size: 13px; }
+.mm-fld { margin-top: 12px; }
+.mm-fld-label { display: block; font-size: 12.5px; color: var(--text-soft); margin-bottom: 6px; }
 .mm-color-row { display: flex; align-items: center; gap: 8px; margin: 14px 0; flex-wrap: wrap; }
 .mm-color-label { font-size: 13px; color: var(--text-soft); margin-right: 2px; }
 .mm-color { width: 26px; height: 26px; border-radius: 7px; border: 2px solid transparent; }
