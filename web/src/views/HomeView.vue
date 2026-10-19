@@ -151,9 +151,9 @@
 
     <!-- 备忘录 / 经期：独立卡片，不再塞进卡片 B -->
         <div class="cb-boxes">
-          <button class="cb-box" @click="openEdit('memo')">
+          <button class="cb-box" @click="onMemoCardClick">
             <span class="cb-label">备忘录</span>
-            <span class="cb-text" :class="{ empty: !home.memo }">{{ home.memo || '记点什么…' }}</span>
+            <span class="cb-text" :class="{ empty: !memoPinnedText }">{{ memoPinnedText || '记点什么…' }}</span>
           </button>
           <button class="cb-box" @click="openEdit('period')">
             <span class="cb-label">经期</span>
@@ -297,6 +297,7 @@ import AppAvatar from '@/components/common/AppAvatar.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import AnniversaryPicker from '@/components/common/AnniversaryPicker.vue'
 import { getAnniversaries } from '@/api/anniversary'
+import { listItems } from '@/api/items'
 import { useBadgesStore } from '@/stores/badges'
 import { useContactsStore } from '@/stores/contacts'
 import { useDesktopStore } from '@/stores/desktop'
@@ -485,7 +486,6 @@ function rollLove() {
 /* 编辑弹层 */
 const EDIT_META = {
   sign: { title: '签名', ph: '写一句只属于你们的话…' },
-  memo: { title: '备忘录', ph: '想记下的事…' },
   period: { title: '经期记录', ph: '例如：10/1 - 10/5' }
 }
 const editKey = ref(null)
@@ -495,6 +495,48 @@ const signMaxlength = computed(() => (editKey.value === 'sign' ? 20 : null))
 function openEdit(key) {
   editKey.value = key
   draft.value = home[key] || ''
+}
+
+/* ═══ 桌面备忘录卡：展示已置顶的待办/便签，多个置顶时点击来回切换 ═══ */
+const memoPins = ref([])
+const memoPinIdx = ref(0)
+const memoPinnedText = computed(() => {
+  const pins = memoPins.value
+  if (!pins.length) return ''
+  const m = pins[memoPinIdx.value % pins.length]
+  const tag = m.type === 'todo' ? '待办' : '便签'
+  let body = ''
+  if (m.type === 'todo') body = m.title || m.todos.find((t) => !t.done)?.text || '已完成'
+  else body = String(m.note || '').split('\n')[0]
+  return `${tag} · ${body}`
+})
+async function loadMemoPins() {
+  try {
+    const rows = await listItems('memo')
+    memoPins.value = rows
+      .map((it) => {
+        const ex = it.extra || {}
+        let type = ex.type
+        let todos = ex.todos || []
+        if (!type) {
+          type = 'todo'
+          todos = it.title ? [{ text: it.title, done: !!Number(it.done) }] : []
+        }
+        return { ...it, type, todos, pinned: !!Number(ex.pinned), note: it.body || '' }
+      })
+      .filter((m) => m.pinned)
+    if (memoPinIdx.value >= memoPins.value.length) memoPinIdx.value = 0
+  } catch (e) {
+    memoPins.value = []
+  }
+}
+function onMemoCardClick() {
+  if (!memoPins.value.length) {
+    router.push('/memo')
+    return
+  }
+  /* 多个置顶：点击切换到下一个（循环来回） */
+  memoPinIdx.value = (memoPinIdx.value + 1) % memoPins.value.length
 }
 /* 一起听时长展示：满一小时显示「几小时几分钟」 */
 function fmtListenMin(m) {
@@ -727,6 +769,7 @@ async function bootHome() {
   syncHome()
   rollLove()
   loadAnniversaries()
+  loadMemoPins()
 }
 
 onMounted(async () => {
