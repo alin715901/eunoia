@@ -97,17 +97,14 @@ export function predictedDates(cycles, limit = 31) {
   return out
 }
 
-/* 进行中周期的「变红显示终点」：按周期规律预测（开始日 + 平均持续 - 1），
-   但不早于今天；结束后以实际 end 为准（提前/推后结束则相应减少/增加变红天数） */
+/* 进行中周期的「变红显示终点」：严格按周期规律预测（开始日 + 平均持续 - 1），
+   不延伸到今天——默认持续几天就只红几天；
+   实际结束以结束开关为准（提前/延后结束则相应减少/增加变红天数） */
 export function ongoingDisplayEnd(cycles, cycle) {
-  const today = fmtDate(new Date())
-  let end = cycle.ongoing && cycle.end < today ? today : cycle.end || cycle.start
-  if (cycle.ongoing) {
-    const predEnd = addDays(cycle.start, avgLen(cycles) - 1)
-    if (predEnd > end) end = predEnd
-    if (today > end) end = today
-  }
-  return end
+  if (!cycle || !cycle.ongoing) return cycle ? cycle.end || cycle.start : ''
+  const predEnd = addDays(cycle.start, avgLen(cycles) - 1)
+  const curEnd = cycle.end || cycle.start
+  return predEnd > curEnd ? predEnd : curEnd
 }
 
 /* 某天是否处于已记录周期内（返回该 cycle 或 null）。

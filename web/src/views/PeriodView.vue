@@ -4,20 +4,18 @@
 
     <div class="pr-body">
       <!-- 日历 -->
-      <div class="pr-nav">
-        <button class="pr-today" @click="goToday">回到今天</button>
-        <div class="pr-nav-mid">
+      <!-- 头部行：左侧状态文字（经期第X天/排卵期第X天/距预测经期X天 + 周期共N天），右侧回到今天 + 月份切换 -->
+      <div class="pr-head-row">
+        <div class="pr-status">
+          <span v-if="calStatus.main" class="pr-status-main">{{ calStatus.main }}</span>
+          <span class="pr-status-sub">{{ calStatus.sub }}</span>
+        </div>
+        <div class="pr-head-right">
+          <button class="pr-today" @click="goToday">回到今天</button>
           <button class="pr-arrow" type="button" aria-label="上个月" @click="shift(-1)">‹</button>
           <span class="pr-title">{{ year }}年{{ month }}月</span>
           <button class="pr-arrow" type="button" aria-label="下个月" @click="shift(1)">›</button>
         </div>
-        <span class="pr-nav-side" />
-      </div>
-
-      <!-- 日历头部状态（参考华为：经期第 X 天 / 距经期 X 天 / 距排卵期 X 天） -->
-      <div v-if="calStatus.main" class="pr-status">
-        <span class="pr-status-main">{{ calStatus.main }}</span>
-        <span class="pr-status-sub">{{ calStatus.sub }}</span>
       </div>
 
       <div class="pr-grid">
@@ -137,8 +135,8 @@ const month = ref(now.getMonth() + 1)
 const dayDate = ref(fmtDate(now))
 
 const cycles = computed(() => cyclesFromItems(items.value))
-/* 已封存的周期数：≥2 条才开始显示预测/排卵期；否则沿用默认周期规律 */
-const enough = computed(() => cycles.value.filter((c) => !c.ongoing && c.end).length >= 2)
+/* 有任意经期记录即按规律预测（封存 <2 条时用默认 28/7 天，够后按真实统计） */
+const enough = computed(() => cycles.value.length > 0)
 const predSet = computed(() => enough.value ? new Set(predictedDates(cycles.value)) : new Set())
 /* 排卵期窗口（下次经期开始 - 14 天 ±2 天）所有日期 */
 const ovuSet = computed(() => {
@@ -158,28 +156,30 @@ function CN(s) {
   return d ? `${d.getMonth() + 1}月${d.getDate()}` : s
 }
 
-/* ═══ 日历头部状态（参考华为运动健康）═══
-   经期中 → 「经期第 X 天」；否则按预测倒计时：
-   排卵日更近 → 「距排卵期 X 天」；否则 → 「距经期 X 天 / 经期推迟 X 天」 */
+/* ═══ 日历头部状态（固定显示）═══
+   经期中 → 「经期第 X 天」；排卵窗口内 → 「排卵期第 X 天」；
+   否则 → 「距预测经期 X 天」；副标题固定「周期共 N 天」 */
 const calStatus = computed(() => {
   const t = todayStr()
   const sub = `周期共 ${avgCycle(cycles.value)} 天`
-  if (oc.value) {
-    const e = ongoingDisplayEnd(cycles.value, oc.value)
-    if (t <= e) return { main: `经期第 ${dayDiff(t, oc.value.start) + 1} 天`, sub }
-  }
-  if (!enough.value) return { main: '', sub: '' }
-  const pred = predictNext(cycles.value)
-  if (!pred) return { main: '', sub: '' }
-  const du = dayDiff(pred.start, t)
+  /* 1. 今天在经期内（含进行中的按规律预测段、已封存周期）→ 经期第 X 天 */
+  const todayCyc = cycleOf(cycles.value, t)
+  if (todayCyc) return { main: `经期第 ${dayDiff(t, todayCyc.start) + 1} 天`, sub }
+  /* 2. 今天在排卵窗口内 → 排卵期第 X 天 */
   const ovu = ovulationWindow(cycles.value)
-  const dou = ovu ? dayDiff(ovu.day, t) : null
-  if (dou != null && dou >= 0 && dou < du) {
-    return { main: dou === 0 ? '排卵期今天' : `距排卵期 ${dou} 天`, sub }
+  if (ovu && t >= ovu.start && t <= ovu.end) {
+    return { main: `排卵期第 ${dayDiff(t, ovu.start) + 1} 天`, sub }
   }
-  if (du > 0) return { main: `距经期 ${du} 天`, sub }
-  if (du === 0) return { main: '经期预计今天来', sub }
-  return { main: `经期推迟 ${-du} 天`, sub }
+  /* 3. 距预测经期 X 天（记录少时按默认 28/7 规律预测） */
+  const pred = predictNext(cycles.value)
+  if (pred) {
+    const du = dayDiff(pred.start, t)
+    if (du > 0) return { main: `距预测经期 ${du} 天`, sub }
+    if (du === 0) return { main: '预测经期今天来', sub }
+    return { main: `预测经期已过 ${-du} 天`, sub }
+  }
+  /* 无任何记录：只显示默认周期规律 */
+  return { main: '', sub }
 })
 
 const cells = computed(() => {
@@ -532,17 +532,15 @@ onMounted(load)
 .pr-page { min-height: 100%; background: #fbf7f4; }
 .pr-body { padding: 12px; }
 
-.pr-nav { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin: 4px 0 10px; }
-.pr-today { justify-self: start; border: 1px solid var(--border); background: rgba(255,255,255,.6); color: var(--text-soft); border-radius: 999px; padding: 4px 12px; font-size: 12px; }
-.pr-nav-mid { display: flex; align-items: center; justify-content: center; gap: 6px; }
-.pr-arrow { border: none; background: transparent; font-size: 20px; color: var(--text-soft); padding: 0 4px; }
-.pr-title { font-size: 15px; font-weight: 600; min-width: 96px; text-align: center; }
-.pr-nav-side { min-width: 0; }
-
-/* 日历头部状态（参考华为：大字状态 + 周期共 N 天） */
-.pr-status { margin: 0 2px 12px; }
+/* 头部行：左状态文字 + 右（回到今天/月份切换），同一行 */
+.pr-head-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; margin: 4px 0 12px; }
+.pr-status { min-width: 0; flex: 1 1 auto; }
 .pr-status-main { display: block; font-size: 21px; font-weight: 700; color: #8a5a5a; line-height: 1.25; }
 .pr-status-sub { display: block; font-size: 12px; color: var(--text-soft); margin-top: 3px; }
+.pr-head-right { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; padding-top: 2px; }
+.pr-today { border: 1px solid var(--border); background: rgba(255,255,255,.6); color: var(--text-soft); border-radius: 999px; padding: 4px 12px; font-size: 12px; margin-right: 2px; }
+.pr-arrow { border: none; background: transparent; font-size: 18px; color: var(--text-soft); padding: 0 2px; }
+.pr-title { font-size: 13px; font-weight: 600; min-width: 84px; text-align: center; white-space: nowrap; }
 
 /* 正在更新预测（参考华为加载反馈） */
 .pr-updating { position: fixed; inset: 0; background: rgba(70,45,45,.35); display: flex; align-items: center; justify-content: center; z-index: 80; }
