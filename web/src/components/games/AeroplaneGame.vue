@@ -1,5 +1,11 @@
 <template>
   <div class="ap-wrap">
+    <!-- 难度切换：简单=一架到终点即胜；困难=四架全部到终点 -->
+    <div class="ap-mode">
+      <button type="button" :class="{ on: mode === 'easy' }" @click="setMode('easy')">简单</button>
+      <button type="button" :class="{ on: mode === 'hard' }" @click="setMode('hard')">困难</button>
+      <span class="ap-mode-tip">{{ mode === 'easy' ? '一架到终点即胜' : '四架全到终点' }}</span>
+    </div>
     <div class="ap-bar">
       <span class="ap-side" :class="{ on: turn === 'ai' && !over }"><AppAvatar :name="opponent.name" :avatar="opponent.avatar" :size="20" />对方 <b>{{ aiHome }}</b>/4</span>
       <span class="ap-dice" :class="{ rolling }" @click="roll">{{ diceFace }}</span>
@@ -25,6 +31,7 @@
       <span v-for="(p, i) in aiPlanes" :key="'a' + i" class="ap-plane ai" :style="planeStyle('red', i, p.st)">✈️</span>
     </div>
     <p class="ap-legend">↻ 沿公共赛道顺时针前进 · 踩同色三角飞到远端 · 经本方通道冲向中心终点</p>
+    <p class="ap-mode-hint">{{ mode === 'easy' ? '简单模式：任意一架飞机最先到达中心终点即获胜' : '困难模式：四架飞机需全部到达中心终点，最先完成者获胜' }}</p>
 
     <p class="ap-status">{{ statusText }}</p>
     <p class="ap-log">{{ logText }}</p>
@@ -135,6 +142,9 @@ const diceValue = ref(6)
 const over = ref(false)
 const logText = ref('掷出 6 点，一架飞机起飞')
 const resultText = ref('')
+/* 难度：easy=任意一架到中心即胜；hard=四架全部到中心才胜 */
+const mode = ref('easy')
+let aiToken = 0 /* 重开/切难度时自增，作废进行中的对方回合定时器 */
 
 const diceFace = computed(() => DICE_FACES[diceValue.value - 1] || '🎲')
 const myHome = computed(() => myPlanes.value.filter((p) => p.st >= CENTER).length)
@@ -157,9 +167,10 @@ function ringIdx(color, st) {
 /* 一步的落点结算：起飞 / 前进 / 踩三角飞行 / 精确到中心 / 超过反弹 */
 function resolve(color, st, v) {
   if (st === -1) return v === 6 ? { to: 0, takeoff: true } : null
+  if (st >= CENTER) return null /* 已到家，不再参与移动（困难模式需四架都在家） */
   let t = st + v
   if (t === 5) t += FLY /* 踩到本方三角飞行格 → 飞到远端同色三角 */
-  if (t === CENTER) return { to: CENTER, win: true }
+  if (t === CENTER) return { to: CENTER } /* 到达中心（是否胜利由模式决定） */
   if (t > CENTER) return { to: BOUNCE_BASE - t } /* 反弹，仍在通道内 */
   return { to: t }
 }
@@ -209,6 +220,7 @@ function dotCls(st) {
 }
 
 function restart() {
+  aiToken++
   myPlanes.value = [{ st: -1 }, { st: -1 }, { st: -1 }, { st: -1 }]
   aiPlanes.value = [{ st: -1 }, { st: -1 }, { st: -1 }, { st: -1 }]
   turn.value = 'me'
@@ -286,13 +298,13 @@ function applyMove(side, idx, v, takeoff = false) {
   /* 事件文案 */
   if (takeoff) logText.value = `${who}掷出 6 点，一架飞机起飞`
   else if (from + v === 5) logText.value = `${who}踩到飞行格，直接飞到远端同色三角！`
-  else if (r.win) logText.value = `${who}的飞机冲过终点！`
+  else if (r.to === CENTER) logText.value = `${who}的飞机冲过终点！`
   else if (r.to !== from + v) logText.value = `${who}超过终点，反弹回通道第 ${r.to - 55} 格`
   else if (from < 56 && r.to >= 56) logText.value = `${who}的飞机进入本方终点通道`
   else logText.value = `${who}前进到${r.to <= 55 ? '第 ' + r.to + ' 格' : '通道第 ' + (r.to - 55) + ' 格'}`
 
   /* 撞机：落到对方所在格，把对方全部撞回停机坪 */
-  if (!r.win) {
+  if (r.to !== CENTER) {
     const opp = side === 'me' ? aiPlanes.value : myPlanes.value
     const oppColor = side === 'me' ? AI : MY
     const at = ringIdx(color, r.to)
@@ -303,7 +315,11 @@ function applyMove(side, idx, v, takeoff = false) {
     }
   }
 
-  if (r.win) { finish(side === 'me'); return }
+  /* 胜负判定（按难度）：
+     简单：任意一架到达中心即胜；困难：四架全部到达中心才胜 */
+  const homeCount = planes.filter((p) => p.st >= CENTER).length
+  const won = mode.value === 'easy' ? r.to === CENTER : homeCount === 4
+  if (won) { finish(side === 'me'); return }
   /* 掷 6 再掷一次 */
   if (v === 6) {
     if (side === 'ai') aiTurn()
@@ -323,8 +339,9 @@ function passTurn(side) {
 
 function aiTurn() {
   if (over.value) return
+  const tok = aiToken
   setTimeout(() => {
-    if (over.value) return
+    if (over.value || tok !== aiToken) return
     const v = 1 + Math.floor(Math.random() * 6)
     diceValue.value = v
     doMove('ai', v)
@@ -333,15 +350,26 @@ function aiTurn() {
 
 function finish(iWin) {
   over.value = true
-  resultText.value = iWin ? '你的飞机率先抵达中心终点，获胜！' : '对方的飞机先到终点，你输了'
+  const easy = mode.value === 'easy'
+  const goal = easy ? '一架飞机率先抵达中心终点' : '四架飞机全部抵达终点'
+  resultText.value = iWin
+    ? `你的${goal}，获胜！`
+    : `对方${easy ? '抢先让一架飞机抵达中心终点' : '抢先让四架飞机全部抵达终点'}，你输了`
   emit('over', {
     win: iWin,
     title: iWin ? '胜利' : '失利',
-    detail: iWin ? '你的飞机率先抵达中心终点' : '对方抢先抵达中心终点',
+    detail: iWin ? `你的${goal}` : `对方${goal}`,
     /* 历史记录里不写「谁先抵达中心终点」这类话（胜负 tag 已表达）；
        rec 在对局页 spread 于 detail 之后，可覆盖历史字段而不影响结算弹窗 */
     rec: { detail: '' }
   })
+}
+
+/* 切换难度：改变胜负判定并重新开始本局 */
+function setMode(m) {
+  if (m === mode.value) return
+  mode.value = m
+  restart()
 }
 
 defineExpose({ restart })
@@ -425,6 +453,15 @@ restart()
   50% { transform: scale(1.22); }
 }
 .ap-legend { text-align: center; font-size: 11px; color: var(--text-soft); margin-top: 10px; line-height: 1.6; }
+/* 难度切换 */
+.ap-mode { display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 10px; }
+.ap-mode button {
+  border: 1px solid var(--border); background: var(--bg-screen); color: var(--text-soft);
+  font-size: 12.5px; padding: 5px 16px; border-radius: 999px; cursor: pointer; transition: all .15s;
+}
+.ap-mode button.on { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+.ap-mode-tip { font-size: 11px; color: var(--text-soft); }
+.ap-mode-hint { text-align: center; font-size: 11.5px; color: var(--text-soft); margin: 6px 0 0; line-height: 1.6; }
 .ap-status { text-align: center; font-size: 14px; color: var(--accent); font-weight: 600; margin: 10px 0 0; }
 .ap-log { text-align: center; font-size: 12px; color: var(--text-soft); margin: 8px 0 10px; min-height: 16px; }
 .ap-btns { display: flex; justify-content: center; gap: 10px; }

@@ -47,7 +47,7 @@
           v-for="(c, i) in cells"
           :key="i"
           class="mo-cell"
-          :class="{ empty: !c.day, today: c.today, has: c.me || c.him }"
+          :class="{ empty: !c.day, today: c.today, has: c.me || c.him, selected: c.date === dayDate }"
           :style="tintOf(c)"
           @click="c.day && pick(c)"
         >
@@ -491,6 +491,7 @@ function tagName(key) {
   return t ? t.name : key
 }
 function tintOf(c) {
+  if (c.date && c.date === dayDate.value) return { background: 'var(--accent)', color: '#fff' }
   const key = c.me || c.him
   return key ? { background: colorOf(key) + '1a' } : null
 }
@@ -1060,6 +1061,9 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 }
 .mo-cell.empty { background: transparent; }
 .mo-cell.today { outline: 1.5px solid var(--accent); }
+.mo-cell.selected { border: 1.5px solid var(--accent); }
+.mo-cell.selected .mo-day { font-weight: 700; }
+.mo-cell.selected.today { outline: 1.5px solid #fff; }
 .mo-day { font-size: 13px; color: var(--text); }
 /* 同一天并排两个半透明小圆点：左 TA 右我，颜色各取当日最新心情色 */
 .mo-dots { display: flex; align-items: center; gap: 3px; height: 6px; }
