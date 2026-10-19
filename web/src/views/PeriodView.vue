@@ -14,6 +14,12 @@
         <span class="pr-nav-side" />
       </div>
 
+      <!-- 日历头部状态（参考华为：经期第 X 天 / 距经期 X 天 / 距排卵期 X 天） -->
+      <div v-if="calStatus.main" class="pr-status">
+        <span class="pr-status-main">{{ calStatus.main }}</span>
+        <span class="pr-status-sub">{{ calStatus.sub }}</span>
+      </div>
+
       <div class="pr-grid">
         <span v-for="w in WEEK" :key="w" class="pr-week">{{ w }}</span>
         <button
@@ -94,6 +100,14 @@
       </div>
 
       <button class="pr-clear" type="button" @click="askClearAll">清空经期记录</button>
+
+      <!-- 更新预测加载反馈（参考华为「正在更新预测...」） -->
+      <div v-if="updating" class="pr-updating">
+        <div class="pr-updating-card">
+          <span class="pr-spinner" />
+          <span>正在更新预测...</span>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -109,7 +123,8 @@ import { confirmDialog } from '@/utils/dialog'
 import {
   cyclesFromItems, cycleOf, predictedDates,
   fmtDate, addDays, parseDate, dayDiff,
-  ongoingCycle, ongoingDisplayEnd, ovulationWindow
+  ongoingCycle, ongoingDisplayEnd, ovulationWindow,
+  avgCycle, predictNext
 } from '@/utils/period'
 
 const { items, loading, load, add, update, remove: removeItem } = useItems('period')
@@ -138,6 +153,34 @@ const ovuSet = computed(() => {
 const isOngoing = computed(() => !!ongoingCycle(cycles.value))
 
 function todayStr() { return fmtDate(new Date()) }
+function CN(s) {
+  const d = parseDate(s)
+  return d ? `${d.getMonth() + 1}月${d.getDate()}` : s
+}
+
+/* ═══ 日历头部状态（参考华为运动健康）═══
+   经期中 → 「经期第 X 天」；否则按预测倒计时：
+   排卵日更近 → 「距排卵期 X 天」；否则 → 「距经期 X 天 / 经期推迟 X 天」 */
+const calStatus = computed(() => {
+  const t = todayStr()
+  const sub = `周期共 ${avgCycle(cycles.value)} 天`
+  if (oc.value) {
+    const e = ongoingDisplayEnd(cycles.value, oc.value)
+    if (t <= e) return { main: `经期第 ${dayDiff(t, oc.value.start) + 1} 天`, sub }
+  }
+  if (!enough.value) return { main: '', sub: '' }
+  const pred = predictNext(cycles.value)
+  if (!pred) return { main: '', sub: '' }
+  const du = dayDiff(pred.start, t)
+  const ovu = ovulationWindow(cycles.value)
+  const dou = ovu ? dayDiff(ovu.day, t) : null
+  if (dou != null && dou >= 0 && dou < du) {
+    return { main: dou === 0 ? '排卵期今天' : `距排卵期 ${dou} 天`, sub }
+  }
+  if (du > 0) return { main: `距经期 ${du} 天`, sub }
+  if (du === 0) return { main: '经期预计今天来', sub }
+  return { main: `经期推迟 ${-du} 天`, sub }
+})
 
 const cells = computed(() => {
   const first = new Date(year.value, month.value - 1, 1)
@@ -174,26 +217,50 @@ const dayIndex = computed(() => {
   if (!c) return 0
   return dayDiff(targetDate.value, c.start) + 1
 })
-/* 进行中的经期及其系统估计的最后一天 */
+/* 进行中的经期 */
 const oc = computed(() => ongoingCycle(cycles.value))
-const ocEnd = computed(() => (oc.value ? ongoingDisplayEnd(cycles.value, oc.value) : ''))
+/* 结束开关的目标周期：
+   - 进行中 → 目标日 ∈ (第一天, 今天]（第一天归开始开关；含超过估计最后一天的补结束）
+   - 已封存 → 目标日 ∈ [第一天, 结束日]（开关 ON，可提前）
+   - 最近一条已封存 → 目标日 ∈ (结束日, 今天]（开关 OFF，可补/延长结束） */
+const endTarget = computed(() => {
+  if (isFuture.value) return null
+  const t = targetDate.value
+  if (oc.value) {
+    return t > oc.value.start && t <= todayStr() ? oc.value : null
+  }
+  if (selCycle.value) {
+    const c = selCycle.value
+    return t >= c.start && t <= (c.end || c.start) ? c : null
+  }
+  const last = cycles.value[cycles.value.length - 1]
+  if (last && t > (last.end || last.start) && t <= todayStr()) return last
+  return null
+})
+const showEndSwitch = computed(() => !!endTarget.value)
 /* 开关显示规则：
-   - 目标日在进行中经期的第一天之前 → 「经期开始了吗？」（打开 → 该日记为第一天）
-   - 目标日在 [第一天, 系统估计最后一天] → 「经期结束了吗？」（打开 → 该日为最后一天）
+   - 目标日 ≤ 进行中经期的第一天（含当天）→ 「经期开始了吗？」（打开 → 该日记为/改为第一天）
+   - 目标日 ∈ (第一天, 结束日/今天] → 「经期结束了吗？」（打开 → 该日为最后一天）
    - 无进行中经期且该日不在任何记录中 → 「经期开始了吗？」（打开 → 新建经期）
-   - 历史经期内的天 / 超出估计经期的天 → 不显示开关（仅可补录流量/痛经） */
+   - 历史经期内的天 / 超出结束日的天 → 结束开关（仅可补录流量/痛经） */
 const showStartSwitch = computed(() => {
   if (isFuture.value) return false
-  if (oc.value) return targetDate.value < oc.value.start
+  if (endTarget.value) return false
+  if (oc.value) return targetDate.value <= oc.value.start
   return !inCycle.value
 })
-const showEndSwitch = computed(() => {
-  if (isFuture.value || !oc.value) return false
-  const end = ocEnd.value > todayStr() ? ocEnd.value : todayStr()
-  return targetDate.value >= oc.value.start && targetDate.value <= end
+/* 开关状态：
+   - 结束开关：已封存且该日 ≤ 结束日 → ON；进行中（未确认结束）→ OFF
+   - 开始开关：进行中经期的第一天就是该日 → ON（刚标记过），否则 OFF */
+const switchOn = computed(() => {
+  if (showEndSwitch.value) {
+    const c = endTarget.value
+    if (!c) return false
+    if (c.ongoing) return false
+    return targetDate.value <= (c.end || c.start)
+  }
+  return !!oc.value && oc.value.start === targetDate.value
 })
-/* 开关状态：结束开关场景 = ON（经期进行中）；开始开关场景 = OFF */
-const switchOn = computed(() => showEndSwitch.value)
 
 const FLOWS = [
   { v: 'light', t: '少' },
@@ -208,69 +275,143 @@ watch([targetDate, cycles], () => {
   Object.assign(dayForm, { flow: rec ? rec.flow || '' : '', pain: rec ? rec.pain || 'none' : 'none' })
 }, { immediate: true })
 
-/* 开关：开始场景点开 = 记录开始日（新建 / 把第一天提前到该日）；结束场景点关 = 该日为最后一天 */
-function onSwitch(val) {
+/* 开关交互（参考华为运动健康）：
+   结束开关「经期结束了吗？」：
+     - 进行中默认 OFF（未确认结束）；点开 → 以该日为最后一天封存
+     - 已封存：该日 ≤ 结束日 → ON；点关 → 最后一天提前到前一天（早于第一天则确认删除整条）
+     - 超过结束日的次日/以后 → OFF；点开 → 补/延长结束到该日
+   开始开关「经期开始了吗？」：
+     - 默认 OFF；点开 → 无进行中经期则新建，有则确认后更改开始日
+     - 再点关 → 撤销（改过的恢复原开始日，新建的确认后删除） */
+async function onSwitch(val) {
+  if (isFuture.value) return
+  const t = targetDate.value
   if (showEndSwitch.value) {
-    if (!val) endPeriod(targetDate.value)
+    const c = endTarget.value
+    if (!c) return
+    if (val) {
+      /* 点开：以该日为最后一天 */
+      if (c.ongoing || t > (c.end || c.start)) await setPeriodEnd(c, t)
+    } else if (!c.ongoing && t <= (c.end || c.start)) {
+      /* 点关：最后一天提前到前一天 */
+      const newEnd = addDays(t, -1)
+      if (newEnd < c.start) {
+        const ok = await confirmDialog({
+          title: '取消这次经期？',
+          text: `${CN(c.start)} 将不再是经期开始日，这条经期记录会被删除。`,
+          danger: true
+        })
+        if (ok) await runUpdate(() => removeItem(c.id), { title: '已取消这次经期' })
+      } else {
+        await setPeriodEnd(c, newEnd)
+      }
+    }
     return
   }
-  if (showStartSwitch.value && val) {
-    if (oc.value) moveStart(targetDate.value)
-    else startPeriod(targetDate.value)
+  if (showStartSwitch.value) {
+    if (val) {
+      if (oc.value) {
+        /* 该日已落在其他经期记录里时，不允许再把开始日改过来 */
+        if (selCycle.value && selCycle.value.id !== oc.value.id) {
+          toast.pushToast({ title: '该日已在其他经期记录中' })
+          return
+        }
+        await askMoveStart(t)
+      } else {
+        await runUpdate(() => startPeriod(t), { title: '已记录经期开始' })
+      }
+    } else if (oc.value && oc.value.start === t) {
+      await undoStart()
+    }
   }
 }
 
+/* 「正在更新预测...」：执行写入 → 短暂加载 → 结果 toast（参考华为） */
+const updating = ref(false)
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+async function runUpdate(fn, done) {
+  updating.value = true
+  try {
+    await fn()
+  } catch (e) {
+    updating.value = false
+    toast.pushToast({ title: '失败', text: e.message })
+    return
+  }
+  await sleep(650)
+  updating.value = false
+  if (done) toast.pushToast(done)
+}
+
 async function startPeriod(date) {
-  if (ongoingCycle(cycles.value)) return
   let t = date || todayStr()
   if (t > todayStr()) t = todayStr()
-  try {
-    await add({ title: t, body: '', extra: { start: t, end: t, ongoing: true, days: {} } })
-    toast.pushToast({ title: '已记录经期开始' })
-  } catch (e) {
-    toast.pushToast({ title: '失败', text: e.message })
-  }
+  await add({ title: t, body: '', extra: { start: t, end: t, ongoing: true, days: {} } })
 }
-/* 把进行中经期的第一天提前到该日（该日记为第 1 天） */
-async function moveStart(date) {
-  const cyc = ongoingCycle(cycles.value)
-  if (!cyc || date >= cyc.start) return
-  const raw = findRaw(cyc.id)
-  if (!raw) return
-  const ex = raw.extra || {}
-  try {
-    await update(cyc.id, {
+
+/* 更改进行中经期的开始日：先弹窗确认（华为提示样式） */
+async function askMoveStart(date) {
+  const c = ongoingCycle(cycles.value)
+  if (!c || date >= c.start) return
+  const ok = await confirmDialog({
+    title: '提示',
+    text: `您已将 ${CN(c.start)} 标记为经期开始日。是否将经期开始日更改为 ${CN(date)}？`
+  })
+  if (!ok) return
+  await runUpdate(async () => {
+    const raw = findRaw(c.id)
+    if (!raw) return
+    const ex = raw.extra || {}
+    await update(c.id, {
       title: date,
       body: ex.note || '',
-      extra: { ...ex, start: date }
+      extra: { ...ex, start: date, prevStart: c.start }
     })
-    toast.pushToast({ title: '已记为经期第一天' })
-  } catch (e) {
-    toast.pushToast({ title: '失败', text: e.message })
-  }
+  }, { title: '已记为经期第一天' })
 }
-/* 结束：以该日为本次经期最后一天，记录完成并更新统计与预测 */
-async function endPeriod(date) {
-  const cyc = ongoingCycle(cycles.value)
-  if (!cyc) return
-  const raw = findRaw(cyc.id)
+
+/* 撤销开始日：改过的恢复原开始日；新建的确认后删除 */
+async function undoStart() {
+  const c = ongoingCycle(cycles.value)
+  if (!c) return
+  const raw = findRaw(c.id)
+  const ex = (raw && raw.extra) || {}
+  if (ex.prevStart) {
+    await runUpdate(async () => {
+      const nx = { ...ex }
+      delete nx.prevStart
+      await update(c.id, {
+        title: ex.prevStart,
+        body: ex.note || '',
+        extra: { ...nx, start: ex.prevStart }
+      })
+    }, { title: '已恢复原开始日' })
+    return
+  }
+  const ok = await confirmDialog({
+    title: '取消这次经期？',
+    text: `${CN(c.start)} 将不再是经期开始日，这条经期记录会被删除。`,
+    danger: true
+  })
+  if (ok) await runUpdate(() => removeItem(c.id), { title: '已取消这次经期' })
+}
+
+/* 以 end 为最后一天封存/更新该周期，并刷新统计与预测 */
+async function setPeriodEnd(c, end) {
+  const raw = findRaw(c.id)
   if (!raw) return
   const ex = raw.extra || {}
-  const today = todayStr()
-  let t = date || today
-  if (t > today) t = today
-  if (t < cyc.start) t = cyc.start
-  const dur = dayDiff(t, cyc.start) + 1
-  try {
-    await update(cyc.id, {
-      title: cyc.start,
+  const dur = dayDiff(end, c.start) + 1
+  const wasOngoing = !!c.ongoing
+  await runUpdate(async () => {
+    await update(c.id, {
+      title: c.start,
       body: ex.note || '',
-      extra: { ...ex, start: cyc.start, end: t, ongoing: false, duration: dur }
+      extra: { ...ex, start: c.start, end, ongoing: false, duration: dur }
     })
-    toast.pushToast({ title: '经期已结束', text: `本次共 ${dur} 天，已更新统计与预测` })
-  } catch (e) {
-    toast.pushToast({ title: '失败', text: e.message })
-  }
+  }, wasOngoing
+    ? { title: '经期已结束', text: `本次共 ${dur} 天，统计与预测已更新` }
+    : { title: '已更新经期记录', text: `本次共 ${dur} 天` })
 }
 
 function shift(n) {
@@ -397,6 +538,17 @@ onMounted(load)
 .pr-arrow { border: none; background: transparent; font-size: 20px; color: var(--text-soft); padding: 0 4px; }
 .pr-title { font-size: 15px; font-weight: 600; min-width: 96px; text-align: center; }
 .pr-nav-side { min-width: 0; }
+
+/* 日历头部状态（参考华为：大字状态 + 周期共 N 天） */
+.pr-status { margin: 0 2px 12px; }
+.pr-status-main { display: block; font-size: 21px; font-weight: 700; color: #8a5a5a; line-height: 1.25; }
+.pr-status-sub { display: block; font-size: 12px; color: var(--text-soft); margin-top: 3px; }
+
+/* 正在更新预测（参考华为加载反馈） */
+.pr-updating { position: fixed; inset: 0; background: rgba(70,45,45,.35); display: flex; align-items: center; justify-content: center; z-index: 80; }
+.pr-updating-card { background: #fff; border-radius: 14px; padding: 20px 26px; display: flex; align-items: center; gap: 12px; font-size: 14px; color: #8a5a5a; box-shadow: 0 8px 28px rgba(120,70,70,.28); }
+.pr-spinner { width: 18px; height: 18px; border: 2px solid #f0d9dc; border-top-color: #c98891; border-radius: 50%; animation: pr-spin .8s linear infinite; flex: 0 0 auto; }
+@keyframes pr-spin { to { transform: rotate(360deg); } }
 
 .pr-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
 .pr-week { text-align: center; font-size: 11px; color: var(--text-soft); padding-bottom: 4px; }

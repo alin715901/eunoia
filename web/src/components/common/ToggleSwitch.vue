@@ -4,18 +4,25 @@
       type="checkbox"
       :checked="modelValue"
       :disabled="disabled"
-      @change="$emit('update:modelValue', $event.target.checked)"
+      @change="onChange"
     />
     <span class="ts-track"></span>
   </label>
 </template>
 
 <script setup>
-defineProps({
+import { ref } from 'vue'
+const props = defineProps({
   modelValue: { type: Boolean, default: false },
   disabled: { type: Boolean, default: false }
 })
-defineEmits(['update:modelValue'])
+const emit = defineEmits(['update:modelValue'])
+function onChange(e) {
+  emit('update:modelValue', e.target.checked)
+  /* 立即把 DOM 还原为当前 modelValue：父组件状态真正变化后由 :checked 同步，
+     避免「点了但状态没变（如被弹窗取消）」时开关视觉残留 */
+  e.target.checked = props.modelValue
+}
 </script>
 
 <style scoped>
