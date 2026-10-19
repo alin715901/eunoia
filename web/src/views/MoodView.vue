@@ -59,9 +59,47 @@
         </button>
       </div>
 
-      <!-- 当日双方记录：不弹窗，直接在日历下方（头像 + 名称 + 心情 + 事件 + 便签条碎碎念） -->
-      <h3 class="mo-sec">{{ dayTitle }}</h3>
-      <div class="mo-day">
+      <!-- 日历下方展示区：右上角「查看分布」切换本月心情分布 -->
+      <div class="mo-sec-head">
+        <h3 class="mo-sec">{{ distMode ? `本月心情分布 · ${year}年${month}月` : dayTitle }}</h3>
+        <button class="mo-dist-btn" type="button" :aria-label="distMode ? '取消分布' : '查看分布'" @click="toggleDist">
+          {{ distMode ? '取消' : '查看分布' }}
+        </button>
+      </div>
+
+      <!-- 本月心情分布：统计当前浏览年月里两人的心情出现次数 -->
+      <div v-if="distMode" class="mo-dist">
+        <div class="mo-dist-grp">
+          <div class="mo-dist-grp-head"><i class="mo-idot me" /><span>我</span><span class="mo-dist-total">共 {{ myDistTotal }} 条</span></div>
+          <p v-if="!myDist.length" class="mo-dist-empty">这个月还没有我的记录</p>
+          <div v-for="d in myDist" :key="'me-' + d.tag.key" class="mo-dist-row">
+            <span class="mo-dist-name">
+              <MoodFace v-if="!d.tag.custom" :name="d.tag.key" :size="14" :color="d.tag.color" />
+              <i v-else class="mo-tag-dot" :style="{ background: d.tag.color }" />
+              {{ d.tag.name }}
+            </span>
+            <span class="mo-dist-bar"><i :style="{ width: myBar(d.count), background: d.tag.color }" /></span>
+            <span class="mo-dist-num">{{ d.count }}</span>
+          </div>
+        </div>
+
+        <div class="mo-dist-grp">
+          <div class="mo-dist-grp-head"><i class="mo-idot him" /><span>{{ himName }}</span><span class="mo-dist-total">共 {{ hisDistTotal }} 条</span></div>
+          <p v-if="!hisDist.length" class="mo-dist-empty">这个月还没有{{ himName }}的记录</p>
+          <div v-for="d in hisDist" :key="'him-' + d.tag.key" class="mo-dist-row">
+            <span class="mo-dist-name">
+              <MoodFace v-if="!d.tag.custom" :name="d.tag.key" :size="14" :color="d.tag.color" />
+              <i v-else class="mo-tag-dot" :style="{ background: d.tag.color }" />
+              {{ d.tag.name }}
+            </span>
+            <span class="mo-dist-bar"><i :style="{ width: hisBar(d.count), background: d.tag.color }" /></span>
+            <span class="mo-dist-num">{{ d.count }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- 当日双方记录：不弹窗，直接在日历下方（我的便签卡片） -->
+      <div v-else class="mo-day">
         <p v-if="!myItem && !hisItem" class="mo-day-empty">
           这天还没有记录<br /><span class="md-empty-sub">点日历上的任意一天，或点右上角 ＋ 开始记录</span>
         </p>
@@ -281,6 +319,8 @@ import { useNotificationsStore } from '@/stores/notifications'
    月历同一天并排两个半透明小圆点（左 TA 右我，颜色各取当日最新心情色）；
    点日期不弹窗：日历下方直接展示当天两人的记录卡片
              （头像 + 名称 + 心情 + 事件 + 便签条碎碎念，我的卡片带铅笔可改）；
+   展示区右上角「查看分布」可切换本月心情分布（按当前浏览年月统计两人各心情出现次数，
+             带进度条；再点「取消」回到便签卡片）；
    保存/修改我的记录：时刻刷新为当前（改了心情/事件，时间就算最新一次）；
    联系人切换在顶部导航栏最右侧；记录按当前互动的联系人分开（全局可绑多个梦角）。 */
 
@@ -484,6 +524,33 @@ const myEvents = computed(() => eventsOf(myItem.value))
 const hisEvents = computed(() => eventsOf(hisItem.value))
 const myTime = computed(() => (myItem.value ? timeOf(myItem.value) : ''))
 const hisTime = computed(() => (hisItem.value ? timeOf(hisItem.value) : ''))
+
+/* 本月心情分布：统计当前浏览年月里两人的心情出现次数（随 ‹ › 切换月份而变） */
+const distMode = ref(false)
+function toggleDist() { distMode.value = !distMode.value }
+const PRESET_BY_KEY = Object.fromEntries(PRESET_MOODS.map((t) => [t.key, t]))
+const monthPrefix = computed(() => `${year.value}-${String(month.value).padStart(2, '0')}-`)
+const monthItems = computed(() => items.value.filter((x) => x.title && x.title.startsWith(monthPrefix.value)))
+function distList(pred) {
+  const counts = {}
+  for (const it of monthItems.value.filter(pred)) {
+    const k = moodKeyOf(it.extra && it.extra.mood)
+    if (!k) continue
+    counts[k] = (counts[k] || 0) + 1
+  }
+  return Object.keys(counts)
+    .map((k) => {
+      const t = tagOf(k) || PRESET_BY_KEY[k] || { key: k, name: tagName(k) || k, color: '#b5b0a3', custom: false }
+      return { tag: t, count: counts[k] }
+    })
+    .sort((a, b) => b.count - a.count)
+}
+const myDist = computed(() => distList(isMine))
+const hisDist = computed(() => distList(isHis))
+const myDistTotal = computed(() => myDist.value.reduce((s, d) => s + d.count, 0))
+const hisDistTotal = computed(() => hisDist.value.reduce((s, d) => s + d.count, 0))
+function myBar(n) { const max = Math.max(1, ...myDist.value.map((d) => d.count)); return (n / max * 100).toFixed(1) + '%' }
+function hisBar(n) { const max = Math.max(1, ...hisDist.value.map((d) => d.count)); return (n / max * 100).toFixed(1) + '%' }
 
 async function reload() {
   try {
@@ -998,6 +1065,30 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 .mo-dots { display: flex; align-items: center; gap: 3px; height: 6px; }
 .mo-dots i { width: 6px; height: 6px; border-radius: 50%; opacity: 0.55; }
 .mo-sec { font-size: 13px; color: var(--text-soft); margin: 18px 0 10px; font-weight: 500; }
+
+/* 日历下方标题行：标题（左）+ 右上角「查看分布 / 取消」（右） */
+.mo-sec-head { display: flex; align-items: center; gap: 10px; margin: 18px 0 10px; }
+.mo-sec-head .mo-sec { margin: 0; flex: 1; min-width: 0; }
+.mo-dist-btn {
+  flex: 0 0 auto; border: 1px solid var(--border); border-radius: 999px;
+  padding: 5px 12px; font-size: 12px; color: var(--text-soft); background: var(--bg-screen);
+}
+.mo-dist-btn:active { transform: scale(0.96); }
+/* 本月心情分布面板（两栏纸卡：我 / TA） */
+.mo-dist { display: flex; flex-direction: column; gap: 14px; }
+.mo-dist-grp {
+  background: color-mix(in srgb, #f8f2df 80%, var(--bg-screen));
+  border: 1px solid color-mix(in srgb, #d9cca6 55%, var(--border));
+  border-radius: 2px; padding: 12px; box-shadow: 0 1px 2px rgba(0, 0, 0, .07);
+}
+.mo-dist-grp-head { display: flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 600; margin-bottom: 8px; }
+.mo-dist-grp-head .mo-dist-total { margin-left: auto; font-size: 11px; font-weight: 400; color: var(--text-soft); }
+.mo-dist-empty { margin: 2px 0 0; font-size: 12px; color: var(--text-soft); }
+.mo-dist-row { display: flex; align-items: center; gap: 8px; margin-top: 9px; }
+.mo-dist-name { display: flex; align-items: center; gap: 5px; font-size: 12.5px; color: var(--text); width: 66px; flex: 0 0 66px; }
+.mo-dist-bar { flex: 1; height: 8px; background: var(--bg-soft); border-radius: 999px; overflow: hidden; }
+.mo-dist-bar i { display: block; height: 100%; border-radius: 999px; }
+.mo-dist-num { width: 22px; text-align: right; font-size: 12px; color: var(--text-soft); font-variant-numeric: tabular-nums; }
 
 /* 双人小圆点（卡片名、表单标题用） */
 .mo-idot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
