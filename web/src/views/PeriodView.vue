@@ -30,13 +30,11 @@
             <i class="pr-flow" :class="c.dayRec.flow" />
             <i v-if="c.dayRec.pain && c.dayRec.pain !== 'none'" class="pr-pain" :class="c.dayRec.pain" />
           </span>
-          <i v-else-if="c.inCycle" class="pr-dot" />
-          <i v-else-if="c.ovu" class="pr-ovu-dot" />
         </button>
       </div>
 
       <div class="pr-legend">
-        <span><i class="pr-lg pr-lg-dot" /> 经期</span>
+        <span><i class="pr-lg pr-lg-cycle" /> 经期</span>
         <span><i class="pr-lg pr-lg-flow-light" /> 少</span>
         <span><i class="pr-lg pr-lg-flow-mid" /> 中</span>
         <span><i class="pr-lg pr-lg-flow-heavy" /> 多</span>
@@ -46,52 +44,56 @@
         <span v-if="enough"><i class="pr-lg pr-lg-ovu" /> 排卵期</span>
       </div>
 
-      <!-- 日历下方：选中日期的单卡片（标题=日期，卡片内只有一个开关） -->
-      <div v-if="selectedDate" class="pr-record">
-        <div class="pr-record-head">
-          <span class="pr-record-date">{{ selLabel }}</span>
-          <button class="pr-record-close" type="button" @click="selectedDate = ''">收起</button>
-        </div>
+      <!-- 未来日期：不能记录 -->
+      <div v-if="isFuture" class="pr-future">
+        <span class="pr-future-ic"><AppIcon name="calendar" :size="44" color="#e7bcc3" /></span>
+        <p class="pr-future-txt">未来的日子不能记录哦</p>
+      </div>
 
-        <!-- 单开关行：非经期 → 经期开始了（关）；进行中经期内 → 经期结束了（关） -->
-        <div v-if="showStartSwitch || showEndSwitch" class="pr-row">
+      <!-- 常驻记录卡：开关 + 流量 + 痛经（默认记录今天，点选日期后记录该日） -->
+      <div v-else class="pr-record">
+        <div class="pr-row">
           <span class="pr-row-ic"><AppIcon name="drop" :size="18" color="#c98891" /></span>
-          <span class="pr-row-label">{{ showEndSwitch ? '经期结束了' : '经期开始了' }}</span>
-          <ToggleSwitch :model-value="false" @update:model-value="onSwitch" />
+          <span class="pr-row-label">{{ isOngoing ? '经期结束了吗？' : '经期开始了吗？' }}</span>
+          <ToggleSwitch :key="switchKey" :model-value="false" @update:model-value="onSwitch" />
         </div>
-
-        <!-- 流量/痛经：经期内（含进行中与历史）均可补录 -->
-        <template v-if="selCycle">
-          <div class="pr-row">
-            <span class="pr-row-ic"><AppIcon name="drop" :size="18" color="#e0a4ad" /></span>
-            <span class="pr-row-label">流量</span>
-            <div class="pr-seg">
-              <button class="pr-seg-btn" :class="{ on: dayForm.flow === '' }" @click="setFlow('')">—</button>
-              <button class="pr-seg-btn" :class="{ on: dayForm.flow === 'light' }" @click="setFlow('light')">少</button>
-              <button class="pr-seg-btn" :class="{ on: dayForm.flow === 'mid' }" @click="setFlow('mid')">中</button>
-              <button class="pr-seg-btn" :class="{ on: dayForm.flow === 'heavy' }" @click="setFlow('heavy')">多</button>
-            </div>
+        <div class="pr-row">
+          <span class="pr-row-ic"><AppIcon name="drop" :size="18" color="#e0a4ad" /></span>
+          <span class="pr-row-label">流量</span>
+          <div class="pr-drops">
+            <button
+              v-for="f in FLOWS"
+              :key="f.v"
+              type="button"
+              class="pr-drop"
+              :class="{ on: dayForm.flow === f.v }"
+              :disabled="!inCycle"
+              :aria-label="f.t"
+              @click="setFlow(f.v)"
+            >
+              <AppIcon name="drop" :size="f.v === 'light' ? 15 : f.v === 'mid' ? 18 : 21" :color="dayForm.flow === f.v ? '#c98891' : '#cfc7c5'" />
+            </button>
           </div>
-          <div class="pr-row">
-            <span class="pr-row-ic"><AppIcon name="bolt" :size="18" color="#d9909a" /></span>
-            <span class="pr-row-label">痛经</span>
-            <div class="pr-seg">
-              <button class="pr-seg-btn" :class="{ on: dayForm.pain === 'none' }" @click="setPain('none')">无</button>
-              <button class="pr-seg-btn" :class="{ on: dayForm.pain === 'mild' }" @click="setPain('mild')">轻微</button>
-              <button class="pr-seg-btn" :class="{ on: dayForm.pain === 'severe' }" @click="setPain('severe')">严重</button>
-            </div>
+        </div>
+        <div class="pr-row">
+          <span class="pr-row-ic"><AppIcon name="bolt" :size="18" color="#d9909a" /></span>
+          <span class="pr-row-label">痛经</span>
+          <div class="pr-seg">
+            <button class="pr-seg-btn" :class="{ on: dayForm.pain === 'none' }" :disabled="!inCycle" @click="setPain('none')">无</button>
+            <button class="pr-seg-btn" :class="{ on: dayForm.pain === 'mild' }" :disabled="!inCycle" @click="setPain('mild')">轻微</button>
+            <button class="pr-seg-btn" :class="{ on: dayForm.pain === 'severe' }" :disabled="!inCycle" @click="setPain('severe')">严重</button>
           </div>
-          <div v-if="hasDayRec" class="pr-record-actions">
-            <button class="pr-btn danger" type="button" @click="removeDay">移除这一天</button>
-          </div>
-        </template>
+        </div>
+        <div v-if="hasDayRec" class="pr-record-actions">
+          <button class="pr-btn danger" type="button" @click="removeDay">移除这一天</button>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, watch, onMounted } from 'vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import ToggleSwitch from '@/components/common/ToggleSwitch.vue'
@@ -100,7 +102,7 @@ import { useNotificationsStore } from '@/stores/notifications'
 import {
   cyclesFromItems, cycleOf, predictedDates,
   fmtDate, addDays, parseDate, dayDiff,
-  ongoingCycle, durationOf, ovulationWindow
+  ongoingCycle, ovulationWindow
 } from '@/utils/period'
 
 const { items, loading, load, add, update, remove: removeItem } = useItems('period')
@@ -126,8 +128,7 @@ const ovuSet = computed(() => {
   for (let i = 0; i < 5; i++) { s.add(cur); cur = addDays(cur, 1) }
   return s
 })
-/* 当前进行中的经期 */
-const periodOn = computed(() => !!ongoingCycle(cycles.value))
+const isOngoing = computed(() => !!ongoingCycle(cycles.value))
 
 function todayStr() { return fmtDate(new Date()) }
 
@@ -154,46 +155,46 @@ const cells = computed(() => {
   return out
 })
 
-/* ═══ 选中日期的单卡片 ═══ */
+/* ═══ 常驻记录卡：目标日期 = 选中日期 或 今天 ═══ */
 const selectedDate = ref('')
-const selCycle = ref(null)
-const dayForm = reactive({ flow: '', pain: 'none' })
-
-const selLabel = computed(() => {
-  const d = parseDate(selectedDate.value)
-  return d ? `${d.getMonth() + 1}月${d.getDate()}日` : ''
-})
+const targetDate = computed(() => selectedDate.value || todayStr())
+const isFuture = computed(() => targetDate.value > todayStr())
+const selCycle = computed(() => cycleOf(cycles.value, targetDate.value))
+const inCycle = computed(() => !!selCycle.value)
 const hasDayRec = computed(() => {
   const c = selCycle.value
-  return !!(c && c.days && c.days[selectedDate.value])
+  return !!(c && c.days && c.days[targetDate.value])
 })
 
-/* 单开关：所选日不在任何经期内且当前无进行中经期 → 「经期开始了」 */
-const showStartSwitch = computed(() => {
-  if (!selectedDate.value || periodOn.value) return false
-  return !cycleOf(cycles.value, selectedDate.value)
-})
-/* 单开关：所选日在进行中的经期内且不晚于今天 → 「经期结束了」 */
-const showEndSwitch = computed(() => {
-  if (!selectedDate.value) return false
-  const oc = ongoingCycle(cycles.value)
-  if (!oc) return false
-  return selectedDate.value >= oc.start && selectedDate.value <= todayStr()
-})
+const FLOWS = [
+  { v: 'light', t: '少' },
+  { v: 'mid', t: '中' },
+  { v: 'heavy', t: '多' }
+]
+const dayForm = reactive({ flow: '', pain: 'none' })
 
-/* 打开开关：该日标记为经期开始日 / 结束日 */
+/* 目标日期或数据变化时，回显该日记录 */
+watch([targetDate, cycles], () => {
+  const rec = selCycle.value ? selCycle.value.days[targetDate.value] : null
+  Object.assign(dayForm, { flow: rec ? rec.flow || '' : '', pain: rec ? rec.pain || 'none' : 'none' })
+}, { immediate: true })
+
+/* 开关：点开即执行（未开始 → 从目标日开始；进行中 → 在目标日结束并封存） */
+const switchTick = ref(0)
+const switchKey = computed(() => (isOngoing.value ? 'end' : 'start') + '-' + switchTick.value)
 function onSwitch() {
-  if (showEndSwitch.value) endPeriod(selectedDate.value)
-  else startPeriod(selectedDate.value)
+  switchTick.value++
+  if (isOngoing.value) endPeriod(targetDate.value)
+  else startPeriod(targetDate.value)
 }
 
 async function startPeriod(date) {
   if (ongoingCycle(cycles.value)) return
-  const t = date || todayStr()
+  let t = date || todayStr()
+  if (t > todayStr()) t = todayStr()
   try {
     await add({ title: t, body: '', extra: { start: t, end: t, ongoing: true, days: {} } })
     toast.pushToast({ title: '已记录经期开始' })
-    refreshSel()
   } catch (e) {
     toast.pushToast({ title: '失败', text: e.message })
   }
@@ -216,7 +217,6 @@ async function endPeriod(date) {
       extra: { ...ex, start: cyc.start, end: t, ongoing: false, duration: dur }
     })
     toast.pushToast({ title: '经期已结束', text: `本次共 ${dur} 天，已封存并用于预测` })
-    refreshSel()
   } catch (e) {
     toast.pushToast({ title: '失败', text: e.message })
   }
@@ -235,9 +235,11 @@ function goToday() {
   year.value = t.getFullYear()
   month.value = t.getMonth() + 1
   dayDate.value = fmtDate(t)
+  selectedDate.value = ''
 }
 
 function cellStyle(c) {
+  if (c.inCycle) return { background: 'rgba(201,136,145,.20)' }
   if (c.pred) return { border: '1.5px dashed rgba(201,136,145,.65)' }
   if (c.ovu) return { background: 'rgba(150,120,200,.14)' }
   return null
@@ -246,23 +248,17 @@ function cellStyle(c) {
 function selectDay(c) {
   dayDate.value = c.date
   selectedDate.value = c.date
-  refreshSel()
-}
-function refreshSel() {
-  if (!selectedDate.value) return
-  const cyc = cycleOf(cycles.value, selectedDate.value)
-  selCycle.value = cyc
-  const rec = cyc ? cyc.days[selectedDate.value] : null
-  Object.assign(dayForm, { flow: rec ? rec.flow || '' : '', pain: rec ? rec.pain || 'none' : 'none' })
 }
 function findRaw(id) { return items.value.find((x) => x.id === id) }
 
 /* 点选即保存（无保存/取消按钮） */
 async function setFlow(v) {
-  dayForm.flow = v
+  if (!inCycle.value) return
+  dayForm.flow = dayForm.flow === v ? '' : v
   await persistDay()
 }
 async function setPain(v) {
+  if (!inCycle.value) return
   dayForm.pain = v
   await persistDay()
 }
@@ -272,24 +268,24 @@ async function persistDay() {
   const raw = findRaw(cyc.id)
   if (!raw) return
   const days = { ...(raw.extra.days || {}) }
-  if (dayForm.flow || dayForm.pain !== 'none') days[selectedDate.value] = { flow: dayForm.flow, pain: dayForm.pain }
-  else delete days[selectedDate.value]
+  if (dayForm.flow || dayForm.pain !== 'none') days[targetDate.value] = { flow: dayForm.flow, pain: dayForm.pain }
+  else delete days[targetDate.value]
   try {
     await update(cyc.id, { extra: { ...raw.extra, days } })
   } catch (e) {
     toast.pushToast({ title: '保存失败', text: e.message })
   }
-  refreshSel()
 }
 async function removeDay() {
   const cyc = selCycle.value
   const raw = findRaw(cyc.id)
   if (!raw) return
   const days = { ...(raw.extra.days || {}) }
-  delete days[selectedDate.value]
+  delete days[targetDate.value]
   let { start, end } = raw.extra
-  if (selectedDate.value === start && start < end) start = addDays(start, 1)
-  else if (selectedDate.value === end && end > start) end = addDays(end, -1)
+  const d = targetDate.value
+  if (d === start && start < end) start = addDays(start, 1)
+  else if (d === end && end > start) end = addDays(end, -1)
   try {
     if (start > end) await removeItem(cyc.id)
     else await update(cyc.id, { extra: { ...raw.extra, start, end, days }, title: start })
@@ -297,7 +293,6 @@ async function removeDay() {
   } catch (e) {
     toast.pushToast({ title: '失败', text: e.message })
   }
-  refreshSel()
 }
 
 onMounted(load)
@@ -334,13 +329,11 @@ onMounted(load)
 .pr-pain { font-size: 9px; line-height: 1; color: #a85b5b; }
 .pr-pain.mild::after { content: '△'; }
 .pr-pain.severe::after { content: '✕'; }
-/* 经期日：日期数字下方低饱和豆沙色小圆点 */
-.pr-dot { width: 5px; height: 5px; border-radius: 50%; background: #cfa8ad; display: inline-block; margin-top: 3px; }
 
 .pr-legend { display: flex; flex-wrap: wrap; gap: 12px; margin: 12px 2px 4px; font-size: 11px; color: var(--text-soft); align-items: center; }
 .pr-legend span { display: inline-flex; align-items: center; gap: 4px; }
 .pr-lg { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #c98891; }
-.pr-lg-dot { width: 5px; height: 5px; background: #cfa8ad; }
+.pr-lg-cycle { width: 10px; height: 10px; border-radius: 3px; background: rgba(201,136,145,.30); }
 .pr-lg-flow-light { width: 5px; height: 5px; }
 .pr-lg-flow-mid { width: 7px; height: 7px; }
 .pr-lg-flow-heavy { width: 9px; height: 9px; }
@@ -352,18 +345,25 @@ onMounted(load)
 .pr-ovu-dot { width: 6px; height: 6px; border-radius: 50%; background: #9b7fd0; display: inline-block; margin-top: 3px; }
 .pr-lg-ovu { background: #9b7fd0; }
 
-/* 日历下方：选中日期的单卡片（行式列表） */
+/* 未来日期提示 */
+.pr-future { background: #fff; border-radius: 14px; padding: 34px 14px; margin: 12px 0 4px; box-shadow: 0 1px 3px rgba(180,120,120,.08); display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.pr-future-ic { display: flex; }
+.pr-future-txt { margin: 0; font-size: 13px; color: var(--text-soft); }
+
+/* 常驻记录卡（行式列表） */
 .pr-record { background: #fff; border-radius: 14px; padding: 4px 14px; margin: 12px 0 4px; box-shadow: 0 1px 3px rgba(180,120,120,.08); }
-.pr-record-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 0 6px; }
-.pr-record-date { font-size: 15px; font-weight: 600; color: #8a5a5a; }
-.pr-record-close { border: none; background: transparent; color: var(--text-soft); font-size: 13px; padding: 4px 8px; }
-.pr-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #f6ecea; }
+.pr-row { display: flex; align-items: center; gap: 12px; padding: 13px 0; border-bottom: 1px solid #f6ecea; }
 .pr-row:last-of-type { border-bottom: none; }
 .pr-row-ic { flex: 0 0 auto; width: 34px; height: 34px; border-radius: 50%; background: #fbeef0; display: flex; align-items: center; justify-content: center; }
 .pr-row-label { flex: 1; font-size: 15px; font-weight: 500; color: #8a5a5a; min-width: 0; }
 .pr-seg { display: flex; gap: 6px; flex: 0 0 auto; }
 .pr-seg-btn { border: 1px solid var(--border); background: var(--bg-soft); border-radius: 999px; padding: 6px 12px; font-size: 13px; color: var(--text-soft); }
 .pr-seg-btn.on { background: #c98891; border-color: #c98891; color: #fff; }
+.pr-seg-btn:disabled { opacity: .45; }
+/* 流量：三颗水滴按钮 */
+.pr-drops { display: flex; gap: 14px; flex: 0 0 auto; align-items: center; }
+.pr-drop { border: none; background: transparent; padding: 4px; display: flex; align-items: center; justify-content: center; border-radius: 50%; }
+.pr-drop:disabled { opacity: .45; }
 .pr-record-actions { display: flex; gap: 10px; padding: 10px 0 12px; }
 .pr-btn { flex: 1; border: none; border-radius: 10px; padding: 12px; font-size: 15px; }
 .pr-btn.danger { background: #fbe9e8; color: #d9534f; }
