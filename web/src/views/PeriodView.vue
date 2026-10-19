@@ -391,7 +391,7 @@ onMounted(load)
 
 /* 弹层 */
 .pr-mask { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: flex-end; z-index: 50; }
-.pr-sheet { width: 100%; background: var(--bg-screen); border-radius: 16px 16px 0 0; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); }
+.pr-sheet { width: 100%; background: var(--bg-screen); border-radius: 16px 16px 0 0; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); max-height: 86vh; overflow-y: auto; }
 .pr-sheet-title { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
 .pr-fld { margin-bottom: 12px; }
 .pr-fld-label { display: block; font-size: 13px; color: var(--text-soft); margin-bottom: 6px; }
@@ -402,7 +402,14 @@ onMounted(load)
 .pr-seg-btn.on { background: #c98891; border-color: #c98891; color: #fff; }
 .pr-day-ops { display: flex; gap: 10px; margin-bottom: 12px; }
 .pr-day-op { flex: 1; border: 1px solid var(--border); background: transparent; color: #8a5a5a; border-radius: 10px; padding: 10px; font-size: 13px; }
-.pr-actions { display: flex; gap: 10px; }
+/* 取消/保存固定底部，不随内容滚动 */
+.pr-actions {
+  position: sticky; bottom: 0; z-index: 3;
+  margin: 0 -16px calc(-16px - env(safe-area-inset-bottom));
+  padding: 10px 16px calc(14px + env(safe-area-inset-bottom));
+  background: var(--bg-screen);
+  border-radius: 0 0 16px 16px;
+}
 .pr-btn { flex: 1; border: none; border-radius: 10px; padding: 12px; font-size: 15px; }
 .pr-btn.ghost { background: var(--bg-soft); color: var(--text); }
 .pr-btn.primary { background: #c98891; color: #fff; }

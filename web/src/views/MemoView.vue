@@ -456,7 +456,14 @@ onMounted(load)
 .mm-color.on { border-color: var(--accent); }
 .mm-pin-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0 14px; }
 .mm-pin-row .row-title { font-size: 14px; }
-.mm-actions { display: flex; gap: 10px; }
+/* 取消/保存固定底部，不随内容滚动 */
+.mm-actions {
+  position: sticky; bottom: 0; z-index: 3;
+  margin: 0 -16px calc(-16px - env(safe-area-inset-bottom));
+  padding: 10px 16px calc(14px + env(safe-area-inset-bottom));
+  background: var(--bg-screen);
+  border-radius: 0 0 16px 16px;
+}
 .mm-btn { flex: 1; border: none; border-radius: 10px; padding: 12px; font-size: 15px; }
 .mm-btn.ghost { background: var(--bg-soft); color: var(--text); }
 .mm-btn.primary { background: var(--accent); color: #fff; }

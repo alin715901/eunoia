@@ -1332,6 +1332,10 @@ function onUnmountedClear(t) {
   border-radius: var(--radius);
   box-shadow: var(--shadow-strong);
   padding: 18px 16px 14px;
+  max-height: 86vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
 }
 .mo-title {
   margin: 0 0 12px;
@@ -1352,7 +1356,7 @@ function onUnmountedClear(t) {
 }
 .mo-input:focus { border-color: var(--accent); }
 .mo-textarea { resize: none; }
-.mo-actions { display: flex; gap: 10px; margin-top: 14px; }
+.mo-actions { display: flex; gap: 10px; margin-top: 14px; position: sticky; bottom: calc(-1 * (14px)); margin-left: -16px; margin-right: -16px; padding: 10px 16px 14px; background: var(--bg-screen); z-index: 2; }
 .mo-btn {
   flex: 1;
   border: 1px solid var(--border);

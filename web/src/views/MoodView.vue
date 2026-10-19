@@ -1127,7 +1127,8 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
   width: 6px; height: 6px; border-radius: 50%;
   background: var(--accent);
 }
-.mo-ann-dot.passed { background: var(--border); }
+/* 已过：空心灰环，依然明显可见（区别于未来的实心主题色点），一眼能看出当天有纪念日 */
+.mo-ann-dot.passed { width: 7px; height: 7px; background: var(--bg-screen); border: 1.5px solid #a1979e; box-sizing: border-box; }
 /* 日历下方、我的便签纸上方的纪念日提示条 */
 .mo-ann-banner {
   display: flex; align-items: center; flex-wrap: wrap; gap: 6px;
