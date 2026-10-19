@@ -220,9 +220,11 @@ const dayIndex = computed(() => {
 /* 进行中的经期 */
 const oc = computed(() => ongoingCycle(cycles.value))
 /* 结束开关的目标周期：
-   - 进行中 → 目标日 ∈ (第一天, 今天]（第一天归开始开关；含超过估计最后一天的补结束）
+   - 进行中 → 目标日 ∈ (第一天, 今天]（第一天归开始开关；含超过预测最后一天的补结束）
    - 已封存 → 目标日 ∈ [第一天, 结束日]（开关 ON，可提前）
-   - 最近一条已封存 → 目标日 ∈ (结束日, 今天]（开关 OFF，可补/延长结束） */
+   - 最近一条已封存 → 仅「结束日次日」或「排卵期开始前」可补/延长结束（开关 OFF）；
+     排卵期开始之后的日子临近预测经期，更可能是下一次经期的开始
+     （一个月可能来两次经期），应显示开始开关而不是结束开关 */
 const endTarget = computed(() => {
   if (isFuture.value) return null
   const t = targetDate.value
@@ -234,7 +236,13 @@ const endTarget = computed(() => {
     return t >= c.start && t <= (c.end || c.start) ? c : null
   }
   const last = cycles.value[cycles.value.length - 1]
-  if (last && t > (last.end || last.start) && t <= todayStr()) return last
+  if (last && t > (last.end || last.start) && t <= todayStr()) {
+    const lastEnd = last.end || last.start
+    if (t <= addDays(lastEnd, 1)) return last
+    const ovu = ovulationWindow(cycles.value)
+    if (ovu && t >= ovu.start) return null
+    return last
+  }
   return null
 })
 const showEndSwitch = computed(() => !!endTarget.value)
@@ -242,7 +250,8 @@ const showEndSwitch = computed(() => !!endTarget.value)
    - 目标日 ≤ 进行中经期的第一天（含当天）→ 「经期开始了吗？」（打开 → 该日记为/改为第一天）
    - 目标日 ∈ (第一天, 结束日/今天] → 「经期结束了吗？」（打开 → 该日为最后一天）
    - 无进行中经期且该日不在任何记录中 → 「经期开始了吗？」（打开 → 新建经期）
-   - 历史经期内的天 / 超出结束日的天 → 结束开关（仅可补录流量/痛经） */
+   - 历史经期内的天 / 结束日次日 / 排卵期开始前 → 结束开关（可提前或补/延长结束）
+   - 排卵期开始之后 → 开始开关（临近预测经期，可能是下一次经期开始） */
 const showStartSwitch = computed(() => {
   if (isFuture.value) return false
   if (endTarget.value) return false
