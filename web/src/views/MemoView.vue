@@ -41,7 +41,13 @@
               @pointerup="up(m, $event)"
               @pointercancel="cancel"
             >
-              <!-- 右上角图钉：未置顶时极淡，不抢视觉 -->
+              <!-- 右上角：铅笔（编辑）+ 图钉（置顶）。未置顶时图钉极淡，不抢视觉 -->
+              <button class="mm-edit" @click.stop="openEdit(m)" aria-label="编辑">
+                <svg viewBox="0 0 24 24" width="14" height="14">
+                  <path d="M4.5 19.5l4-1 9.8-9.8a1.9 1.9 0 0 0-2.7-2.7L5.8 15.8l-1.3 3.7z M14.2 7.4l2.4 2.4"
+                    fill="none" stroke="rgba(0,0,0,.35)" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round" />
+                </svg>
+              </button>
               <button class="mm-pin" :class="{ on: m.pinned }" @click.stop="togglePin(m)" :aria-label="m.pinned ? '取消置顶' : '置顶'">
                 <svg viewBox="0 0 24 24" width="15" height="15">
                   <path d="M14.5 3.5l6 6-2 2-1.3-1.3-4.2 4.2.7 3.1-1.6 1.6-2.4-2.4-3.4 3.4-1.4-1.4 3.4-3.4-2.4-2.4 1.6-1.6 3.1.7 4.2-4.2L5.5 9.5z"
@@ -74,7 +80,7 @@
               <div class="mm-foot">
                 <span class="mm-date">{{ fmtCreated(m) }}</span>
                 <span v-if="m.type === 'todo' && m.due" class="mm-due">
-                  <span class="mm-due-date">截止 {{ fmtDue(m.due) }}</span>
+                  <span class="mm-due-date">{{ fmtDue(m.due) }}</span>
                   <span v-if="dueTimeOf(m.due)" class="mm-due-time">{{ dueTimeOf(m.due) }}</span>
                 </span>
               </div>
@@ -182,7 +188,7 @@ function isDone(m) {
 }
 const board = computed(() => {
   let list
-  if (filter.value === 'all') list = all.value
+  if (filter.value === 'all') list = all.value.filter((m) => !isDone(m)) /* 已完成的只在「已完成」里 */
   else if (filter.value === 'done') list = all.value.filter(isDone)
   else list = all.value.filter((m) => m.type === filter.value && !isDone(m))
   const dir = sortAsc.value ? 1 : -1
@@ -217,9 +223,9 @@ const dragId = computed(() => (g.moved ? g.id : null))
 let pressTimer = null
 
 function down(m, e) {
-  /* 卡片内的交互元素（图钉/待办行）不启动手势，避免点击时误开编辑 */
+  /* 卡片内的交互元素（铅笔/图钉/待办行）不启动手势 */
   const t = e.target
-  if (t && t.closest && (t.closest('.mm-pin') || t.closest('.mm-todo'))) return
+  if (t && t.closest && (t.closest('.mm-edit') || t.closest('.mm-pin') || t.closest('.mm-todo'))) return
   if (openId.value && openId.value !== m.id) openId.value = null
   g.id = m.id
   g.x0 = e.clientX
@@ -255,10 +261,8 @@ function up(m, e) {
   }
   if (g.moved && g.tx <= -56) {
     openId.value = m.id
-  } else if (!g.moved) {
-    if (openId.value === m.id) openId.value = null
-    else openEdit(m)
   } else {
+    /* 点卡片本体只负责收起滑出的删除（修改入口统一为铅笔） */
     openId.value = null
   }
   reset()
@@ -385,10 +389,11 @@ onMounted(load)
 .mm-op { border: none; background: transparent; color: var(--text); padding: 6px; display: inline-flex; align-items: center; justify-content: center; }
 .mm-op:active { transform: scale(0.92); }
 .mm-body { padding: 12px; }
-.mm-filter { display: flex; gap: 8px; margin-bottom: 12px; align-items: center; }
-.mm-chip { border: 1px solid var(--border); background: rgba(255,255,255,.5); color: var(--text-soft); border-radius: 999px; padding: 5px 16px; font-size: 13px; }
+.mm-filter { display: flex; gap: 6px; margin-bottom: 12px; align-items: center; overflow-x: auto; scrollbar-width: none; }
+.mm-filter::-webkit-scrollbar { display: none; }
+.mm-chip { border: 1px solid var(--border); background: rgba(255,255,255,.5); color: var(--text-soft); border-radius: 999px; padding: 5px 13px; font-size: 12.5px; white-space: nowrap; flex: 0 0 auto; }
 .mm-chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
-.mm-sort { margin-left: auto; border: 1px solid var(--border); background: rgba(255,255,255,.5); color: var(--text-soft); border-radius: 999px; padding: 5px 12px; font-size: 12px; }
+.mm-sort { margin-left: auto; border: 1px solid var(--border); background: rgba(255,255,255,.5); color: var(--text-soft); border-radius: 999px; padding: 5px 12px; font-size: 12px; white-space: nowrap; flex: 0 0 auto; }
 .mm-sort:active { transform: scale(0.95); }
 
 /* 瀑布流：CSS 多列 */
@@ -400,6 +405,8 @@ onMounted(load)
   background: #fff7e6; box-shadow: 0 1px 3px rgba(120,90,60,.12);
   transition: transform .18s ease; touch-action: pan-y; user-select: none;
 }
+.mm-edit { position: absolute; top: 8px; right: 30px; background: transparent; border: none; padding: 2px; cursor: pointer; display: flex; align-items: center; }
+.mm-edit:active { transform: scale(0.9); }
 .mm-pin { position: absolute; top: 8px; right: 8px; background: transparent; border: none; padding: 2px; cursor: pointer; }
 .mm-type { display: inline-block; font-size: 10px; color: var(--text-soft); border: 1px solid var(--border); border-radius: 6px; padding: 1px 6px; margin-bottom: 8px; }
 .mm-type.note { color: #b07a86; border-color: rgba(176,122,134,.4); }
