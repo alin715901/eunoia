@@ -43,7 +43,7 @@ export function cyclesFromItems(items) {
       const ex = typeof it.extra === 'string' ? safeJson(it.extra) : it.extra || {}
       const start = ex.start || it.title || ''
       const end = ex.end || start
-      return { id: it.id, start, end, days: ex.days || {}, note: it.body || '' }
+      return { id: it.id, start, end, days: ex.days || {}, note: it.body || '', ongoing: !!ex.ongoing }
     })
     .filter((c) => c.start)
     .sort((a, b) => a.start.localeCompare(b.start))
@@ -96,10 +96,37 @@ export function predictedDates(cycles, limit = 31) {
   return out
 }
 
-/* 某天是否处于已记录周期内（返回该 cycle 或 null） */
+/* 某天是否处于已记录周期内（返回该 cycle 或 null）。
+   进行中（ongoing）的周期会自动延伸到今天，确保经期中的日期与关怀判断都正确 */
 export function cycleOf(cycles, date) {
   const d = fmtDate(parseDate(date))
-  return cycles.find((c) => d >= c.start && d <= c.end) || null
+  const today = fmtDate(new Date())
+  return cycles.find((c) => {
+    const end = c.ongoing && c.end < today ? today : c.end
+    return d >= c.start && d <= end
+  }) || null
+}
+
+/* 当前正在进行中的周期（未封闭的），没有则返回 null */
+export function ongoingCycle(cycles) {
+  return cycles.find((c) => c.ongoing) || null
+}
+
+/* 一条周期的持续天数（进行中按到今天算） */
+export function durationOf(cycle) {
+  if (!cycle || !cycle.start) return 0
+  const today = fmtDate(new Date())
+  const end = cycle.ongoing && cycle.end < today ? today : cycle.end || cycle.start
+  return dayDiff(end, cycle.start) + 1
+}
+
+/* 排卵期窗口：排卵日 ≈ 下次经期开始日 - 14 天，给 ±2 天共 5 天窗口 */
+export function ovulationWindow(cycles, limit = 31) {
+  const pred = predictNext(cycles)
+  if (!pred) return null
+  const ovuDay = addDays(pred.start, -14)
+  if (!ovuDay) return null
+  return { day: ovuDay, start: addDays(ovuDay, -2), end: addDays(ovuDay, 2) }
 }
 
 /* 距预测开始日的天数（>0 未来，=0 当天，<0 已过） */

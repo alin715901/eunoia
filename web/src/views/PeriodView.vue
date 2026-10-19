@@ -10,8 +10,8 @@
       <div class="pr-summary">
         <span class="pr-sum-ic"><AppIcon name="drop" :size="26" color="#c98891" /></span>
         <span class="pr-sum-main">
-          <span class="pr-sum-title">{{ predictText }}</span>
-          <span class="pr-sum-sub">平均周期 {{ avgCycle }} 天 · 平均持续 {{ avgLen }} 天</span>
+          <span class="pr-sum-title">{{ summaryTitle }}</span>
+          <span class="pr-sum-sub">{{ summarySub }}</span>
         </span>
       </div>
 
@@ -32,7 +32,7 @@
           v-for="(c, i) in cells"
           :key="i"
           class="pr-cell"
-          :class="{ empty: !c.day, today: c.today, selected: c.date === dayDate }"
+          :class="{ empty: !c.day, today: c.today, selected: c.date === dayDate, ovu: c.ovu }"
           :style="cellStyle(c)"
           :data-date="c.date || null"
           @click="c.day && openDay(c)"
@@ -42,7 +42,20 @@
             <i class="pr-flow" :class="c.dayRec.flow" />
             <i v-if="c.dayRec.pain && c.dayRec.pain !== 'none'" class="pr-pain" :class="c.dayRec.pain" />
           </span>
+          <i v-else-if="c.ovu" class="pr-ovu-dot" />
         </button>
+      </div>
+
+      <!-- 日历下方：经期开关条 -->
+      <div class="pr-toggle" :class="{ on: periodOn }">
+        <div class="pr-toggle-left">
+          <span class="pr-toggle-ic"><AppIcon name="drop" :size="18" color="#c98891" /></span>
+          <span class="pr-toggle-txt">
+            <span class="pr-toggle-title">{{ periodOn ? '经期结束了' : '经期开始了' }}</span>
+            <span class="pr-toggle-sub">{{ periodOn ? '已持续 ' + ongoingDays + ' 天 · 点开关结束并封存本次经期' : '点开关，开始记录本次经期' }}</span>
+          </span>
+        </div>
+        <ToggleSwitch :model-value="periodOn" @update:model-value="onToggle" />
       </div>
 
       <div class="pr-legend">
@@ -52,6 +65,7 @@
         <span><i class="pr-lg pr-lg-pain-mild" /> 轻微</span>
         <span><i class="pr-lg pr-lg-pain-severe" /> 严重</span>
         <span><i class="pr-lg pr-lg-pred" /> 预测</span>
+        <span><i class="pr-lg pr-lg-ovu" /> 排卵期</span>
       </div>
 
       <p v-if="!cycles.length" class="pr-tip">点「＋」记录一次经期，或点日历上的某一天补充当天的流量与痛经</p>
@@ -105,14 +119,10 @@
               <button class="pr-seg-btn" :class="{ on: dayForm.pain === 'severe' }" @click="dayForm.pain = 'severe'">严重</button>
             </div>
           </div>
-          <div class="pr-day-ops">
-            <button class="pr-day-op" @click="setDayStart">设为开始日</button>
-            <button class="pr-day-op" @click="setDayEnd">设为结束日</button>
-          </div>
         </template>
 
         <template v-else>
-          <p class="pr-tip">这一天不在任何经期记录中。可为它新建一条经期记录（起止都算今天）。</p>
+          <p class="pr-tip">这一天不在任何经期记录中。若现在正处于经期，请先点下方开关「开始」；也可直接为它新建一条记录。</p>
           <div class="pr-fld">
             <span class="pr-fld-label">流量</span>
             <div class="pr-seg">
@@ -151,11 +161,13 @@
 import { ref, reactive, computed, onMounted } from 'vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
+import ToggleSwitch from '@/components/common/ToggleSwitch.vue'
 import { useItems } from '@/composables/useItems'
 import { useNotificationsStore } from '@/stores/notifications'
 import {
   cyclesFromItems, cycleOf, predictedDates, avgCycle as calcCycle, avgLen as calcLen,
-  predictNext, fmtDate, addDays, parseDate
+  predictNext, fmtDate, addDays, parseDate, dayDiff,
+  ongoingCycle, durationOf, ovulationWindow
 } from '@/utils/period'
 
 const { items, loading, load, add, update, remove: removeItem } = useItems('period')
@@ -169,6 +181,18 @@ const dayDate = ref(fmtDate(now))
 
 const cycles = computed(() => cyclesFromItems(items.value))
 const predSet = computed(() => new Set(predictedDates(cycles.value)))
+/* 排卵期窗口（下次经期开始 - 14 天 ±2 天）所有日期 */
+const ovuSet = computed(() => {
+  const ovu = ovulationWindow(cycles.value)
+  if (!ovu) return new Set()
+  const s = new Set()
+  let cur = ovu.start
+  for (let i = 0; i < 5; i++) { s.add(cur); cur = addDays(cur, 1) }
+  return s
+})
+/* 当前进行中的经期（开关「开」即存在） */
+const periodOn = computed(() => !!ongoingCycle(cycles.value))
+const ongoingDays = computed(() => { const c = ongoingCycle(cycles.value); return c ? durationOf(c) : 0 })
 
 function todayStr() { return fmtDate(new Date()) }
 
@@ -187,6 +211,7 @@ const cells = computed(() => {
       today: date === todayStr(),
       inCycle: !!cyc,
       pred: predSet.value.has(date) && !cyc,
+      ovu: ovuSet.value.has(date) && !cyc && !predSet.value.has(date),
       dayRec: cyc ? cyc.days[date] || null : null,
       cyc
     })
@@ -196,16 +221,60 @@ const cells = computed(() => {
 
 const avgCycle = computed(() => calcCycle(cycles.value))
 const avgLen = computed(() => calcLen(cycles.value))
-const predictText = computed(() => {
+
+/* 顶部卡片：进行中优先，否则预测下次经期 + 排卵期 */
+const summaryTitle = computed(() => {
+  if (periodOn.value) return `经期进行中 · 第 ${ongoingDays.value} 天`
   const pred = predictNext(cycles.value)
   if (!pred) return '记录后为你预测'
-  const diff = dayDiffPred(pred.start)
+  const diff = dayDiff(pred.start, todayStr())
   if (diff === 0) return '预测今天是预计开始日'
   if (diff > 0) return `预计 ${diff} 天后（${pred.start.slice(5).replace('-', '月')}日）开始`
   return `已过预计日 ${Math.abs(diff)} 天（${pred.start.slice(5).replace('-', '月')}日）`
 })
-function dayDiffPred(s) {
-  return Math.round((parseDate(s) - new Date(new Date().setHours(0, 0, 0, 0))) / 86400000)
+const summarySub = computed(() => {
+  const parts = []
+  const ovu = ovulationWindow(cycles.value)
+  if (ovu) parts.push(`排卵期 ${ovu.start.slice(5).replace('-', '月')}日-${ovu.end.slice(5).replace('-', '月')}日`)
+  parts.push(`平均周期 ${avgCycle.value} 天`)
+  if (avgLen.value) parts.push(`平均持续 ${avgLen.value} 天`)
+  return parts.join(' · ')
+})
+
+/* 开关：开 = 开始本次经期，关 = 结束并封存（记录持续天数，自动参与预测） */
+async function onToggle(val) {
+  if (val) await startPeriod()
+  else await endPeriod()
+}
+async function startPeriod() {
+  if (ongoingCycle(cycles.value)) return
+  const t = todayStr()
+  try {
+    await add({ title: t, body: '', extra: { start: t, end: t, ongoing: true, days: {} } })
+    toast.pushToast({ title: '已记录经期开始' })
+  } catch (e) {
+    toast.pushToast({ title: '失败', text: e.message })
+  }
+}
+async function endPeriod() {
+  const cyc = ongoingCycle(cycles.value)
+  if (!cyc) return
+  const raw = findRaw(cyc.id)
+  if (!raw) return
+  const ex = raw.extra || {}
+  const t = todayStr()
+  const dur = dayDiff(t, cyc.start) + 1
+  dayShow.value = false
+  try {
+    await update(cyc.id, {
+      title: cyc.start,
+      body: ex.note || '',
+      extra: { ...ex, start: cyc.start, end: t, ongoing: false, duration: dur }
+    })
+    toast.pushToast({ title: '经期已结束', text: `本次共 ${dur} 天，已封存并用于预测` })
+  } catch (e) {
+    toast.pushToast({ title: '失败', text: e.message })
+  }
 }
 
 function shift(n) {
@@ -226,6 +295,7 @@ function goToday() {
 function cellStyle(c) {
   if (c.inCycle) return { background: 'rgba(201,136,145,.26)' }
   if (c.pred) return { background: 'rgba(201,136,145,.10)', border: '1.5px dashed rgba(201,136,145,.6)' }
+  if (c.ovu) return { background: 'rgba(150,120,200,.14)' }
   return null
 }
 
@@ -293,24 +363,6 @@ async function saveDay() {
   } catch (e) {
     toast.pushToast({ title: '失败', text: e.message })
   }
-}
-async function setDayStart() {
-  const cyc = dayCycle.value
-  const raw = findRaw(cyc.id)
-  if (!raw) return
-  const s = dayDateSel.value <= (raw.extra.end || raw.extra.start) ? dayDateSel.value : raw.extra.end
-  dayShow.value = false
-  await update(cyc.id, { extra: { ...raw.extra, start: s } })
-  toast.pushToast({ title: '已设为开始日' })
-}
-async function setDayEnd() {
-  const cyc = dayCycle.value
-  const raw = findRaw(cyc.id)
-  if (!raw) return
-  const e = dayDateSel.value >= (raw.extra.start || raw.extra.end) ? dayDateSel.value : raw.extra.start
-  dayShow.value = false
-  await update(cyc.id, { extra: { ...raw.extra, end: e } })
-  toast.pushToast({ title: '已设为结束日' })
 }
 async function removeDay() {
   const cyc = dayCycle.value
@@ -393,6 +445,19 @@ onMounted(load)
 .pr-lg-pred { background: transparent; border: 1.5px dashed rgba(201,136,145,.6); }
 
 .pr-tip { font-size: 12px; color: var(--text-soft); text-align: center; margin-top: 16px; line-height: 1.7; }
+
+/* 日历下方：经期开关条（开=进行中，关=未开始） */
+.pr-toggle { display: flex; align-items: center; justify-content: space-between; gap: 12px; background: #fff; border-radius: 14px; padding: 12px 14px; margin: 12px 0; box-shadow: 0 1px 3px rgba(180,120,120,.08); }
+.pr-toggle.on { box-shadow: 0 2px 8px rgba(201,136,145,.28); }
+.pr-toggle-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.pr-toggle-ic { flex: 0 0 auto; display: flex; }
+.pr-toggle-txt { display: flex; flex-direction: column; min-width: 0; }
+.pr-toggle-title { font-size: 15px; font-weight: 600; color: #8a5a5a; }
+.pr-toggle.on .pr-toggle-title { color: #c98891; }
+.pr-toggle-sub { font-size: 11.5px; color: var(--text-soft); margin-top: 2px; line-height: 1.4; }
+/* 排卵窗口小紫点 */
+.pr-ovu-dot { width: 6px; height: 6px; border-radius: 50%; background: #9b7fd0; display: inline-block; margin-top: 3px; }
+.pr-lg-ovu { background: #9b7fd0; }
 
 /* 弹层 */
 .pr-mask { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: flex-end; z-index: 50; }
