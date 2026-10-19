@@ -28,9 +28,9 @@
     </AppHeader>
 
     <div class="md-body">
-      <!-- 日期行：‹ 年月 › 居中，最右侧 ＋ 记录心情 -->
+      <!-- 日期行：最左「回到今天」，中间 ‹ 年月 › 居中，最右 ＋ 记录心情 -->
       <div class="mo-nav">
-        <span class="mo-nav-side" />
+        <button class="mo-today-btn" type="button" @click="goToday">回到今天</button>
         <div class="mo-nav-mid">
           <button class="mo-nav-arrow" type="button" aria-label="上个月" @click="shift(-1)">‹</button>
           <span class="mo-nav-title">{{ year }}年{{ month }}月</span>
@@ -491,7 +491,6 @@ function tagName(key) {
   return t ? t.name : key
 }
 function tintOf(c) {
-  if (c.date && c.date === dayDate.value) return { background: 'var(--accent)', color: '#fff' }
   const key = c.me || c.him
   return key ? { background: colorOf(key) + '1a' } : null
 }
@@ -534,8 +533,16 @@ const monthPrefix = computed(() => `${year.value}-${String(month.value).padStart
 const monthItems = computed(() => items.value.filter((x) => x.title && x.title.startsWith(monthPrefix.value)))
 function distList(pred) {
   const counts = {}
+  /* 按天分组，每天只取该人「最新一条」记录（与日历下方卡片一致），
+     避免把同一天的多次修改都算进去，只统计当天最后/最新的心情 */
+  const byDay = {}
   for (const it of monthItems.value.filter(pred)) {
-    const k = moodKeyOf(it.extra && it.extra.mood)
+    if (!byDay[it.title]) byDay[it.title] = []
+    byDay[it.title].push(it)
+  }
+  for (const d in byDay) {
+    const latest = latestOf(byDay[d], () => true)
+    const k = moodKeyOf(latest.extra && latest.extra.mood)
     if (!k) continue
     counts[k] = (counts[k] || 0) + 1
   }
@@ -737,6 +744,13 @@ function shift(n) {
   if (m > 12) { m = 1; y += 1 }
   year.value = y
   month.value = m
+}
+/* 「回到今天」：年月拉回当前月，选中切回今天 */
+function goToday() {
+  const t = todayStr()
+  year.value = Number(t.slice(0, 4))
+  month.value = Number(t.slice(5, 7))
+  dayDate.value = t
 }
 function dateLabelOf(d) {
   const [y, m, dd] = d.split('-').map(Number)
@@ -1044,26 +1058,31 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 .mo-select-empty { padding: 12px; text-align: center; font-size: 12px; color: var(--text-soft); }
 .mo-select-opt .mo-select-name { flex: 1; min-width: 0; text-align: left; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* 日期行：‹ 年月 › 居中，＋ 在最右（上方留白收窄，标题贴着头部） */
+/* 日期行：最左「回到今天」，中间 ‹ 年月 › 居中，＋ 在最右（上方留白收窄，标题贴着头部） */
 .mo-nav { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; margin: 4px 0 8px; }
 .mo-nav-mid { display: flex; align-items: center; justify-content: center; gap: 6px; }
-.mo-nav-side { min-width: 0; }
 .mo-nav-arrow { border: none; background: transparent; font-size: 20px; color: var(--text-soft); padding: 0 4px; line-height: 1; }
 .mo-nav-title { font-size: 15px; font-weight: 600; min-width: 96px; text-align: center; }
+.mo-today-btn {
+  justify-self: start; border: 1px solid var(--border); background: var(--bg-screen);
+  color: var(--text-soft); font-size: 12px; padding: 4px 10px; border-radius: 999px; cursor: pointer;
+}
+.mo-today-btn:active { transform: scale(0.94); }
 .mo-nav-btn { border: none; background: transparent; color: var(--text-soft); padding: 5px; display: inline-flex; align-items: center; justify-self: end; }
 .mo-nav-btn:active { transform: scale(0.92); }
 .mo-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
 .mo-week { text-align: center; font-size: 11px; color: var(--text-soft); padding: 4px 0; }
 .mo-cell {
-  aspect-ratio: 1 / 1; border: none; background: var(--bg-soft); border-radius: 10px;
+  aspect-ratio: 1 / 1; box-sizing: border-box; border: 2px solid transparent; background: var(--bg-soft); border-radius: 10px;
   display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
   padding: 0; position: relative;
 }
 .mo-cell.empty { background: transparent; }
 .mo-cell.today { outline: 1.5px solid var(--accent); }
-.mo-cell.selected { border: 1.5px solid var(--accent); }
+/* 选中：仅以边框标记（不填充），与今天的描边区分；今天被选中时只保留边框 */
+.mo-cell.selected { border-color: var(--accent); }
 .mo-cell.selected .mo-day { font-weight: 700; }
-.mo-cell.selected.today { outline: 1.5px solid #fff; }
+.mo-cell.selected.today { outline: none; }
 .mo-day { font-size: 13px; color: var(--text); }
 /* 同一天并排两个半透明小圆点：左 TA 右我，颜色各取当日最新心情色 */
 .mo-dots { display: flex; align-items: center; gap: 3px; height: 6px; }
