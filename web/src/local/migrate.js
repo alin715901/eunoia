@@ -79,6 +79,9 @@ export function migrate() {
   addCol('chat_messages', 'quote_id', 'INTEGER DEFAULT NULL')
   addCol('chat_messages', 'quote_text', "TEXT DEFAULT ''")
   addCol('chat_messages', 'quote_image', "TEXT DEFAULT ''")
+  // 经期特殊关怀：开关 + 最近一次关怀日期（按自然日去重，避免同一天反复发）
+  addCol('contact_settings', 'period_care_enabled', 'INTEGER DEFAULT 0')
+  addCol('contact_settings', 'period_care_last_date', "TEXT DEFAULT ''")
   // 通话设置
   addCol('contact_settings', 'call_enabled', 'INTEGER DEFAULT 0')
   addCol('contact_settings', 'call_incoming_prob', 'INTEGER DEFAULT 10')

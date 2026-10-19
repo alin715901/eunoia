@@ -10,6 +10,7 @@
 import db from './db'
 import * as notification from './services/notification.service'
 import { proactiveTick, redpacketTick } from './services/chat.service'
+import { periodCareTick } from './services/period.service'
 import { momentTick } from './services/moment.service'
 import { letterTick, replyTick } from './services/letter.service'
 import { contactInviteTick as companionInviteTick } from './services/companion.service'
@@ -29,6 +30,11 @@ let started = false
 function runMinuteTicks() {
   try {
     proactiveTick()
+  } catch (e) {
+    /* ignore */
+  }
+  try {
+    periodCareTick()
   } catch (e) {
     /* ignore */
   }
@@ -160,6 +166,11 @@ export function startTicks() {
   document.addEventListener('visibilitychange', onVisible)
   // 页面卸载前不再需要持久化（db.js 的 flush 已兜底），这里只清理定时器
   window.addEventListener('pagehide', () => stopTicks(), { once: true })
+
+  /* 仅开发环境：把经期关怀 tick 暴露到 window，供自动化验证手动触发（生产构建不含） */
+  if (import.meta.env.DEV) {
+    window.__periodCareTick = periodCareTick
+  }
 }
 
 export function stopTicks() {

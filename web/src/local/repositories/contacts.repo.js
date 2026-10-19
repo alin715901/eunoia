@@ -188,6 +188,7 @@ function updateSettings(id, fields = {}) {
     'blocked', 'show_read_receipt', 'read_receipt_style', 'read_no_reply', 'show_names',
     'call_enabled', 'call_incoming_prob', 'call_answer_prob', 'call_reject_prob', 'call_hangup_prob',
     'contact_recall_enabled',
+    'period_care_enabled', 'period_care_last_date',
   ];
   const sets = [];
   const params = [];

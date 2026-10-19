@@ -111,6 +111,13 @@
           </div>
           <ToggleSwitch v-model="showNames" @update:modelValue="saveShowNames" />
         </div>
+        <div v-if="!isGroup" class="switch-row">
+          <div class="row-main">
+            <div class="row-title">特殊关怀</div>
+            <p class="hint">开启后，经期来时或快到时他会主动在聊天里关心你</p>
+          </div>
+          <ToggleSwitch v-model="periodCare" @update:modelValue="savePeriodCare" />
+        </div>
       </div>
 
       <!-- ═══ 背景 / 字体 / 气泡 / 头像形状：群聊与单人一致 ═══ -->
@@ -354,6 +361,7 @@ const pinned = ref(false)
 const muted = ref(false)
 const blocked = ref(false)
 const showNames = ref(true)
+const periodCare = ref(false)
 const chatBg = ref('')
 
 const avatarBoxStyle = computed(() => ({
@@ -421,6 +429,7 @@ function syncLocal() {
     : !!Number(contact.value?.muted_chat)
   blocked.value = !!Number(settings.value?.blocked)
   showNames.value = Number(settings.value?.show_names ?? 1) !== 0
+  periodCare.value = !!Number(settings.value?.period_care_enabled)
 }
 
 /* ═══ 返回本页时：不重新挂载、不从头滑 ═══
@@ -627,6 +636,12 @@ async function saveBlocked() {
 async function saveShowNames() {
   try {
     await updateContactSettings(props.id, { show_names: showNames.value ? 1 : 0 })
+  } catch (e) { /* ignore */ }
+}
+async function savePeriodCare() {
+  try {
+    await updateContactSettings(props.id, { period_care_enabled: periodCare.value ? 1 : 0 })
+    notify(periodCare.value ? '已开启特殊关怀' : '已关闭特殊关怀')
   } catch (e) { /* ignore */ }
 }
 

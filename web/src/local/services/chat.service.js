@@ -696,6 +696,19 @@ function insertContactCard(d, contactId, card, memberId = null, proactive = fals
   return d.prepare('SELECT * FROM chat_messages WHERE id = ?').get(info.lastInsertRowid);
 }
 
+/* 以对方身份发一条纯文本消息（用于经期特殊关怀等系统关怀，非字卡）：
+   复用 chat_messages 落库 + 返回落库后的消息对象。 */
+export function sendContactText(contactId, text, opts = {}) {
+  const proactive = opts.proactive ? 1 : 0
+  const info = db
+    .prepare(
+      `INSERT INTO chat_messages(contact_id, sender, content_type, card_id, text, asset_path, duration, author_member_id, is_proactive, read_receipt, read, seq, created_at)
+       VALUES(?, 'contact', 'text', NULL, ?, '', NULL, NULL, ?, 'delivered', 0, ?, ?)`
+    )
+    .run(Number(contactId), String(text || ''), proactive, getNextSeq(Number(contactId)), Math.floor(Date.now() / 1000))
+  return db.prepare('SELECT * FROM chat_messages WHERE id = ?').get(info.lastInsertRowid)
+}
+
 // 发送红包：金额 + 可选留言落库为 JSON，模拟对方开红包（约 85% 几率 2.5~8 秒后「已领取」），
 // 未领取的一段时间后「退回」；状态变化通过 SSE message_update 推送到前端。
 // 余额闭环：发红包时先扣我的余额（不足报错）→ 对方领取则对方余额 += 金额 → 对方退回则加回我的余额。
