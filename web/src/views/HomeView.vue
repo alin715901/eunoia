@@ -165,7 +165,7 @@
             <span v-else class="cb-text" :class="{ empty: !memoPinnedText }">{{ memoPinnedText || '记点什么…' }}</span>
           </button>
           <button class="cb-box cb-period" @click="cyclePeriodCard">
-            <span class="cb-label">{{ periodCard.title }}</span>
+            <span class="cb-label">{{ periodCard.title }}<span v-if="periodCard.suffix" class="cb-haiyou">{{ periodCard.suffix }}</span></span>
             <span class="cb-period-big">{{ periodCard.big }}</span>
           </button>
         </div>
@@ -347,11 +347,13 @@ const periodCard = computed(() => {
   if (periodCardMode.value === 'ovu' && ovu) {
     if (t < ovu.start) return { title: '排卵期', big: `${dayDiff(ovu.start, t)} 天后` }
     if (t <= ovu.end) return { title: '排卵期', big: `第 ${dayDiff(t, ovu.start) + 1} 天` }
-    return { title: '排卵期', big: `已过 ${dayDiff(t, ovu.end)} 天` }
+    return { title: '排卵期', suffix: '已过', big: `${dayDiff(t, ovu.end)} 天` }
   }
   if (periodCardMode.value === 'pred' && pred) {
     const du = dayDiff(pred.start, t)
-    return { title: '距离预测经期', big: du > 0 ? `${du} 天` : du === 0 ? '今天来' : `已过 ${-du} 天` }
+    if (du > 0) return { title: '距离预测经期', big: `${du} 天` }
+    if (du === 0) return { title: '距离预测经期', big: '今天来' }
+    return { title: '距离预测经期', suffix: '已过', big: `${-du} 天` }
   }
   const cyc = cycleOf(cycles, t)
   if (cyc) return { title: '经期', big: `第 ${dayDiff(t, cyc.start) + 1} 天` }
@@ -362,7 +364,7 @@ const periodCard = computed(() => {
     const du = dayDiff(pred.start, t)
     if (du > 0) return { title: '距离预测经期', big: `${du} 天` }
     if (du === 0) return { title: '距离预测经期', big: '今天来' }
-    return { title: '距离预测经期', big: `已过 ${-du} 天` }
+    return { title: '距离预测经期', suffix: '已过', big: `${-du} 天` }
   }
   return { title: '经期', big: '记录经期' }
 })
@@ -1307,6 +1309,8 @@ function onUnmountedClear(t) {
 /* 经期卡片：与第 1 页纪念日卡片排布一致 —— 小字标题上方居中 + 状态大字（点击在 排卵期/预测 间切换） */
 .cb-period { align-items: center; text-align: center; }
 .cb-period-big { font-size: 30px; font-weight: 700; color: var(--accent); font-family: var(--font-serif); line-height: 1.15; letter-spacing: 0.5px; }
+/* 备忘录卡标签行居中（「备忘录」+「待办/便签」角标整体居中，不靠左） */
+.cb-box .cb-label { text-align: center; }
 /* 备忘录卡类型角标：标签右侧纯文字标注「待办/便签」（无外框） */
 .cb-memo-type {
   margin-left: 6px; font-size: 10px; letter-spacing: 1px; vertical-align: 1px;
