@@ -567,9 +567,32 @@ const bubbleStyleCss = computed(() => {
   s['--vm-bg'] = bubbleColor.value || (side.value === 'me' ? 'var(--bubble-me)' : 'var(--bubble-contact)')
   s['--vm-fg'] = s['color'] || (side.value === 'me' ? 'var(--bubble-me-fg)' : 'var(--text)')
   // 自定义气泡 CSS（用户在设置页填写的声明式样式，优先级最高，对我/对方气泡统一生效）
-  const custom = cssTextToStyle(props.bubbleStyle?.css)
+  const custom = scaledCustomCss(cssTextToStyle(props.bubbleStyle?.css))
   return Object.assign(s, custom)
 })
+
+/* 自定义 CSS 里的尺寸声明（font-size / padding）是内联样式，会盖掉 .bubble 类规则里
+   calc(… * var(--bubble-scale)) 的缩放计算，导致「气泡大小」滑条对自定义气泡失效。
+   这里把 px 数值包一层 calc，让滑条继续按比例缩放（非 px 单位如 em/% 不动，
+   em 本身会随字号缩放）。 */
+function scaledCustomCss(custom) {
+  const out = { ...custom }
+  const wrapPx = (v) => {
+    const m = /^(-?\d+(?:\.\d+)?)px$/.exec(String(v).trim())
+    return m ? `calc(${m[1]}px * var(--bubble-scale, 1))` : null
+  }
+  if (out.fontSize) {
+    const w = wrapPx(out.fontSize)
+    if (w) out.fontSize = w
+  }
+  if (out.padding) {
+    const parts = String(out.padding).trim().split(/\s+/)
+    if (parts.length && parts.every((p) => wrapPx(p))) {
+      out.padding = parts.map((p) => wrapPx(p)).join(' ')
+    }
+  }
+  return out
+}
 
 /* 气泡大小：控制整体气泡缩放（字号、内边距、最大宽度随比例变化），放在根节点供 .bubble 继承 */
 const wrapStyle = computed(() => {

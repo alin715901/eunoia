@@ -52,13 +52,16 @@
       <div class="panel sec">
         <div class="sec-title">自定义气泡 CSS</div>
         <p class="css-tip">填写声明式样式，一行一条（如 background / color / font-size / padding），统一作用于双方气泡，优先级高于上面的颜色与圆角。</p>
-        <textarea
-          class="css-area"
-          v-model="bs.css"
-          rows="3"
-          placeholder="例：background: linear-gradient(135deg,#fde9c8,#f6d5a7); color:#5a4632; font-size:15px;"
-          @change="queueSave"
-        ></textarea>
+        <div class="css-wrap">
+          <textarea
+            class="css-area"
+            v-model="bs.css"
+            rows="6"
+            placeholder="例：background: linear-gradient(135deg,#fde9c8,#f6d5a7); color:#5a4632; font-size:15px;"
+            @change="queueSave"
+          ></textarea>
+          <button class="ta-clear" type="button" @click="clearBubbleCss">清空</button>
+        </div>
         <p class="hint">留空则使用上面选择的颜色；改完自动保存。</p>
       </div>
 
@@ -103,6 +106,20 @@ function scaleOf(size) {
   const n = Number.isFinite(Number(size)) && Number(size) > 0 ? Number(size) : 68
   return n / 68
 }
+/* 自定义 CSS 的 px 尺寸声明也乘缩放系数（与 MessageBubble 的 scaledCustomCss 对应）：
+   否则预览里内联 font-size/padding 固定值会盖掉缩放，滑条看起来「无效」 */
+function scaledByK(custom, k) {
+  const out = { ...custom }
+  const isPx = (v) => /^-?\d+(?:\.\d+)?px$/.test(String(v).trim())
+  if (isPx(out.fontSize)) out.fontSize = (parseFloat(out.fontSize) * k).toFixed(1) + 'px'
+  if (out.padding) {
+    const parts = String(out.padding).trim().split(/\s+/)
+    if (parts.length && parts.every(isPx)) {
+      out.padding = parts.map((p) => (parseFloat(p) * k).toFixed(1) + 'px').join(' ')
+    }
+  }
+  return out
+}
 function bubblePreviewStyle(hex) {
   const k = scaleOf(bs.size)
   return {
@@ -112,7 +129,7 @@ function bubblePreviewStyle(hex) {
     fontSize: (15 * k).toFixed(1) + 'px',
     padding: `${(10 * k).toFixed(1)}px ${(14 * k).toFixed(1)}px`,
     maxWidth: Math.min(92, 68 * k).toFixed(0) + '%',
-    ...cssTextToStyle(bs.css)
+    ...scaledByK(cssTextToStyle(bs.css), k)
   }
 }
 /* 对方气泡预览 */
@@ -162,6 +179,11 @@ async function doSave() {
 function queueSave() {
   clearTimeout(doSave._t)
   doSave._t = setTimeout(doSave, 450)
+}
+
+function clearBubbleCss() {
+  bs.css = ''
+  doSave()
 }
 
 onMounted(async () => {
@@ -227,7 +249,7 @@ onMounted(async () => {
   border: 1px solid var(--border);
   background: var(--bg-soft);
   border-radius: 10px;
-  padding: 9px 11px;
+  padding: 9px 11px 34px;
   font-size: 12px;
   line-height: 1.6;
   color: var(--text);
@@ -235,6 +257,22 @@ onMounted(async () => {
   font-family: ui-monospace, Menlo, Consolas, monospace;
 }
 .css-area:focus { border-color: var(--accent); outline: none; }
+
+/* 输入框相对定位容器 + 右下角清空按钮 */
+.css-wrap { position: relative; }
+.ta-clear {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-screen);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 11px;
+  color: var(--text-soft);
+  cursor: pointer;
+}
+.ta-clear:active { opacity: 0.7; }
 
 /* 预设 */
 .preset-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }

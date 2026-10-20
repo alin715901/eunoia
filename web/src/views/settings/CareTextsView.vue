@@ -2,10 +2,10 @@
   <div class="ct-page">
     <AppHeader title="关怀文案" back />
     <div class="ct-body">
-      <p class="ct-intro">
-        TA 在这些时刻主动发给你的关心话，默认使用<b>内置句子</b>。<br />
-        可以在内置基础上<b>微调</b>，也可以<b>添加自己的话</b>；不填时一切照旧。
-      </p>
+    <p class="ct-intro">
+      TA 在这些时刻主动发给你的关心话，默认使用内置句子。<br />
+      可以在内置基础上微调，也可以添加自己的话；不填时一切照旧。
+    </p>
 
       <div v-for="grp in groups" :key="grp.kind" class="ct-group">
         <div class="ct-group-head">
@@ -185,12 +185,11 @@ function resetAll() {
   flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px;
   display: flex; flex-direction: column; gap: 14px;
 }
-/* 顶部说明框：仿字卡库枢纽的 hub-hint（accent-soft 底 + 圆角，关键词 accent 色） */
+/* 顶部说明框：仿字卡库枢纽的 hub-hint（accent-soft 底 + 圆角） */
 .ct-intro {
   margin: 0 0 2px; font-size: 12px; color: var(--text-soft); line-height: 1.7;
   background: var(--accent-soft); border-radius: 12px; padding: 10px 12px;
 }
-.ct-intro b { color: var(--accent); }
 
 .ct-group {
   background: var(--bg-screen); border: 1px solid var(--border); border-radius: 14px;

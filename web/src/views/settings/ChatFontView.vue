@@ -26,13 +26,16 @@
 
       <div class="panel sec">
         <div class="sec-title">自定义字体 CSS</div>
-        <textarea
-          class="ta mono"
-          v-model="fontCssDraft"
-          rows="3"
-          placeholder="填写 font-family 等 font- 开头的样式，如：&#10;font-family: 'LXGW WenKai', 'Noto Serif SC', serif;"
-          @change="queueSave"
-        ></textarea>
+        <div class="ta-wrap">
+          <textarea
+            class="ta mono"
+            v-model="fontCssDraft"
+            rows="6"
+            placeholder="填写 font-family 等 font- 开头的样式，如：&#10;font-family: 'LXGW WenKai', 'Noto Serif SC', serif;"
+            @change="queueSave"
+          ></textarea>
+          <button class="ta-clear" type="button" @click="clearFontCss">清空</button>
+        </div>
         <p class="hint">填写后优先于上方预设字体，只对该聊天的气泡文字生效；清空则回到上方选择。</p>
       </div>
     </div>
@@ -78,6 +81,11 @@ function queueSave() {
   doSave._t = setTimeout(doSave, 450)
 }
 
+function clearFontCss() {
+  fontCssDraft.value = ''
+  doSave()
+}
+
 onMounted(async () => {
   const s = await load()
   if (!s) return
@@ -103,11 +111,27 @@ onMounted(async () => {
   border: 1px solid var(--border);
   background: var(--bg-soft);
   border-radius: 10px;
-  padding: 9px 11px;
+  padding: 9px 11px 34px;
   font-size: 13px;
   color: var(--text);
   resize: none;
 }
 .ta.mono { font-family: ui-monospace, Menlo, Consolas, monospace; line-height: 1.6; }
 .ta:focus { border-color: var(--accent); outline: none; }
+
+/* 输入框相对定位容器 + 右下角清空按钮 */
+.ta-wrap { position: relative; }
+.ta-clear {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-screen);
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 11px;
+  color: var(--text-soft);
+  cursor: pointer;
+}
+.ta-clear:active { opacity: 0.7; }
 </style>
