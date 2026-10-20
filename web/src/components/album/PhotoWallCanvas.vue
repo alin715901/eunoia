@@ -109,22 +109,37 @@
       </div>
     </div>
 
-    <!-- 贴纸选择（内置库 + 自定义上传） -->
+    <!-- 贴纸选择（分类导航 + 内置库 + 自定义上传；顶部固定，仅宫格滚动） -->
     <div v-if="stickerSheet" class="sheet-mask" @click="stickerSheet = false">
-      <div class="sheet sheet-wide" @click.stop>
-        <div class="sheet-title">添加贴纸</div>
-        <div class="sticker-grid">
+      <div class="sheet sheet-sticker" @click.stop>
+        <div class="sh-head">
+          <div class="sheet-title">添加贴纸</div>
+          <button class="sh-close" aria-label="关闭" @click="stickerSheet = false"><AppIcon name="close" :size="18" color="var(--text-soft)" /></button>
+        </div>
+        <div class="st-cat-row">
+          <button
+            v-for="c in allCats"
+            :key="c"
+            class="st-cat"
+            :class="{ on: curCat === c }"
+            @click="curCat = c"
+          >{{ c }}</button>
+          <button class="st-cat st-cat-add" aria-label="添加分类" @click="addCat"><AppIcon name="plus" :size="13" /></button>
+        </div>
+        <div class="sticker-grid st-scroll">
           <div
-            v-for="(s, i) in STICKERS"
+            v-for="(s, i) in curStickers"
             :key="i"
             class="sticker-thumb"
             @click="addSticker(s.data)"
           >
             <img :src="s.data" alt="" />
           </div>
+          <button class="sticker-thumb st-upload" @click="pickCustomSticker">
+            <AppIcon name="plus" :size="24" color="var(--text-soft)" />
+            <span>上传贴纸</span>
+          </button>
         </div>
-        <button class="sheet-item" @click="pickCustomSticker">上传自定义贴纸（透明 PNG）</button>
-        <button class="sheet-cancel" @click="stickerSheet = false">取消</button>
       </div>
     </div>
 
@@ -186,7 +201,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import WallElement from './WallElement.vue'
-import { FONTS, PAPERS, STICKERS, STICKY_COLORS, paperBg } from './presets'
+import { FONTS, PAPERS, STICKERS, STICKER_CATEGORIES, STICKY_COLORS, paperBg } from './presets'
 import {
   getPhotoWall, listWallElements, saveWallElements, updatePhotoWall, listCardImages
 } from '@/api/album'
@@ -392,13 +407,45 @@ async function onLocalImagePick(e) {
   }
 }
 
-/* ── 贴纸：内置 / 自定义上传 ── */
+/* ── 贴纸：内置 / 自定义上传 ──
+   自定义分类保存在 localStorage（设备级偏好） */
+const CAT_KEY = 'eunoia_album_sticker_cats'
+function loadCustomCats() {
+  try {
+    const v = JSON.parse(localStorage.getItem(CAT_KEY))
+    return v && Array.isArray(v.names) ? v : { names: [], stickers: {} }
+  } catch (_) {
+    return { names: [], stickers: {} }
+  }
+}
+const customCats = ref(loadCustomCats())
+function saveCustomCats() {
+  try { localStorage.setItem(CAT_KEY, JSON.stringify(customCats.value)) } catch (_) {}
+}
+const allCats = computed(() => [...STICKER_CATEGORIES.map((c) => c.name), ...customCats.value.names])
+const curCat = ref(STICKER_CATEGORIES[0].name)
+const curStickers = computed(() => {
+  const builtin = STICKERS.filter((s) => s.cat === curCat.value).map((s) => ({ data: s.data }))
+  const custom = customCats.value.stickers[curCat.value] || []
+  return [...builtin, ...custom]
+})
+
+async function addCat() {
+  const name = await promptDialog({ title: '自定义分类', text: '输入分类名称', placeholder: '如：旅行', okText: '添加' })
+  if (name === null) return
+  const n = name.trim()
+  if (!n || allCats.value.includes(n)) return
+  customCats.value.names.push(n)
+  customCats.value.stickers[n] = customCats.value.stickers[n] || []
+  saveCustomCats()
+  curCat.value = n
+}
+
 function addSticker(data) {
   stickerSheet.value = false
   addElement('sticker', data)
 }
 function pickCustomSticker() {
-  stickerSheet.value = false
   stFileEl.value && stFileEl.value.click()
 }
 async function onCustomStickerPick(e) {
@@ -409,6 +456,11 @@ async function onCustomStickerPick(e) {
     const small = await compressImage(file)
     const res = await uploadFile(small)
     addElement('sticker', res.path)
+    // 当前在自定义分类时，把上传的贴纸同时存入该分类，方便复用
+    if (!STICKER_CATEGORIES.some((c) => c.name === curCat.value)) {
+      customCats.value.stickers[curCat.value] = [...(customCats.value.stickers[curCat.value] || []), { name: 'custom-' + Date.now(), data: res.path }]
+      saveCustomCats()
+    }
   } catch (err) {
     toast.pushToast({ type: 'error', title: '贴纸上传失败', text: err.message })
   }
@@ -640,6 +692,68 @@ defineExpose({ save: flushSave })
 .card-thumb img, .sticker-thumb img { width: 100%; height: 100%; object-fit: cover; }
 .sticker-thumb { background: transparent; }
 .sticker-thumb img { object-fit: contain; }
+
+/* 贴纸弹窗：顶部固定、宫格独立滚动 */
+.sheet-sticker {
+  height: 64vh;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
+}
+.sh-head { position: relative; flex: 0 0 auto; }
+.sh-close {
+  position: absolute;
+  right: -2px;
+  top: -4px;
+  border: none;
+  background: transparent;
+  padding: 6px;
+  display: inline-flex;
+  cursor: pointer;
+}
+.st-cat-row {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  padding: 0 2px 10px;
+  -webkit-overflow-scrolling: touch;
+}
+.st-cat {
+  flex-shrink: 0;
+  border: 1.5px solid var(--border);
+  background: transparent;
+  border-radius: 999px;
+  padding: 5px 13px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+.st-cat.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.st-cat-add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 9px;
+  color: var(--text-soft);
+}
+.st-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  align-content: start;
+  margin-bottom: 0;
+}
+.st-upload {
+  flex-direction: column;
+  gap: 3px;
+  background: transparent;
+  border: 1.5px dashed var(--border);
+  font-size: 11px;
+  color: var(--text-soft);
+  padding: 0;
+}
 
 /* 添加文字：样式选择 */
 .ts-label { font-size: 12px; color: var(--text-soft); margin: 8px 2px 6px; }
