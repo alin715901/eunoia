@@ -17,7 +17,7 @@
               type="button"
               @click="pickContact(c)"
             >
-              <AppAvatar :name="c.name" :avatar="c.avatar" :size="22" />
+              <AppAvatar :name="c.name" :avatar="c.chat_avatar || c.avatar" :size="22" />
               <span class="mo-select-name">{{ c.name }}</span>
               <AppIcon v-if="curContact && String(c.id) === String(curContact.id)" name="check" :size="14" color="var(--accent)" />
             </button>

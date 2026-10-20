@@ -235,7 +235,7 @@
               :class="{ on: chatTarget.id === c.id }"
               @click="pickChatTarget(c)"
             >
-              <AppAvatar :name="c.name" :avatar="c.avatar" :size="30" />
+              <AppAvatar :name="c.name" :avatar="c.chat_avatar || c.avatar" :size="30" />
               <span class="cv-pick-name">{{ c.name }}{{ c.kind === 'group' ? '（群）' : '' }}</span>
               <AppIcon v-if="chatTarget.id === c.id" name="check" :size="16" color="var(--accent)" />
             </button>

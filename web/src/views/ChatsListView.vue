@@ -151,7 +151,7 @@
             :class="{ on: groupForm.memberIds.includes(c.id) }"
             @click="toggleMember(c.id)"
           >
-            <AppAvatar :name="c.name" :avatar="c.avatar" :size="30" />
+            <AppAvatar :name="c.name" :avatar="c.chat_avatar || c.avatar" :size="30" />
             <span class="ac-member-name">{{ c.name }}</span>
             <AppIcon v-if="groupForm.memberIds.includes(c.id)" name="check" :size="14" color="var(--accent)" />
           </button>
@@ -217,8 +217,9 @@ const merged = computed(() => {
       ...r,
       /* 名字：优先取联系人 store 的实时值，改备注后（SSE 已回写 store）列表即时同步，不用重新进页面 */
       name: c?.name || r.name || '联系人',
-      /* 头像：本地 > 服务端合并好的 chat_avatar（含人物卡同步） > 桌面缓存，首屏即正确不跳变 */
-      avatar: r.avatar || r.chat_avatar || c?.avatar || c?.chat_avatar || deskAvatars.value[r.id] || '',
+      /* 头像：优先服务端合并好的 chat_avatar（人物卡同步开启时=人物卡头像，否则=本体头像），
+         再退回联系人 store 实时值 / 桌面缓存。这样在联系人设置或人物卡里换头像后列表即时一致 */
+      avatar: r.chat_avatar || c?.chat_avatar || r.avatar || c?.avatar || deskAvatars.value[r.id] || '',
       pinned: Number(r.pinned ?? c?.pinned ?? 0),
       // 优先用联系人 store 的实时未读（SSE 到达时累加），否则回落 /chats 快照
       unread: Number(c?.unread ?? r.unread ?? 0)

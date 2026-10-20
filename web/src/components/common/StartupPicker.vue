@@ -14,7 +14,7 @@
           :class="{ on: c.id === currentId }"
           @click="enter(c.id)"
         >
-          <AppAvatar :name="displayName(c)" :avatar="c.avatar" :size="48" />
+          <AppAvatar :name="displayName(c)" :avatar="c.chat_avatar || c.avatar" :size="48" />
           <div class="sp-meta">
             <div class="sp-name">
               {{ displayName(c) }}

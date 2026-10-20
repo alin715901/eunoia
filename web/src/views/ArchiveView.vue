@@ -87,7 +87,7 @@
             :class="{ on: pickedMateId === c.id }"
             @click="pickedMateId = pickedMateId === c.id ? null : c.id"
           >
-            <AppAvatar :name="c.name" :avatar="c.avatar" :size="44" />
+            <AppAvatar :name="c.name" :avatar="c.chat_avatar || c.avatar" :size="44" />
             <span class="cps-mate-name">{{ c.name }}</span>
           </button>
           <p v-if="!mateOptions.length" class="cps-none">还没有联系人</p>

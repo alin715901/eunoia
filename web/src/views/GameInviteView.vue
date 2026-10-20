@@ -19,7 +19,7 @@
           :class="{ on: pickedId === c.id }"
           @click="pickedId = c.id"
         >
-          <AppAvatar :name="c.name" :avatar="c.avatar" :size="38" />
+          <AppAvatar :name="c.name" :avatar="c.chat_avatar || c.avatar" :size="38" />
           <span class="gi-pick-name">{{ c.name }}</span>
           <span class="gi-radio" :class="{ on: pickedId === c.id }"></span>
         </button>

@@ -9,7 +9,7 @@
     <div v-else class="sp-body">
       <!-- 名片 -->
       <div class="sp-hero panel">
-        <AppAvatar :name="contact.name" :avatar="contact.avatar" :size="60" />
+        <AppAvatar :name="contact.name" :avatar="contact.chat_avatar || contact.avatar" :size="60" />
         <div class="sp-hero-meta">
           <div class="sp-name">
             {{ contact.name }}

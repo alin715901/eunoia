@@ -174,7 +174,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, onActivated } from 'vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppAvatar from '@/components/common/AppAvatar.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
@@ -238,6 +238,13 @@ async function loadForm() {
 onMounted(async () => {
   try { await contactsStore.load() } catch (e) { /* ignore */ }
   await loadForm()
+})
+
+/* keep-alive 复用实例：从聊天联系人设置等页面改完头像返回时，
+   onMounted 不会再次执行，必须在这里重新拉取人物卡数据，
+   否则表单停留在上次进入时的旧头像（聊天里换的头像"不同步到人物卡"） */
+onActivated(async () => {
+  try { await loadForm() } catch (e) { /* ignore */ }
 })
 
 /* 可切换的联系人：只列单人（群聊与人物卡无关）。默认收起，点击「切换联系人」才展开 */

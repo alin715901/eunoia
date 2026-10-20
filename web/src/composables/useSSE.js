@@ -143,14 +143,14 @@ export function connect() {
         const last = (messages || []).slice(-1)[0]
         let title = sseName || name
         // 有效头像：优先后端带出的「同步到聊天」人物卡头像，与聊天界面一致；
-        // 否则回落联系人自身头像
-        let avatar = sseAvatar || contact?.avatar || ''
+        // 否则用联系人的合并头像 chat_avatar（人物卡同步开启时=人物卡头像），再退本体头像
+        let avatar = sseAvatar || contact?.chat_avatar || contact?.avatar || ''
         // 群聊：弹窗标题显示群名称（头像仍取实际发言成员，便于识别是谁在说）
         if (kind === 'group' && last?.author_member_id) {
           const mem = contacts.list.find((c) => String(c.id) === String(last.author_member_id))
           title = contact?.name || sseName || name
           if (mem) {
-            avatar = sseAvatar || mem.avatar || ''
+            avatar = sseAvatar || mem.chat_avatar || mem.avatar || ''
           }
         }
         const preview = last ? previewOf(last) : ''

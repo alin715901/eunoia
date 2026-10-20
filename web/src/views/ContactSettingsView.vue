@@ -14,7 +14,7 @@
         <div class="info-row" @click="openAvatarSheet('group')">
           <span class="info-label">群聊头像</span>
           <span class="row-end">
-            <AppAvatar :name="contact?.name" :avatar="contact?.avatar" :size="44" :style="avatarBoxStyle" />
+            <AppAvatar :name="contact?.name" :avatar="contact?.chat_avatar || contact?.avatar" :size="44" :style="avatarBoxStyle" />
             <span class="chev">›</span>
           </span>
         </div>
@@ -230,7 +230,7 @@
           :class="{ on: pickMemberIds.has(String(c.id)) }"
           @click="togglePick(String(c.id))"
         >
-          <AppAvatar :name="c.name" :avatar="c.avatar" :size="30" />
+          <AppAvatar :name="c.name" :avatar="c.chat_avatar || c.avatar" :size="30" />
           <span class="ac-member-name">{{ c.name }}</span>
           <AppIcon v-if="pickMemberIds.has(String(c.id))" name="check" :size="14" color="var(--accent)" />
         </button>

@@ -86,10 +86,11 @@ const desk = ref(deskCache.get(props.id))
 /* 群聊：成员 id → {name, avatar}，用于气泡上显示发言人 */
 const memberMap = ref(null)
 
-/* 最终头像：开启「应用到聊天」且有设置值时，用人物卡头像，否则沿用各自原值 */
+/* 最终头像：开启「应用到聊天」且有设置值时，用人物卡头像，否则沿用各自原值
+   （chat_avatar 为服务端合并值：sync 开=人物卡头像，否则=本体，作为兜底保持一致） */
 const finalAvatar = computed(() => {
   if (desk.value?.sync_chat_avatar && desk.value?.partner_avatar) return desk.value.partner_avatar
-  return contact.value?.avatar || ''
+  return contact.value?.chat_avatar || contact.value?.avatar || ''
 })
 const finalMyAvatar = computed(() => {
   if (desk.value?.sync_chat_avatar && desk.value?.my_avatar) return desk.value.my_avatar
