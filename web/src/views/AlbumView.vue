@@ -49,31 +49,21 @@
         </p>
       </template>
     </div>
-
-    <!-- 新建时的封面选择：手机上传 或 占位 -->
-    <input ref="fileEl" type="file" accept="image/*" hidden @change="onCoverPick" />
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onActivated } from 'vue'
 import { useRouter } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import { listPhotoWalls, createPhotoWall, updatePhotoWall, deletePhotoWall } from '@/api/album'
-import { uploadFile } from '@/api/settings'
-import { compressImage } from '@/utils/image'
 import { promptDialog, confirmDialog } from '@/utils/dialog'
-import { useNotificationsStore } from '@/stores/notifications'
-
-const toast = useNotificationsStore()
 
 const router = useRouter()
 const walls = ref([])
 const loading = ref(true)
 const editing = ref(false)
-const fileEl = ref(null)
-let pendingName = ''
 
 const GRADS = [
   'linear-gradient(135deg,#f6d5a7,#f3a683)',
@@ -99,29 +89,13 @@ async function load() {
 }
 
 onMounted(load)
+// keep-alive 包裹：从详情页返回时也要刷新列表
+onActivated(load)
 
 async function startCreate() {
-  const name = await promptDialog({ title: '新建照片墙', text: '给照片墙起个名字', placeholder: '如：日常碎片', okText: '下一步' })
+  const name = await promptDialog({ title: '新建照片墙', text: '给照片墙起个名字', placeholder: '如：日常碎片', okText: '创建' })
   if (name === null) return
-  pendingName = name.trim() || '未命名照片墙'
-  // 选封面（可取消 → 用占位渐变）
-  fileEl.value && fileEl.value.click()
-}
-
-async function onCoverPick(e) {
-  const file = e.target.files && e.target.files[0]
-  e.target.value = ''
-  let cover = ''
-  if (file) {
-    try {
-      const small = await compressImage(file)
-      const res = await uploadFile(small)
-      cover = res.path
-    } catch (err) {
-      toast.pushToast({ type: 'error', title: '封面上传失败', text: err.message })
-    }
-  }
-  const w = await createPhotoWall({ name: pendingName, cover })
+  const w = await createPhotoWall({ name: name.trim() || '未命名照片墙' })
   router.push(`/album/${w.id}`)
 }
 
@@ -140,7 +114,7 @@ async function removeWall(w) {
 }
 
 function onCell(w) {
-  if (editing) return
+  if (editing.value) return
   router.push(`/album/${w.id}`)
 }
 </script>

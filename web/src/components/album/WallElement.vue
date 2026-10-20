@@ -1,7 +1,7 @@
 <template>
   <div
     class="we"
-    :class="[el.type, { editable, selected: selected && editable }]"
+    :class="[el.type, frameCls, { editable, selected: selected && editable }]"
     :style="styleObj"
     @pointerdown="onDown"
     @pointermove="onMove"
@@ -9,14 +9,15 @@
     @pointercancel="onUp"
     @dblclick.prevent="onDblClick"
   >
-    <img
-      v-if="el.type === 'image' || el.type === 'sticker'"
-      :src="el.content"
-      class="we-media"
-      alt=""
-      draggable="false"
-    />
-    <div v-else class="we-text">{{ el.content || '双击编辑文字' }}</div>
+    <template v-if="el.type === 'image' || el.type === 'sticker'">
+      <img :src="el.content" class="we-media" alt="" draggable="false" />
+    </template>
+    <template v-else-if="isSticky">
+      <div class="we-sticky" :style="{ background: stickyColor }">
+        <div class="we-text" :style="textStyle">{{ el.content || '双击编辑文字' }}</div>
+      </div>
+    </template>
+    <div v-else class="we-text" :style="textStyle">{{ el.content || '双击编辑文字' }}</div>
 
     <!-- 选中态：四角小把手提示可缩放/旋转 -->
     <span v-if="selected && editable" class="we-corner tl"></span>
@@ -26,6 +27,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { fontCss, STICKY_COLORS } from './presets'
 
 const props = defineProps({
   el: { type: Object, required: true },
@@ -36,6 +38,31 @@ const emit = defineEmits(['select', 'change', 'edit-text'])
 
 // 基尺寸（未缩放），缩放/旋转由 transform 承担
 const BASE = { image: 150, sticker: 96, text: 0 }
+
+/* frame 字段编码：
+   ''                  → 无相框（图片原图 / 普通文字）
+   'polaroid'          → 拍立得白边
+   'tape'              → 一键电子胶带（贴在图片上方）
+   'sticky' / 'sticky:#fff3b0' → 便利贴（可带底色） */
+const frameCls = computed(() => {
+  const f = props.el.frame || ''
+  if (f === 'polaroid') return 'polaroid'
+  if (f === 'tape') return 'tape'
+  if (f.startsWith('sticky')) return 'sticky'
+  return ''
+})
+const isSticky = computed(() => frameCls.value === 'sticky')
+const stickyColor = computed(() => {
+  const f = props.el.frame || ''
+  const c = f.split(':')[1]
+  return STICKY_COLORS.includes(c) ? c : STICKY_COLORS[0]
+})
+
+const textStyle = computed(() => ({
+  fontFamily: fontCss(props.el.font),
+  // 手账深色墨水：浅色底纸上可读，便利贴内同样清晰
+  color: '#4a4036'
+}))
 
 const styleObj = computed(() => {
   const t = props.el.type
@@ -128,6 +155,8 @@ function onUp(e) {
 
 function onDblClick() {
   if (!props.editable) return
+  // 只有文字元素可双击编辑；图片/贴纸双击容易误触改写内容
+  if (props.el.type !== 'text') return
   emit('edit-text', props.el)
 }
 </script>
@@ -154,9 +183,7 @@ function onDblClick() {
 .we-text {
   white-space: pre-wrap;
   word-break: break-word;
-  line-height: 1.4;
-  color: #fff;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+  line-height: 1.5;
   padding: 2px 4px;
   pointer-events: none;
   min-width: 24px;
@@ -167,8 +194,54 @@ function onDblClick() {
   filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.18));
 }
 .we.editable:not(.selected) {
-  filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.12));
+  filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.14));
 }
+
+/* ── 拍立得白边：下边留宽一些，像真实拍立得 ── */
+.we.polaroid {
+  padding: 7px 7px 26px;
+  background: #fff;
+  border-radius: 3px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}
+.we.polaroid .we-media { border-radius: 1px; }
+
+/* ── 一键电子胶带：斜贴一条半透明胶带在元素上方 ── */
+.we.tape::before {
+  content: '';
+  position: absolute;
+  top: -11px;
+  left: 50%;
+  width: 46%;
+  height: 22px;
+  transform: translateX(-50%) rotate(-5deg);
+  background: rgba(197, 164, 126, 0.5);
+  border-left: 1px dashed rgba(150, 120, 80, 0.35);
+  border-right: 1px dashed rgba(150, 120, 80, 0.35);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+  pointer-events: none;
+}
+
+/* ── 便利贴：底色 + 右下折角 ── */
+.we.sticky .we-sticky {
+  padding: 14px 13px 16px;
+  min-width: 96px;
+  max-width: 230px;
+  box-shadow: 0 5px 14px rgba(0, 0, 0, 0.14);
+  position: relative;
+}
+.we.sticky .we-sticky::after {
+  /* 右下角折角 */
+  content: '';
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  border-style: solid;
+  border-width: 0 0 16px 16px;
+  border-color: transparent transparent rgba(0, 0, 0, 0.1) transparent;
+  filter: drop-shadow(-1px -1px 1px rgba(0, 0, 0, 0.06));
+}
+
 .we-corner {
   position: absolute;
   width: 9px;

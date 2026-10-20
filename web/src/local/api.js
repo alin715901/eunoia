@@ -1581,8 +1581,8 @@ export async function getPhotoWall(id) {
 export async function createPhotoWall(payload = {}) {
   const now = Math.floor(Date.now() / 1000)
   const name = String(payload.name || '未命名照片墙').trim() || '未命名照片墙'
-  const info = db.prepare('INSERT INTO photo_walls(name, cover, page_count, width, created_at, updated_at) VALUES(?,?,?,?,?,?)')
-    .run(name, payload.cover || '', payload.page_count || 1, payload.width || 0, now, now)
+  const info = db.prepare('INSERT INTO photo_walls(name, cover, bg, page_count, width, created_at, updated_at) VALUES(?,?,?,?,?,?,?)')
+    .run(name, payload.cover || '', payload.bg || 'cream', payload.page_count || 1, payload.width || 0, now, now)
   return getPhotoWall(info.lastInsertRowid)
 }
 
@@ -1591,9 +1591,10 @@ export async function updatePhotoWall(id, payload = {}) {
   const cur = db.prepare('SELECT * FROM photo_walls WHERE id=?').get(iid)
   if (!cur) fail('照片墙不存在')
   db.prepare(`UPDATE photo_walls SET
-    name = ?, cover = ?, page_count = ?, width = ?, updated_at = ? WHERE id = ?`).run(
+    name = ?, cover = ?, bg = ?, page_count = ?, width = ?, updated_at = ? WHERE id = ?`).run(
     payload.name != null ? String(payload.name) : cur.name,
     payload.cover !== undefined ? payload.cover : cur.cover,
+    payload.bg !== undefined ? payload.bg : cur.bg,
     payload.page_count != null ? Number(payload.page_count) : cur.page_count,
     payload.width != null ? Number(payload.width) : cur.width,
     Math.floor(Date.now() / 1000),
@@ -1613,17 +1614,17 @@ export async function listWallElements(wallId) {
 }
 
 /* 批量保存元素：以「墙内元素集合」为准做全量替换（先删后插），简单可靠。
-   upserts 传 [{id?, type, x, y, scale, rotation, z, content}]；无 id 视为新增。
+   upserts 传 [{id?, type, x, y, scale, rotation, z, content, font?, frame?}]；无 id 视为新增。
    返回保存后的元素列表（含 id）。 */
 export async function saveWallElements(wallId, elements = []) {
   const wid = Number(wallId)
   const tx = db.transaction(() => {
     db.prepare('DELETE FROM photo_wall_elements WHERE wall_id=?').run(wid)
-    const ins = db.prepare(`INSERT INTO photo_wall_elements(wall_id, type, x, y, scale, rotation, z, content, created_at)
-      VALUES(?,?,?,?,?,?,?,?,?)`)
+    const ins = db.prepare(`INSERT INTO photo_wall_elements(wall_id, type, x, y, scale, rotation, z, content, font, frame, created_at)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?)`)
     const now = Math.floor(Date.now() / 1000)
     for (const e of elements) {
-      ins.run(wid, e.type, Number(e.x) || 0, Number(e.y) || 0, Number(e.scale) || 1, Number(e.rotation) || 0, Number(e.z) || 0, e.content || '', now)
+      ins.run(wid, e.type, Number(e.x) || 0, Number(e.y) || 0, Number(e.scale) || 1, Number(e.rotation) || 0, Number(e.z) || 0, e.content || '', e.font || '', e.frame || '', now)
     }
   })
   tx()

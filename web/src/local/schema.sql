@@ -319,6 +319,7 @@ CREATE TABLE IF NOT EXISTS photo_walls (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL,
   cover TEXT DEFAULT '',
+  bg TEXT DEFAULT 'cream',
   page_count INTEGER DEFAULT 1,
   width INTEGER DEFAULT 0,
   created_at INTEGER,
@@ -327,7 +328,9 @@ CREATE TABLE IF NOT EXISTS photo_walls (
 
 /* 照片墙里的装饰元素：图片 / 贴纸 / 文字。
    坐标 (x, y) 为画布世界坐标（左上角锚点，px），scale 缩放，rotation 角度(deg)，
-   z 层级；content：图片/贴纸为 dataURL，文字为文本内容 */
+   z 层级；content：图片/贴纸为 dataURL，文字为文本内容；
+   font：文字元素使用的字体 key（对应 presets.FONTS）；frame：元素外框样式 key
+   （'none' / 'polaroid' 拍立得白边 / 'tape' 一键加胶带等） */
 CREATE TABLE IF NOT EXISTS photo_wall_elements (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   wall_id INTEGER NOT NULL,
@@ -338,6 +341,8 @@ CREATE TABLE IF NOT EXISTS photo_wall_elements (
   rotation REAL DEFAULT 0,
   z INTEGER DEFAULT 0,
   content TEXT DEFAULT '',
+  font TEXT DEFAULT '',
+  frame TEXT DEFAULT '',
   created_at INTEGER,
   FOREIGN KEY (wall_id) REFERENCES photo_walls(id) ON DELETE CASCADE
 );

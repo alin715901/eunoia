@@ -13,7 +13,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, onActivated } from 'vue'
 import { useRoute } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import PhotoWallCanvas from '@/components/album/PhotoWallCanvas.vue'
@@ -25,10 +25,13 @@ const canvasRef = ref(null)
 const name = ref('照片墙')
 const editing = ref(false)
 
-onMounted(async () => {
+async function loadName() {
   const w = await getPhotoWall(wallId)
   if (w) name.value = w.name
-})
+}
+
+onMounted(loadName)
+onActivated(loadName)
 
 async function toggleEdit() {
   if (editing.value) {

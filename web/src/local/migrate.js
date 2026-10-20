@@ -312,4 +312,8 @@ export function migrate() {
     FOREIGN KEY (wall_id) REFERENCES photo_walls(id) ON DELETE CASCADE
   )`)
   db.exec(`CREATE INDEX IF NOT EXISTS idx_pwe_wall ON photo_wall_elements(wall_id)`)
+  // ─── 电子手账重构：底纸 / 字体 / 相框 ───
+  addCol('photo_walls', 'bg', "TEXT DEFAULT 'cream'")
+  addCol('photo_wall_elements', 'font', "TEXT DEFAULT ''")
+  addCol('photo_wall_elements', 'frame', "TEXT DEFAULT ''")
 }

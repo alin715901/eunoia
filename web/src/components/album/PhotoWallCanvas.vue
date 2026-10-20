@@ -1,42 +1,80 @@
 <template>
   <div class="pwc">
-    <!-- 横向无缝长卷 -->
+    <!-- 横向无缝长卷（底纸铺满整卷） -->
     <div
       ref="scrollEl"
       class="pwc-scroll"
       :class="{ locked: !editable }"
       @pointerdown="onStripDown"
     >
-      <div class="pwc-strip" :style="{ width: contentWidth + 'px', height: pageHeight + 'px' }">
+      <div
+        class="pwc-strip"
+        :style="{ width: contentWidth + 'px', height: pageHeight + 'px', background: paperBg(wall.bg) }"
+      >
         <template v-for="(el, i) in elements" :key="el._k">
           <WallElement
             :el="el"
             :editable="editable"
             :selected="selectedId === el._k"
-            @select="selectedId = el._k"
+            @select="selectEl(el._k)"
             @change="scheduleSave"
             @edit-text="editText"
           />
         </template>
-
-        <!-- 分页参考线：每页一条极淡竖线，装饰模式可见 -->
-        <div
-          v-if="editable && pageWidth"
-          v-for="p in pageCount - 1"
-          :key="'sep' + p"
-          class="pwc-sep"
-          :style="{ left: p * pageWidth + 'px' }"
-        ></div>
       </div>
+    </div>
+
+    <!-- 选中元素的上下文操作栏：图层顺序 / 字体 / 相框 / 删除 -->
+    <div v-if="editable && selEl" class="pwc-ctx">
+      <span class="ctx-tag">{{ selLabel }}</span>
+      <button class="ctx-btn" @click="zOp('front')">置顶</button>
+      <button class="ctx-btn" @click="zOp('up')">上移</button>
+      <button class="ctx-btn" @click="zOp('down')">下移</button>
+      <button class="ctx-btn" @click="zOp('back')">置底</button>
+      <button v-if="selEl.type === 'text'" class="ctx-btn" @click="togglePanel('font')">字体</button>
+      <button v-if="selEl.type === 'text' || selEl.type === 'image'" class="ctx-btn" @click="togglePanel('frame')">相框</button>
+      <button class="ctx-btn danger" @click="removeSelected">删除</button>
+    </div>
+
+    <!-- 上下文弹出小面板（字体 / 便利贴色 / 相框） -->
+    <div v-if="ctxPanel && selEl" class="pwc-pop" @click.stop>
+      <template v-if="ctxPanel === 'font'">
+        <button
+          v-for="f in FONTS"
+          :key="f.key"
+          class="pop-item"
+          :class="{ on: selEl.font === f.key }"
+          :style="{ fontFamily: f.css }"
+          @click="setFont(f.key)"
+        >{{ f.name }}</button>
+      </template>
+      <template v-else-if="ctxPanel === 'frame'">
+        <template v-if="selEl.type === 'image'">
+          <button class="pop-item" :class="{ on: !selEl.frame }" @click="setFrame('')">原图</button>
+          <button class="pop-item" :class="{ on: selEl.frame === 'polaroid' }" @click="setFrame('polaroid')">拍立得白边</button>
+          <button class="pop-item" :class="{ on: selEl.frame === 'tape' }" @click="setFrame('tape')">电子胶带</button>
+        </template>
+        <template v-else>
+          <button class="pop-item" :class="{ on: !selEl.frame }" @click="setFrame('')">普通文字</button>
+          <button
+            v-for="c in STICKY_COLORS"
+            :key="c"
+            class="pop-item"
+            :class="{ on: selEl.frame === 'sticky:' + c }"
+            @click="setFrame('sticky:' + c)"
+          ><span class="pop-dot" :style="{ background: c }"></span>便利贴</button>
+        </template>
+      </template>
     </div>
 
     <!-- 装饰模式：底部工具栏 -->
     <transition name="slideup">
       <div v-if="editable" class="pwc-tools">
-        <button class="pt-btn" @click="openImageSheet"><AppIcon name="image" :size="20" /><span>图片</span></button>
-        <button class="pt-btn" @click="stickerSheet = true"><AppIcon name="sticker" :size="20" /><span>贴纸</span></button>
-        <button class="pt-btn" @click="addText"><AppIcon name="edit" :size="20" /><span>文字</span></button>
-        <button class="pt-btn" @click="addPage"><AppIcon name="plus" :size="20" /><span>增加页数</span></button>
+        <button class="pt-btn" @click="imageSheet = true"><AppIcon name="image" :size="19" /><span>图片</span></button>
+        <button class="pt-btn" @click="stickerSheet = true"><AppIcon name="sticker" :size="19" /><span>贴纸</span></button>
+        <button class="pt-btn" @click="textSheet = true"><AppIcon name="edit" :size="19" /><span>文字</span></button>
+        <button class="pt-btn" @click="paperSheet = true"><AppIcon name="grid" :size="19" /><span>底纸</span></button>
+        <button class="pt-btn" @click="addPage"><AppIcon name="plus" :size="19" /><span>增加页数</span></button>
       </div>
     </transition>
 
@@ -44,8 +82,8 @@
     <div v-if="imageSheet" class="sheet-mask" @click="imageSheet = false">
       <div class="sheet" @click.stop>
         <div class="sheet-title">添加图片</div>
-        <button class="sheet-item" @click="pickLocalImage">从手机上传</button>
-        <button class="sheet-item" @click="openCardImages">从字卡库选择</button>
+        <button class="sheet-item" @click="pickLocalImage">从手机上传（默认拍立得）</button>
+        <button class="sheet-item" @click="openCardImages">从字卡库导入（默认拍立得）</button>
         <button class="sheet-cancel" @click="imageSheet = false">取消</button>
       </div>
     </div>
@@ -71,13 +109,13 @@
       </div>
     </div>
 
-    <!-- 贴纸选择 -->
+    <!-- 贴纸选择（内置库 + 自定义上传） -->
     <div v-if="stickerSheet" class="sheet-mask" @click="stickerSheet = false">
       <div class="sheet sheet-wide" @click.stop>
         <div class="sheet-title">添加贴纸</div>
         <div class="sticker-grid">
           <div
-            v-for="(s, i) in builtinStickers"
+            v-for="(s, i) in STICKERS"
             :key="i"
             class="sticker-thumb"
             @click="addSticker(s.data)"
@@ -90,15 +128,65 @@
       </div>
     </div>
 
+    <!-- 添加文字：先选样式（普通文字字体 / 便利贴色），再输入内容 -->
+    <div v-if="textSheet" class="sheet-mask" @click="textSheet = false">
+      <div class="sheet" @click.stop>
+        <div class="sheet-title">添加文字</div>
+        <div class="ts-label">普通文字</div>
+        <div class="ts-row">
+          <button
+            v-for="f in FONTS"
+            :key="f.key"
+            class="ts-font"
+            :style="{ fontFamily: f.css }"
+            @click="addTextWith('', f.key)"
+          >{{ f.name }}</button>
+        </div>
+        <div class="ts-label">便利贴</div>
+        <div class="ts-row">
+          <button
+            v-for="c in STICKY_COLORS"
+            :key="c"
+            class="ts-color"
+            :style="{ background: c }"
+            aria-label="便利贴"
+            @click="addTextWith('sticky:' + c, 'hand')"
+          ></button>
+        </div>
+        <button class="sheet-cancel" @click="textSheet = false">取消</button>
+      </div>
+    </div>
+
+    <!-- 更换底纸 -->
+    <div v-if="paperSheet" class="sheet-mask" @click="paperSheet = false">
+      <div class="sheet" @click.stop>
+        <div class="sheet-title">更换底纸</div>
+        <div class="paper-grid">
+          <button
+            v-for="p in PAPERS"
+            :key="p.key"
+            class="paper-cell"
+            :class="{ on: (wall.bg || 'cream') === p.key }"
+            :style="{ background: p.thumb }"
+            @click="setPaper(p.key)"
+          >
+            <span class="paper-name">{{ p.name }}</span>
+            <AppIcon v-if="(wall.bg || 'cream') === p.key" name="check" :size="15" color="#4a4036" class="paper-check" />
+          </button>
+        </div>
+      </div>
+    </div>
+
     <input ref="imgFileEl" type="file" accept="image/*" hidden @change="onLocalImagePick" />
     <input ref="stFileEl" type="file" accept="image/*" hidden @change="onCustomStickerPick" />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onBeforeUnmount, nextTick } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import WallElement from './WallElement.vue'
+import { FONTS, PAPERS, STICKERS, STICKY_COLORS, paperBg } from './presets'
 import {
   getPhotoWall, listWallElements, saveWallElements, updatePhotoWall, listCardImages
 } from '@/api/album'
@@ -117,7 +205,7 @@ const scrollEl = ref(null)
 const imgFileEl = ref(null)
 const stFileEl = ref(null)
 
-const wall = ref({ page_count: 1, width: 0 })
+const wall = ref({ page_count: 1, width: 0, bg: 'cream' })
 const elements = ref([])
 const selectedId = ref(null)
 const pageWidth = ref(0)
@@ -130,28 +218,80 @@ const pageCount = computed(() => wall.value.page_count || 1)
 const imageSheet = ref(false)
 const cardSheet = ref(false)
 const stickerSheet = ref(false)
+const textSheet = ref(false)
+const paperSheet = ref(false)
 const cardImages = ref([])
-let pendingPick = null // 'image' | 'sticker'
+const ctxPanel = ref(null) // 'font' | 'frame'
 
-/* 系统内置贴纸（线条胶带 / 图钉 / 爱心 / 星星 / 小花） */
-const builtinStickers = [
-  { name: 'tape', data: svgData(`<rect x="3" y="9" width="18" height="6" rx="1" transform="rotate(-18 12 12)" fill="rgba(197,164,126,0.55)" stroke="rgba(150,120,80,0.7)" stroke-width="0.6"/>`) },
-  { name: 'pin', data: svgData(`<circle cx="12" cy="8" r="5" fill="#e2554f"/><path d="M12 13l-2.4 8 2.4-3 2.4 3z" fill="#b83b36"/>`) },
-  { name: 'heart', data: svgData(`<path d="M12 21s-7-4.6-9.2-9C1.3 8.7 3 5.5 6 5.5c2 0 3.2 1.2 4 2.4.8-1.2 2-2.4 4-2.4 3 0 4.7 3.2 3.2 6.5C19 16.4 12 21 12 21z" fill="#ff7a8a"/>`) },
-  { name: 'star', data: svgData(`<path d="M12 3l2.6 5.6 6 .7-4.4 4 1.3 6L12 16.6 6.5 19.3l1.3-6-4.4-4 6-.7z" fill="#f6c453"/>`) },
-  { name: 'flower', data: svgData(`<g fill="#c79be0"><circle cx="12" cy="7" r="3"/><circle cx="17" cy="12" r="3"/><circle cx="12" cy="17" r="3"/><circle cx="7" cy="12" r="3"/></g><circle cx="12" cy="12" r="2.4" fill="#fff"/>`) }
-]
+/* ── 选中元素 & 上下文操作 ── */
+const selEl = computed(() => elements.value.find((e) => e._k === selectedId.value) || null)
+const selLabel = computed(() => {
+  const t = selEl.value && selEl.value.type
+  if (t === 'image') return '图片'
+  if (t === 'sticker') return '贴纸'
+  return '文字'
+})
+function selectEl(k) {
+  selectedId.value = k
+  ctxPanel.value = null
+}
+watch(selectedId, () => { ctxPanel.value = null })
 
-function svgData(inner) {
-  const s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="72" height="72">${inner}</svg>`
-  return 'data:image/svg+xml,' + encodeURIComponent(s)
+function togglePanel(p) {
+  ctxPanel.value = ctxPanel.value === p ? null : p
+}
+
+function zOp(op) {
+  const list = [...elements.value].sort((a, b) => (a.z || 0) - (b.z || 0))
+  const idx = list.findIndex((e) => e._k === selectedId.value)
+  if (idx < 0) return
+  const el = list[idx]
+  if (op === 'front') {
+    el.z = (list[list.length - 1].z || 0) + 1
+  } else if (op === 'back') {
+    el.z = (list[0].z || 0) - 1
+  } else if (op === 'up' && idx < list.length - 1) {
+    const o = list[idx + 1]
+    const t = el.z || 0
+    el.z = o.z || 0
+    o.z = t
+  } else if (op === 'down' && idx > 0) {
+    const o = list[idx - 1]
+    const t = el.z || 0
+    el.z = o.z || 0
+    o.z = t
+  }
+  scheduleSave()
+}
+
+function setFont(key) {
+  if (selEl.value) selEl.value.font = key
+  ctxPanel.value = null
+  scheduleSave()
+}
+function setFrame(f) {
+  if (selEl.value) selEl.value.frame = f
+  ctxPanel.value = null
+  scheduleSave()
+}
+
+function removeSelected() {
+  elements.value = elements.value.filter((e) => e._k !== selectedId.value)
+  selectedId.value = null
+  ctxPanel.value = null
+  scheduleSave()
 }
 
 async function load() {
   const w = await getPhotoWall(props.wallId)
-  if (w) wall.value = w
+  if (w) wall.value = { ...wall.value, ...w }
   const rows = await listWallElements(props.wallId)
-  elements.value = rows.map((r) => ({ ...r, _k: seq++ }))
+  elements.value = rows.map((r) => ({
+    ...r,
+    font: r.font || '',
+    frame: r.frame || '',
+    _k: seq++
+  }))
 }
 
 /* 测量视口尺寸，驱动长卷宽度 */
@@ -175,6 +315,7 @@ onBeforeUnmount(() => {
 
 function onStripDown() {
   selectedId.value = null
+  ctxPanel.value = null
 }
 
 /* ── 新增元素（落在当前可视区中央） ── */
@@ -185,13 +326,13 @@ function viewCenter() {
     y: (pageHeight.value || 600) / 2
   }
 }
-function addElement(type, content) {
+function addElement(type, content, meta = {}) {
   const c = viewCenter()
   const base = type === 'image' ? 150 : type === 'sticker' ? 96 : 120
   const h = type === 'text' ? 40 : base * 0.7
   // 连续添加时沿对角线错开，避免完美重叠难分辨
   const off = (elements.value.length % 6) * 20
-  elements.value.push({
+  const el = {
     _k: seq++,
     type,
     x: Math.round(c.x - base / 2 + off),
@@ -199,16 +340,22 @@ function addElement(type, content) {
     scale: 1,
     rotation: 0,
     z: elements.value.length + 1,
-    content: content || ''
-  })
-  selectedId.value = elements.value[elements.value.length - 1]._k
+    content: content || '',
+    font: meta.font || '',
+    frame: meta.frame || ''
+  }
+  elements.value.push(el)
+  selectedId.value = el._k
+  ctxPanel.value = null
   scheduleSave()
 }
 
-async function addText() {
-  const text = await promptDialog({ title: '添加文字', text: '写下想留在墙上的话', placeholder: '如：今天也很想你', okText: '添加' })
+/* ── 文字：先选样式再输入（普通文字按字体 / 便利贴按颜色） ── */
+async function addTextWith(frame, font) {
+  textSheet.value = false
+  const text = await promptDialog({ title: frame ? '写便利贴' : '添加文字', text: '写下想留在墙上的话', placeholder: '如：今天也很想你', okText: '添加' })
   if (text === null) return
-  addElement('text', text.trim() || '新留言')
+  addElement('text', text.trim() || '新留言', { font, frame })
 }
 
 async function editText(el) {
@@ -218,11 +365,9 @@ async function editText(el) {
   scheduleSave()
 }
 
-/* ── 图片：本地上传 / 字卡库 ── */
-function openImageSheet() { imageSheet.value = true }
+/* ── 图片：本地上传 / 字卡库（默认拍立得相框，可在上下文栏切换原图/胶带） ── */
 function pickLocalImage() {
   imageSheet.value = false
-  pendingPick = 'image'
   imgFileEl.value && imgFileEl.value.click()
 }
 async function openCardImages() {
@@ -232,7 +377,7 @@ async function openCardImages() {
 }
 function addImageFromCard(c) {
   cardSheet.value = false
-  addElement('image', c.asset_path)
+  addElement('image', c.asset_path, { frame: 'polaroid' })
 }
 async function onLocalImagePick(e) {
   const file = e.target.files && e.target.files[0]
@@ -241,7 +386,7 @@ async function onLocalImagePick(e) {
   try {
     const small = await compressImage(file)
     const res = await uploadFile(small)
-    addElement('image', res.path)
+    addElement('image', res.path, { frame: 'polaroid' })
   } catch (err) {
     toast.pushToast({ type: 'error', title: '图片上传失败', text: err.message })
   }
@@ -254,7 +399,6 @@ function addSticker(data) {
 }
 function pickCustomSticker() {
   stickerSheet.value = false
-  pendingPick = 'sticker'
   stFileEl.value && stFileEl.value.click()
 }
 async function onCustomStickerPick(e) {
@@ -267,6 +411,17 @@ async function onCustomStickerPick(e) {
     addElement('sticker', res.path)
   } catch (err) {
     toast.pushToast({ type: 'error', title: '贴纸上传失败', text: err.message })
+  }
+}
+
+/* ── 底纸 ── */
+async function setPaper(key) {
+  paperSheet.value = false
+  wall.value.bg = key
+  try {
+    await updatePhotoWall(props.wallId, { bg: key })
+  } catch (e) {
+    console.error('[album] 底纸保存失败', e)
   }
 }
 
@@ -296,7 +451,9 @@ async function flushSave() {
     scale: Number(e.scale) || 1,
     rotation: Number(e.rotation) || 0,
     z: Number(e.z) || 0,
-    content: e.content || ''
+    content: e.content || '',
+    font: e.font || '',
+    frame: e.frame || ''
   }))
   try {
     await saveWallElements(props.wallId, payload)
@@ -305,6 +462,7 @@ async function flushSave() {
     await updatePhotoWall(props.wallId, {
       page_count: wall.value.page_count,
       width: contentWidth.value,
+      bg: wall.value.bg || 'cream',
       cover: firstImg ? firstImg.content : (wall.value.cover || '')
     })
   } catch (e) {
@@ -329,14 +487,76 @@ defineExpose({ save: flushSave })
 .pwc-strip {
   position: relative;
   height: 100%;
+  transition: background 0.3s ease;
 }
-.pwc-sep {
+
+/* 选中元素上下文操作栏 */
+.pwc-ctx {
   position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 0;
-  border-left: 1px dashed var(--divider);
-  pointer-events: none;
+  left: 0;
+  right: 0;
+  bottom: calc(64px + env(safe-area-inset-bottom));
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 8px;
+  background: var(--bg-screen);
+  border-top: 1px solid var(--border);
+  overflow-x: auto;
+  z-index: 30;
+}
+.ctx-tag {
+  flex-shrink: 0;
+  font-size: 11px;
+  color: var(--text-soft);
+  padding-right: 2px;
+}
+.ctx-btn {
+  flex-shrink: 0;
+  border: none;
+  background: var(--bg-soft);
+  border-radius: 999px;
+  padding: 5px 10px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+}
+.ctx-btn:active { background: var(--accent-soft); }
+.ctx-btn.danger { color: #d2554f; }
+
+/* 上下文弹出小面板 */
+.pwc-pop {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: calc(106px + env(safe-area-inset-bottom));
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 10px;
+  background: var(--bg-screen);
+  border-radius: 12px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
+  z-index: 31;
+}
+.pop-item {
+  border: 1.5px solid var(--border);
+  background: var(--bg-screen);
+  border-radius: 10px;
+  padding: 7px 12px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.pop-item.on { border-color: var(--accent); color: var(--accent); }
+.pop-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.12);
 }
 
 /* 底部工具栏 */
@@ -346,23 +566,24 @@ defineExpose({ save: flushSave })
   right: 0;
   bottom: 0;
   display: flex;
-  gap: 6px;
+  gap: 5px;
   padding: 8px 10px calc(8px + env(safe-area-inset-bottom));
   background: var(--bg-screen);
   border-top: 1px solid var(--border);
+  z-index: 30;
 }
 .pt-btn {
   flex: 1;
   border: none;
   background: var(--bg-soft);
   border-radius: 12px;
-  padding: 8px 4px;
+  padding: 7px 2px;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
   color: var(--text);
-  font-size: 11px;
+  font-size: 10px;
   cursor: pointer;
 }
 .pt-btn:active { background: var(--accent-soft); }
@@ -419,4 +640,62 @@ defineExpose({ save: flushSave })
 .card-thumb img, .sticker-thumb img { width: 100%; height: 100%; object-fit: cover; }
 .sticker-thumb { background: transparent; }
 .sticker-thumb img { object-fit: contain; }
+
+/* 添加文字：样式选择 */
+.ts-label { font-size: 12px; color: var(--text-soft); margin: 8px 2px 6px; }
+.ts-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+.ts-font {
+  border: 1.5px solid var(--border);
+  background: var(--bg-screen);
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-size: 15px;
+  color: var(--text);
+  cursor: pointer;
+}
+.ts-font:active { border-color: var(--accent); }
+.ts-color {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  border: 1.5px solid rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  cursor: pointer;
+}
+
+/* 底纸选择 */
+.paper-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.paper-cell {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  border: 2px solid var(--border);
+  border-radius: 10px;
+  cursor: pointer;
+  overflow: hidden;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 5px;
+}
+.paper-cell.on { border-color: var(--accent); }
+.paper-name {
+  font-size: 11px;
+  color: #4a4036;
+  background: rgba(255, 255, 255, 0.75);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.paper-check {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  background: #fff;
+  border-radius: 50%;
+  padding: 2px;
+  box-sizing: content-box;
+}
 </style>
