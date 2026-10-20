@@ -50,7 +50,7 @@
           <!-- 语音消息：微信式语音条（喇叭+声波图标 + 秒数）；长按弹出统一菜单（含 转文字/收文字） -->
           <template v-else-if="message.content_type === 'voice'">
             <div class="voice-wrap">
-              <div class="voice-bar" @click="togglePlay">
+              <div class="voice-bar" :style="voiceCustomStyle" @click="togglePlay">
                 <span class="vm-icon" :class="{ playing }">
                   <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
                     <!-- 声源圆点 + 两道弧（参考图二） -->
@@ -61,7 +61,7 @@
                 </span>
                 <span v-if="voiceDur" class="vm-dur">{{ voiceDur }}"</span>
               </div>
-              <div v-if="chatStore.voiceAsrOn(message.id) && message.text" class="vm-asr">{{ message.text }}</div>
+              <div v-if="chatStore.voiceAsrOn(message.id) && message.text" class="vm-asr" :style="voiceCustomStyle">{{ message.text }}</div>
             </div>
           </template>
           <!-- 红包：参考微信红包封的简约卡片（小尺寸，无 emoji） -->
@@ -607,6 +607,22 @@ const wrapStyle = computed(() => {
   const raw = Number(props.bubbleStyle?.size)
   const size = Number.isFinite(raw) && raw > 0 ? raw : 68
   return { '--bubble-scale': String(size / 68) }
+})
+
+/* 语音条 / 转文字块跟随自定义气泡外观：自定义 CSS 的视觉声明（背景/边框/阴影/文字色）
+   直接应用到语音条上（与普通气泡一致，不再只是「贴一块预设色」）。
+   尺寸类声明（padding / font-size / 宽高）不透传——语音条有自己的缩放规则；
+   没有自定义 CSS 时返回 null，回落到 --vm-bg 的预设气泡色。 */
+const voiceCustomStyle = computed(() => {
+  if (props.message.content_type !== 'voice') return null
+  const custom = scaledCustomCss(cssTextToStyle(props.bubbleStyle?.css))
+  const out = {}
+  for (const k of Object.keys(custom)) {
+    if (k === 'padding' || k.startsWith('padding')) continue
+    if (k === 'fontSize' || k === 'maxWidth' || k === 'maxHeight' || k === 'width' || k === 'height') continue
+    out[k] = custom[k]
+  }
+  return Object.keys(out).length ? out : null
 })
 
 const avatarStyle = computed(() => ({
