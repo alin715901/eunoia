@@ -50,7 +50,7 @@
           <!-- 语音消息：微信式语音条（喇叭+声波图标 + 秒数）；长按弹出统一菜单（含 转文字/收文字） -->
           <template v-else-if="message.content_type === 'voice'">
             <div class="voice-wrap">
-              <div class="voice-bar" :style="voiceCustomStyle" @click="togglePlay">
+              <div class="voice-bar" @click="togglePlay">
                 <span class="vm-icon" :class="{ playing }">
                   <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
                     <!-- 声源圆点 + 两道弧（参考图二） -->
@@ -61,7 +61,7 @@
                 </span>
                 <span v-if="voiceDur" class="vm-dur">{{ voiceDur }}"</span>
               </div>
-              <div v-if="chatStore.voiceAsrOn(message.id) && message.text" class="vm-asr" :style="voiceCustomStyle">{{ message.text }}</div>
+              <div v-if="chatStore.voiceAsrOn(message.id) && message.text" class="vm-asr">{{ message.text }}</div>
             </div>
           </template>
           <!-- 红包：参考微信红包封的简约卡片（小尺寸，无 emoji） -->
@@ -347,11 +347,13 @@ const meta = computed(() => {
     return null
   }
 })
-/* 图片/红包/纯图字卡用无气泡底的独立卡片样式 */
+/* 图片/红包/纯图字卡/各类邀请卡片用无气泡底的独立卡片样式。
+   语音不在此列：语音就是字卡消息，气泡外观（背景/圆角/边框）由 .bubble 本身承担，
+   条内只有喇叭图标 + 秒数，不再是「贴在气泡上的独立条」 */
 const bubbleExtraClass = computed(() => {
   const t = props.message.content_type
   if (t === 'image' || t === 'sticker' || t === 'redpacket') return 'bare'
-  if (t === 'voice' || t === 'companion_invite' || t === 'listen_invite' || t === 'cinema_invite' || t === 'game_invite') return 'bare'
+  if (t === 'companion_invite' || t === 'listen_invite' || t === 'cinema_invite' || t === 'game_invite') return 'bare'
   // 图片字卡（无文字）＝表情包：同样去掉气泡底
   if (t === 'card' && props.message.asset_path && !props.message.text) return 'bare'
   return ''
@@ -563,17 +565,17 @@ const bubbleStyleCss = computed(() => {
     }
   }
   s['--bubble-radius'] = bubbleRadius.value + 'px'
-  /* 语音条 / 转文字气泡：用各自侧的气泡底色（自定义气泡色优先） */
-  s['--vm-bg'] = bubbleColor.value || (side.value === 'me' ? 'var(--bubble-me)' : 'var(--bubble-contact)')
-  s['--vm-fg'] = s['color'] || (side.value === 'me' ? 'var(--bubble-me-fg)' : 'var(--text)')
   // 自定义气泡 CSS（用户在设置页填写的声明式样式，优先级最高，对我/对方气泡统一生效）
   const custom = scaledCustomCss(cssTextToStyle(props.bubbleStyle?.css))
-  /* bare 消息（图片/表情包/红包/语音/各类邀请卡片）是无气泡底的独立卡片：
-     自定义 CSS 的 background / padding 是内联样式，会盖掉 .bubble.bare 的
-     transparent + padding:0，让邀请卡片底下多出一层气泡底 —— bare 时剥离这两类声明 */
+  /* bare 消息（图片/表情包/红包/各类邀请卡片）是无气泡底的独立卡片：
+     自定义 CSS 的视觉声明（背景/边框/阴影/文字色/内边距）是内联样式，会盖掉
+     .bubble.bare 的 transparent + padding:0，让卡片外面多套一层气泡底/虚线框 —— 全部剥离 */
   if (bubbleExtraClass.value === 'bare') {
     for (const k of Object.keys(custom)) {
-      if (k === 'background' || k === 'backgroundImage' || k === 'backgroundColor' || k.startsWith('padding')) delete custom[k]
+      if (
+        k.startsWith('background') || k.startsWith('border') ||
+        k === 'boxShadow' || k === 'textShadow' || k === 'color' || k.startsWith('padding')
+      ) delete custom[k]
     }
   }
   return Object.assign(s, custom)
@@ -607,22 +609,6 @@ const wrapStyle = computed(() => {
   const raw = Number(props.bubbleStyle?.size)
   const size = Number.isFinite(raw) && raw > 0 ? raw : 68
   return { '--bubble-scale': String(size / 68) }
-})
-
-/* 语音条 / 转文字块跟随自定义气泡外观：自定义 CSS 的视觉声明（背景/边框/阴影/文字色）
-   直接应用到语音条上（与普通气泡一致，不再只是「贴一块预设色」）。
-   尺寸类声明（padding / font-size / 宽高）不透传——语音条有自己的缩放规则；
-   没有自定义 CSS 时返回 null，回落到 --vm-bg 的预设气泡色。 */
-const voiceCustomStyle = computed(() => {
-  if (props.message.content_type !== 'voice') return null
-  const custom = scaledCustomCss(cssTextToStyle(props.bubbleStyle?.css))
-  const out = {}
-  for (const k of Object.keys(custom)) {
-    if (k === 'padding' || k.startsWith('padding')) continue
-    if (k === 'fontSize' || k === 'maxWidth' || k === 'maxHeight' || k === 'width' || k === 'height') continue
-    out[k] = custom[k]
-  }
-  return Object.keys(out).length ? out : null
 })
 
 const avatarStyle = computed(() => ({
@@ -788,24 +774,19 @@ function onRedpacketTap() {
   box-shadow: none;
 }
 
-/* ── 语音消息：微信式 —— 语音条与转写文字是两块独立气泡（参考截图） ── */
+/* ── 语音消息：语音是字卡消息，气泡外观（背景/圆角/边框/阴影）由 .bubble 承担，
+   条内只有喇叭图标 + 秒数（长按弹出统一菜单，含 转文字/收文字） ── */
 .voice-wrap {
   display: flex;
   flex-direction: column;
   align-items: flex-start;
-  gap: 6px;
-  /* 不再自带百分比 max-width：嵌套百分比会与气泡的 68% 相乘，
-     把转写框钳得只剩半截（短文也被折成两行）。宽度上限交给 .bubble.bare 统一管 */
+  gap: 4px;
 }
 .voice-bar {
   display: inline-flex;
   align-items: center;
   gap: 10px;
   min-width: 124px;
-  padding: calc(10px * var(--bubble-scale, 1)) calc(14px * var(--bubble-scale, 1));
-  background: var(--vm-bg, var(--bubble-contact));
-  color: var(--vm-fg, var(--text));
-  border-radius: var(--bubble-radius, 8px);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
@@ -819,15 +800,11 @@ function onRedpacketTap() {
   45% { opacity: 0.15; }
 }
 .vm-dur { font-size: calc(15px * var(--bubble-scale, 1)); line-height: 1; }
-/* 转写文字：独立的一块气泡（长按菜单 转文字/收文字 切换）。
-   宽度随内容自适应：短文单行（不强制撑满或折行），长文换行且可比语音条长 */
+/* 转写文字：同一气泡内的第二段（长按菜单 转文字/收文字 切换）。
+   宽度随内容自适应：短文单行（不强制撑满或折行），长文换行 */
 .vm-asr {
   width: max-content;
   max-width: 100%;
-  padding: calc(10px * var(--bubble-scale, 1)) calc(14px * var(--bubble-scale, 1));
-  background: var(--vm-bg, var(--bubble-contact));
-  color: var(--vm-fg, var(--text));
-  border-radius: var(--bubble-radius, 8px);
   font-size: calc(15px * var(--bubble-scale, 1));
   line-height: 1.55;
   overflow-wrap: break-word;
