@@ -568,6 +568,14 @@ const bubbleStyleCss = computed(() => {
   s['--vm-fg'] = s['color'] || (side.value === 'me' ? 'var(--bubble-me-fg)' : 'var(--text)')
   // 自定义气泡 CSS（用户在设置页填写的声明式样式，优先级最高，对我/对方气泡统一生效）
   const custom = scaledCustomCss(cssTextToStyle(props.bubbleStyle?.css))
+  /* bare 消息（图片/表情包/红包/语音/各类邀请卡片）是无气泡底的独立卡片：
+     自定义 CSS 的 background / padding 是内联样式，会盖掉 .bubble.bare 的
+     transparent + padding:0，让邀请卡片底下多出一层气泡底 —— bare 时剥离这两类声明 */
+  if (bubbleExtraClass.value === 'bare') {
+    for (const k of Object.keys(custom)) {
+      if (k === 'background' || k === 'backgroundImage' || k === 'backgroundColor' || k.startsWith('padding')) delete custom[k]
+    }
+  }
   return Object.assign(s, custom)
 })
 
@@ -778,15 +786,13 @@ function onRedpacketTap() {
   align-items: center;
   gap: 10px;
   min-width: 124px;
-  padding: calc(11px * var(--bubble-scale, 1)) calc(14px * var(--bubble-scale, 1));
+  padding: calc(10px * var(--bubble-scale, 1)) calc(14px * var(--bubble-scale, 1));
   background: var(--vm-bg, var(--bubble-contact));
   color: var(--vm-fg, var(--text));
   border-radius: var(--bubble-radius, 8px);
-  border-bottom-left-radius: 6px;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-.bubble-me .voice-bar { border-bottom-left-radius: var(--bubble-radius, 8px); border-bottom-right-radius: 6px; }
 .vm-icon { display: flex; align-items: center; color: inherit; }
 /* 播放中：两道弧依次亮起（参考微信播放动效） */
 .vm-icon .vm-a1, .vm-icon .vm-a2 { opacity: 1; }
@@ -806,13 +812,11 @@ function onRedpacketTap() {
   background: var(--vm-bg, var(--bubble-contact));
   color: var(--vm-fg, var(--text));
   border-radius: var(--bubble-radius, 8px);
-  border-bottom-left-radius: 6px;
   font-size: calc(15px * var(--bubble-scale, 1));
   line-height: 1.55;
   overflow-wrap: break-word;
   white-space: pre-wrap;
 }
-.bubble-me .vm-asr { border-bottom-left-radius: var(--bubble-radius, 8px); border-bottom-right-radius: 6px; }
 
 /* 图片消息：统一显示框 —— 宽 165 × 高 220（随气泡缩放），object-fit:cover 居中裁剪。
    任何原比例（横图/竖图/方图）都填满同一个框、画面不变形，

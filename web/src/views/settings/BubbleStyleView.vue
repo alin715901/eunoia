@@ -50,18 +50,18 @@
 
       <!-- 自定义气泡 CSS（统一作用于我/对方气泡） -->
       <div class="panel sec">
-        <div class="sec-title">自定义气泡 CSS</div>
-        <p class="css-tip">填写声明式样式，一行一条（如 background / color / font-size / padding），统一作用于双方气泡，优先级高于上面的颜色与圆角。</p>
-        <div class="css-wrap">
-          <textarea
-            class="css-area"
-            v-model="bs.css"
-            rows="6"
-            placeholder="例：background: linear-gradient(135deg,#fde9c8,#f6d5a7); color:#5a4632; font-size:15px;"
-            @change="queueSave"
-          ></textarea>
+        <div class="sec-head">
+          <div class="sec-title">自定义气泡 CSS</div>
           <button class="ta-clear" type="button" @click="clearBubbleCss">清空</button>
         </div>
+        <p class="css-tip">填写声明式样式，一行一条（如 background / color / font-size / padding），统一作用于双方气泡，优先级高于上面的颜色与圆角。</p>
+        <textarea
+          class="css-area"
+          v-model="bs.css"
+          rows="6"
+          placeholder="例：background: linear-gradient(135deg,#fde9c8,#f6d5a7); color:#5a4632; font-size:15px;"
+          @change="queueSave"
+        ></textarea>
         <p class="hint">留空则使用上面选择的颜色；改完自动保存。</p>
       </div>
 
@@ -249,7 +249,7 @@ onMounted(async () => {
   border: 1px solid var(--border);
   background: var(--bg-soft);
   border-radius: 10px;
-  padding: 9px 11px 34px;
+  padding: 9px 11px;
   font-size: 12px;
   line-height: 1.6;
   color: var(--text);
@@ -258,16 +258,14 @@ onMounted(async () => {
 }
 .css-area:focus { border-color: var(--accent); outline: none; }
 
-/* 输入框相对定位容器 + 右下角清空按钮 */
-.css-wrap { position: relative; }
+/* 标题行：标题居左，「清空」贴卡片右上角 */
+.sec-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.sec-head .sec-title { margin-bottom: 0; }
 .ta-clear {
-  position: absolute;
-  right: 8px;
-  bottom: 8px;
   border: 1px solid var(--border);
   background: var(--bg-screen);
   border-radius: 999px;
-  padding: 4px 12px;
+  padding: 3px 12px;
   font-size: 11px;
   color: var(--text-soft);
   cursor: pointer;

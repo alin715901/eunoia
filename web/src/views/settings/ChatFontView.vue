@@ -25,17 +25,17 @@
       </div>
 
       <div class="panel sec">
-        <div class="sec-title">自定义字体 CSS</div>
-        <div class="ta-wrap">
-          <textarea
-            class="ta mono"
-            v-model="fontCssDraft"
-            rows="6"
-            placeholder="填写 font-family 等 font- 开头的样式，如：&#10;font-family: 'LXGW WenKai', 'Noto Serif SC', serif;"
-            @change="queueSave"
-          ></textarea>
+        <div class="sec-head">
+          <div class="sec-title">自定义字体 CSS</div>
           <button class="ta-clear" type="button" @click="clearFontCss">清空</button>
         </div>
+        <textarea
+          class="ta mono"
+          v-model="fontCssDraft"
+          rows="6"
+          placeholder="填写 font-family 等 font- 开头的样式，如：&#10;font-family: 'LXGW WenKai', 'Noto Serif SC', serif;"
+          @change="queueSave"
+        ></textarea>
         <p class="hint">填写后优先于上方预设字体，只对该聊天的气泡文字生效；清空则回到上方选择。</p>
       </div>
     </div>
@@ -111,7 +111,7 @@ onMounted(async () => {
   border: 1px solid var(--border);
   background: var(--bg-soft);
   border-radius: 10px;
-  padding: 9px 11px 34px;
+  padding: 9px 11px;
   font-size: 13px;
   color: var(--text);
   resize: none;
@@ -119,16 +119,14 @@ onMounted(async () => {
 .ta.mono { font-family: ui-monospace, Menlo, Consolas, monospace; line-height: 1.6; }
 .ta:focus { border-color: var(--accent); outline: none; }
 
-/* 输入框相对定位容器 + 右下角清空按钮 */
-.ta-wrap { position: relative; }
+/* 标题行：标题居左，「清空」贴卡片右上角 */
+.sec-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.sec-head .sec-title { margin-bottom: 0; }
 .ta-clear {
-  position: absolute;
-  right: 8px;
-  bottom: 8px;
   border: 1px solid var(--border);
   background: var(--bg-screen);
   border-radius: 999px;
-  padding: 4px 12px;
+  padding: 3px 12px;
   font-size: 11px;
   color: var(--text-soft);
   cursor: pointer;
