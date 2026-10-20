@@ -37,7 +37,7 @@
           <span v-if="c.dayRec" class="pr-marks">
             <i class="pr-flow" :class="c.dayRec.flow" />
             <span v-if="c.dayRec.pain && c.dayRec.pain !== 'none'" class="pr-pain" :class="c.dayRec.pain">
-              <AppIcon name="bolt" :size="c.dayRec.pain === 'severe' ? 11 : c.dayRec.pain === 'moderate' ? 9 : 7" color="#a85b5b" />
+              <AppIcon name="bolt" :size="c.dayRec.pain === 'severe' ? 9 : c.dayRec.pain === 'moderate' ? 7.5 : 6" color="#a85b5b" />
             </span>
           </span>
           <span v-else-if="c.ovuDay" class="pr-marks">
@@ -650,14 +650,14 @@ onMounted(load)
 .pr-cell.selected { border: 2px solid #c98891; }
 .pr-day { font-size: 13px; }
 .pr-marks { display: flex; align-items: center; gap: 2px; }
-/* 流量：水滴形（上尖下圆），三档大小递增 */
+/* 流量：水滴形（上尖下圆：TL 直角 + 其余三角 50% 圆角，旋转 45° 让尖角朝上），三档大小递增 */
 .pr-flow {
-  width: 6px; height: 6px; background: #c98891; display: inline-block;
-  border-radius: 0 50% 50% 50%; transform: rotate(-45deg); flex: 0 0 auto;
+  width: 4.5px; height: 4.5px; background: #c98891; display: inline-block;
+  border-radius: 0 50% 50% 50%; transform: rotate(45deg); flex: 0 0 auto;
 }
-.pr-flow.light { width: 5px; height: 5px; }
-.pr-flow.mid { width: 7px; height: 7px; }
-.pr-flow.heavy { width: 9px; height: 9px; }
+.pr-flow.light { width: 4px; height: 4px; }
+.pr-flow.mid { width: 5.5px; height: 5.5px; }
+.pr-flow.heavy { width: 7px; height: 7px; }
 .pr-pain { display: inline-flex; align-items: center; gap: 1px; line-height: 1; }
 
 .pr-legend { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 2px 4px; font-size: 11px; color: var(--text-soft); align-items: center; }
