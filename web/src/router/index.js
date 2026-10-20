@@ -51,6 +51,7 @@ const routes = [
   { path: '/cards', name: 'cards', component: CardsView, props: { contactId: null } },
   { path: '/contacts/:id/cards', name: 'contact-cards', component: CardsView, props: (route) => ({ contactId: route.params.id }) },
   { path: '/settings', name: 'settings', component: SettingsView },
+  { path: '/settings/care-texts', name: 'care-texts', component: () => import('@/views/settings/CareTextsView.vue') },
   { path: '/theme', name: 'theme', component: () => import('@/views/ThemeView.vue') },
   { path: '/about', name: 'about', component: () => import('@/views/settings/AboutView.vue') },
   { path: '/storage', name: 'storage', component: () => import('@/views/settings/StorageView.vue') },

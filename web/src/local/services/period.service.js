@@ -9,21 +9,7 @@ import db from '../db'
 import * as notification from './notification.service'
 import { sendContactText } from './chat.service'
 import { cyclesFromItems, careTrigger, fmtDate } from '../../utils/period'
-
-const TODAY_MSGS = [
-  '生理期来了吧？别碰凉的，多喝热水，不舒服就告诉我。',
-  '今天身体还好吗？记得暖暖肚子，别太累着自己。',
-  '来例假了记得照顾好自己，红糖水和暖宝宝备上～',
-  '生理期的第一天，想提醒你别熬夜，我在这儿陪着你。',
-  '例假第一天，肚子疼的话就歇着，别硬撑。',
-]
-const SOON_MSGS = [
-  '过两天生理期可能要来了，提前把暖宝宝和红糖备好呀。',
-  '算算日子，过两三天该来例假了，这两天别贪凉。',
-  '提醒一下，生理期快到了，注意肚子别着凉～',
-  '差不多该来例假了，这两天照顾好自己，我记着呢。',
-  '再过两三天生理期就要来了，少喝冰的，对自己温柔点。',
-]
+import { careTexts } from '../../utils/careTexts'
 
 function pick(arr) {
   return arr[Math.floor(Math.random() * arr.length)]
@@ -56,7 +42,7 @@ export function periodCareTick() {
       if (!trigger) continue
 
       const cid = r.contact_id
-      const text = trigger === 'today' ? pick(TODAY_MSGS) : pick(SOON_MSGS)
+      const text = pick(careTexts(trigger === 'today' ? 'today' : 'soon'))
       const m = sendContactText(cid, text, { proactive: true })
       if (!m) continue
       db.prepare('UPDATE contact_settings SET period_care_last_date = ? WHERE contact_id = ?').run(today, cid)
