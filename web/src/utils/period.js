@@ -136,13 +136,42 @@ export function durationOf(cycle) {
   return dayDiff(end, cycle.start) + 1
 }
 
-/* 排卵期窗口：排卵日 ≈ 下次经期开始日 - 14 天，给 ±2 天共 5 天窗口 */
+/* 排卵期窗口：排卵日 ≈ 下次经期开始日 - 14 天，给 ±2 天共 5 天窗口（仅预测的下一个） */
 export function ovulationWindow(cycles, limit = 31) {
   const pred = predictNext(cycles)
   if (!pred) return null
   const ovuDay = addDays(pred.start, -14)
   if (!ovuDay) return null
   return { day: ovuDay, start: addDays(ovuDay, -2), end: addDays(ovuDay, 2) }
+}
+
+/* 所有周期的排卵期窗口：每条已记录周期各算一个（不只标当前/下一个）。
+   下一次经期开始 = 下一条记录的开始日（有实际记录时更准）；
+   最后一条没有下一条，按平均周期外推（predicted=true，与预测经期同一个）。
+   间隔不足 14 天的异常记录不产生窗口（排卵日不可能早于本次经期开始）。 */
+export function ovulationWindows(cycles) {
+  const list = Array.isArray(cycles) ? cycles : []
+  if (!list.length) return []
+  const cycle = avgCycle(list)
+  const out = []
+  for (let i = 0; i < list.length; i++) {
+    const c = list[i]
+    if (!c || !c.start) continue
+    const next = list[i + 1]
+    const nextStart = next && next.start ? next.start : addDays(c.start, cycle)
+    if (!nextStart) continue
+    const ovuDay = addDays(nextStart, -14)
+    if (!ovuDay || ovuDay < c.start) continue
+    out.push({ day: ovuDay, start: addDays(ovuDay, -2), end: addDays(ovuDay, 2), predicted: !next })
+  }
+  return out
+}
+
+/* 包含 date 的排卵窗口（今天在任意一个周期窗口内都能定位到它），没有返回 null */
+export function ovulationWindowOf(cycles, date) {
+  const d = fmtDate(parseDate(date))
+  if (!d) return null
+  return ovulationWindows(cycles).find((w) => d >= w.start && d <= w.end) || null
 }
 
 /* 距预测开始日的天数（>0 未来，=0 当天，<0 已过） */

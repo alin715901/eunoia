@@ -145,7 +145,7 @@ import { confirmDialog } from '@/utils/dialog'
 import {
   cyclesFromItems, cycleOf, predictedDates,
   fmtDate, addDays, parseDate, dayDiff,
-  ongoingCycle, ongoingDisplayEnd, ovulationWindow,
+  ongoingCycle, ongoingDisplayEnd, ovulationWindows, ovulationWindowOf,
   avgCycle, avgLen, predictNext
 } from '@/utils/period'
 
@@ -163,22 +163,20 @@ const cycles = computed(() => cyclesFromItems(items.value))
 const enough = computed(() => cycles.value.length > 0)
 /* 预测经期区间（下次经期开始 + 平均持续天数），日历虚线圈出 */
 const predSet = computed(() => enough.value ? new Set(predictedDates(cycles.value)) : new Set())
-/* 排卵期窗口（下次经期开始 - 14 天 ±2 天）所有日期 */
+/* 所有周期的排卵期窗口（每个已记录周期 + 预测的下一个，不只标当前这个） */
+const ovuWins = computed(() => ovulationWindows(cycles.value))
+/* 排卵期窗口（下次经期开始 - 14 天 ±2 天）所有日期：浅紫底 */
 const ovuSet = computed(() => {
   if (!enough.value) return new Set()
-  const ovu = ovulationWindow(cycles.value)
-  if (!ovu) return new Set()
   const s = new Set()
-  let cur = ovu.start
-  for (let i = 0; i < 5; i++) { s.add(cur); cur = addDays(cur, 1) }
+  for (const w of ovuWins.value) {
+    let cur = w.start
+    for (let i = 0; i < 5; i++) { s.add(cur); cur = addDays(cur, 1) }
+  }
   return s
 })
-/* 排卵日：下次经期开始往前推 14 天（窗口正中那天，颜色更深） */
-const ovuDay = computed(() => {
-  if (!enough.value) return ''
-  const ovu = ovulationWindow(cycles.value)
-  return ovu ? ovu.day : ''
-})
+/* 排卵日集合：各窗口正中那天（下次经期开始往前推 14 天，日期下加小花） */
+const ovuDays = computed(() => new Set(ovuWins.value.map((w) => w.day)))
 const isOngoing = computed(() => !!ongoingCycle(cycles.value))
 
 function todayStr() { return fmtDate(new Date()) }
@@ -196,10 +194,10 @@ const calStatus = computed(() => {
   /* 1. 今天在经期内（含进行中的按规律预测段、已封存周期）→ 经期第 X 天 */
   const todayCyc = cycleOf(cycles.value, t)
   if (todayCyc) return { main: `经期第 ${dayDiff(t, todayCyc.start) + 1} 天`, sub }
-  /* 2. 今天在排卵窗口内 → 排卵期第 X 天 */
-  const ovu = ovulationWindow(cycles.value)
-  if (ovu && t >= ovu.start && t <= ovu.end) {
-    return { main: `排卵期第 ${dayDiff(t, ovu.start) + 1} 天`, sub }
+  /* 2. 今天在任意一个周期的排卵窗口内 → 排卵期第 X 天 */
+  const ow = ovulationWindowOf(cycles.value, t)
+  if (ow) {
+    return { main: `排卵期第 ${dayDiff(t, ow.start) + 1} 天`, sub }
   }
   /* 3. 距离预测经期 X 天（记录少时按默认 28/7 规律预测） */
   const pred = predictNext(cycles.value)
@@ -229,7 +227,7 @@ const cells = computed(() => {
       inCycle: !!cyc,
       pred: predSet.value.has(date) && !cyc,
       ovu: ovuSet.value.has(date) && !cyc && !predSet.value.has(date),
-      ovuDay: date === ovuDay.value && !cyc && !predSet.value.has(date),
+      ovuDay: ovuDays.value.has(date) && !cyc && !predSet.value.has(date),
       dayRec: cyc ? cyc.days[date] || null : null,
       cyc
     })
