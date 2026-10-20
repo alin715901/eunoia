@@ -445,7 +445,7 @@ onMounted(load)
 .mm-type-btn { flex: 1; border: 1px solid var(--border); background: var(--bg-soft); border-radius: 10px; padding: 10px; font-size: 14px; color: var(--text-soft); }
 .mm-type-btn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .mm-input, .mm-textarea, .mm-te-input { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 10px; padding: 10px; font-size: 14px; background: var(--bg-soft); }
-.mm-textarea { min-height: 130px; resize: vertical; line-height: 1.6; }
+.mm-textarea { min-height: 130px; resize: none; line-height: 1.6; }
 .mm-todo-edit { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
 .mm-te-row { display: flex; gap: 8px; align-items: center; }
 .mm-te-del { width: 30px; height: 36px; border: none; background: transparent; color: #d9534f; font-size: 20px; }
