@@ -647,7 +647,11 @@ onMounted(load)
 .pr-cell.selected { border: 2px solid #c98891; }
 .pr-day { font-size: 13px; }
 .pr-marks { display: flex; align-items: center; gap: 2px; }
-.pr-flow { width: 6px; height: 6px; border-radius: 50%; background: #c98891; display: inline-block; }
+/* 流量：水滴形（上尖下圆），三档大小递增 */
+.pr-flow {
+  width: 6px; height: 6px; background: #c98891; display: inline-block;
+  border-radius: 0 50% 50% 50%; transform: rotate(-45deg); flex: 0 0 auto;
+}
 .pr-flow.light { width: 5px; height: 5px; }
 .pr-flow.mid { width: 7px; height: 7px; }
 .pr-flow.heavy { width: 9px; height: 9px; }
@@ -657,9 +661,9 @@ onMounted(load)
 .pr-legend span { display: inline-flex; align-items: center; gap: 4px; }
 .pr-lg { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: #c98891; }
 .pr-lg-cycle { width: 10px; height: 10px; border-radius: 3px; background: rgba(201,136,145,.30); }
-/* 排卵期：方形紫块（与经期同款方形） */
+/* 排卵期：方形紫块（与经期同款方形，颜色与日历格子同色系） */
 .pr-ovu-dot { width: 6px; height: 6px; border-radius: 50%; background: #9b7fd0; display: inline-block; margin-top: 3px; }
-.pr-lg-ovu { width: 10px; height: 10px; border-radius: 3px; background: #9b7fd0; }
+.pr-lg-ovu { width: 10px; height: 10px; border-radius: 3px; background: rgba(150,120,200,.45); }
 /* 预测经期：虚线框 */
 .pr-lg-pred { background: transparent; border: 1.5px dashed rgba(201,136,145,.65); }
 /* 图例中用图标（AppIcon）代替色块的项 */

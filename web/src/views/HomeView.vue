@@ -164,9 +164,9 @@
             </template>
             <span v-else class="cb-text" :class="{ empty: !memoPinnedText }">{{ memoPinnedText || '记点什么…' }}</span>
           </button>
-          <button class="cb-box" @click="openEdit('period')">
-            <span class="cb-label">经期</span>
-            <span class="cb-text" :class="{ empty: !home.period }">{{ home.period || '记录经期…' }}</span>
+          <button class="cb-box cb-period" @click="cyclePeriodCard">
+            <span class="cb-label">{{ periodCard.title }}</span>
+            <span class="cb-period-big">{{ periodCard.big }}</span>
           </button>
         </div>
 
@@ -316,6 +316,8 @@ import { useMusicStore, bindAudioEvents } from '@/stores/music'
 import { useNotificationsStore } from '@/stores/notifications'
 import ImageCropper from '@/components/common/ImageCropper.vue'
 import { uploadFile } from '@/api/contacts'
+import { useItems } from '@/composables/useItems'
+import { cyclesFromItems, cycleOf, ovulationWindow, predictNext, fmtDate, dayDiff } from '@/utils/period'
 
 const router = useRouter()
 const badgesStore = useBadgesStore()
@@ -331,6 +333,43 @@ const isGroup = computed(() => curContact.value?.kind === 'group')
 
 /* 首页数据（后端持久化在 contact_desktop，按联系人隔离） */
 const home = reactive({ sign: '', love: 0, annId: 0, listenHours: 0, memo: '', period: '', myName: '', myAvatar: '', partnerName: '', partnerAvatar: '', avaLeft: 'me', cardBg: '', cardBgOpacity: 100 })
+
+/* ═══ 经期卡片：状态大字展示（经期/排卵期/预测），点击在 排卵期 ↔ 预测 间切换 ═══ */
+const { items: periodItems, load: loadPeriodItems } = useItems('period')
+const periodCycles = computed(() => cyclesFromItems(periodItems.value))
+/* auto：经期 > 排卵期 > 预测；ovu / pred：手动切换视图 */
+const periodCardMode = ref('auto')
+const periodCard = computed(() => {
+  const cycles = periodCycles.value
+  const t = fmtDate(new Date())
+  const ovu = ovulationWindow(cycles)
+  const pred = predictNext(cycles)
+  if (periodCardMode.value === 'ovu' && ovu) {
+    if (t < ovu.start) return { title: '排卵期', big: `${dayDiff(ovu.start, t)} 天后` }
+    if (t <= ovu.end) return { title: '排卵期', big: `第 ${dayDiff(t, ovu.start) + 1} 天` }
+    return { title: '排卵期', big: `已过 ${dayDiff(t, ovu.end)} 天` }
+  }
+  if (periodCardMode.value === 'pred' && pred) {
+    const du = dayDiff(pred.start, t)
+    return { title: '距离预测经期', big: du > 0 ? `${du} 天` : du === 0 ? '今天来' : `已过 ${-du} 天` }
+  }
+  const cyc = cycleOf(cycles, t)
+  if (cyc) return { title: '经期', big: `第 ${dayDiff(t, cyc.start) + 1} 天` }
+  if (ovu && t >= ovu.start && t <= ovu.end) {
+    return { title: '排卵期', big: `第 ${dayDiff(t, ovu.start) + 1} 天` }
+  }
+  if (pred) {
+    const du = dayDiff(pred.start, t)
+    if (du > 0) return { title: '距离预测经期', big: `${du} 天` }
+    if (du === 0) return { title: '距离预测经期', big: '今天来' }
+    return { title: '距离预测经期', big: `已过 ${-du} 天` }
+  }
+  return { title: '经期', big: '记录经期' }
+})
+/* 点击卡片：auto → 排卵期 → 预测 → auto */
+function cyclePeriodCard() {
+  periodCardMode.value = periodCardMode.value === 'auto' ? 'ovu' : periodCardMode.value === 'ovu' ? 'pred' : 'auto'
+}
 
 /* ═══ 人物卡：只展示当前选中联系人（单人），切换在设置页里做 ═══ */
 /* 桌面数据缓存，卡片直接显示当前联系人的头像/昵称/签名/背景 */
@@ -799,6 +838,7 @@ onMounted(async () => {
   const clockTimer = setInterval(tick, 30000)
   onUnmountedClear(clockTimer)
   await bootHome()
+  loadPeriodItems()
   bindAudioEvents()
   music.init(desktop.currentContactId)
   try { await badgesStore.load() } catch (e) {}
@@ -811,6 +851,7 @@ onActivated(async () => {
   // 导致"圆点显示第2页、内容却回到第1页"的错位。这里恢复到上次所在页。
   restorePage()
   await bootHome()
+  loadPeriodItems()
   music.init(desktop.currentContactId)
   try { await badgesStore.load() } catch (e) {}
 })
@@ -1263,6 +1304,10 @@ function onUnmountedClear(t) {
   overflow: hidden;
 }
 .cb-text.empty { color: var(--text-soft); }
+/* 经期卡片：小字标题上方居中 + 状态大字（点击在 排卵期/预测 间切换） */
+.cb-period { align-items: center; justify-content: center; text-align: center; gap: 6px; padding: 12px; }
+.cb-period .cb-label { text-align: center; }
+.cb-period-big { font-size: 22px; font-weight: 700; color: var(--accent); font-family: var(--font-serif); line-height: 1.15; }
 /* 备忘录卡类型角标：标签右侧纯文字标注「待办/便签」（无外框） */
 .cb-memo-type {
   margin-left: 6px; font-size: 10px; letter-spacing: 1px; vertical-align: 1px;
