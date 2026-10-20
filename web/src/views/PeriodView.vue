@@ -59,16 +59,11 @@
         <span class="pr-lg-txt"><AppIcon name="bolt" :size="12" color="#a85b5b" /> 严重</span>
       </div>
 
-      <!-- 未来日期：不能记录；预测经期的未来日额外说明「推测当日处于月经期」 -->
+      <!-- 未来日期：不能记录；预测经期的未来日多一行说明 -->
       <div v-if="isFuture" class="pr-future">
-        <span class="pr-future-ic">
-          <AppIcon name="calendar" :size="42" color="#efc3ca" />
-          <AppIcon class="pr-future-heart" name="heart-solid" :size="15" color="#f0a8b4" filled />
-        </span>
-        <div class="pr-future-txts">
-          <p v-if="isPredFuture" class="pr-future-txt">推测当日处于月经期</p>
-          <p class="pr-future-txt">未来的日子不能记录哦</p>
-        </div>
+        <span class="pr-future-ic"><AppIcon name="calendar" :size="44" color="#e7bcc3" /></span>
+        <p v-if="isPredFuture" class="pr-future-txt">推测当日处于月经期</p>
+        <p class="pr-future-txt">未来的日子不能记录哦</p>
       </div>
 
       <!-- 常驻记录卡：开关 + 流量 + 痛经（默认记录今天，点选日期后记录该日） -->
@@ -677,12 +672,11 @@ onMounted(load)
 /* 图例中用图标（AppIcon）代替色块的项 */
 .pr-lg-txt svg { display: block; }
 
-/* 未来日期提示（浅粉横排卡：日历爱心图标 + 文案；预测经期的未来日多一行说明） */
-.pr-future { background: #fdeef0; border-radius: 16px; padding: 18px; margin: 12px 0 4px; display: flex; flex-direction: row; align-items: center; gap: 14px; }
-.pr-future-ic { display: flex; position: relative; flex: 0 0 auto; }
-.pr-future-heart { position: absolute; left: 50%; top: 54%; transform: translate(-50%, -50%); }
-.pr-future-txt { margin: 0; font-size: 13px; color: #b08890; line-height: 1.5; }
-.pr-future-txt + .pr-future-txt { margin-top: 3px; }
+/* 未来日期提示（原竖排白底样式不变；预测经期的未来日多一行文字） */
+.pr-future { background: #fff; border-radius: 14px; padding: 34px 14px; margin: 12px 0 4px; box-shadow: 0 1px 3px rgba(180,120,120,.08); display: flex; flex-direction: column; align-items: center; gap: 12px; }
+.pr-future-ic { display: flex; }
+.pr-future-txt { margin: 0; font-size: 13px; color: var(--text-soft); line-height: 1.5; }
+.pr-future-txt + .pr-future-txt { margin-top: -8px; }
 
 /* 常驻记录卡（行式列表） */
 .pr-record { background: #fff; border-radius: 14px; padding: 4px 14px; margin: 12px 0 4px; box-shadow: 0 1px 3px rgba(180,120,120,.08); }
