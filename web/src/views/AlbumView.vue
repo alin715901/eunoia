@@ -1,10 +1,9 @@
 <template>
   <div class="md-page">
-    <AppHeader title="相册">
+    <AppHeader title="相册" back back-to="/">
       <template #right>
-        <button v-if="!editing" class="md-op" @click="startCreate" aria-label="新建照片墙"><AppIcon name="plus" :size="22" /></button>
-        <button v-else class="md-op-text" @click="editing = false">完成</button>
         <button v-if="!editing" class="md-op-text" @click="editing = true">编辑</button>
+        <button v-else class="md-op-text" @click="editing = false">完成</button>
       </template>
     </AppHeader>
 
@@ -125,7 +124,6 @@ function onCell(w) {
 .md-tip, .md-empty { text-align: center; color: var(--text-soft); margin-top: 40%; font-size: 14px; line-height: 1.8; }
 .md-empty-sub { font-size: 12px; color: var(--text-soft); }
 
-.md-op { border: none; background: transparent; color: var(--text); padding: 0 4px; display: inline-flex; }
 .md-op-text { border: none; background: transparent; color: var(--accent); font-size: 14px; padding: 0 6px; }
 
 .al-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }

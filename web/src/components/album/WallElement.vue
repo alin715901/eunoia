@@ -19,9 +19,9 @@
     </template>
     <div v-else class="we-text" :style="textStyle">{{ el.content || '双击编辑文字' }}</div>
 
-    <!-- 选中态：四角小把手提示可缩放/旋转 -->
-    <span v-if="selected && editable" class="we-corner tl"></span>
-    <span v-if="selected && editable" class="we-corner br"></span>
+    <!-- 选中态：左上角手柄=旋转，右下角手柄=缩放+旋转（可拖动） -->
+    <span v-if="selected && editable" class="we-corner tl" role="slider" aria-label="旋转" @pointerdown.stop="onHandleDown($event, 'tl')"></span>
+    <span v-if="selected && editable" class="we-corner br" role="slider" aria-label="缩放旋转" @pointerdown.stop="onHandleDown($event, 'br')"></span>
   </div>
 </template>
 
@@ -81,6 +81,7 @@ const styleObj = computed(() => {
 const pointers = new Map()
 let dragStart = null
 let pinch = null
+let handle = null // 角点手柄：tl=旋转；br=缩放+旋转二合一
 
 function dist(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y)
@@ -117,8 +118,62 @@ function onDown(e) {
   }
 }
 
+/* ── 角点手柄：左下/右上角拖动做变换 ──
+   tl：绕元素中心旋转（角度=指针相对中心的角度差）
+   br：二合一——沿径向拖动缩放，沿切向拖动旋转 */
+function onHandleDown(e, which) {
+  if (!props.editable) return
+  try { e.target.setPointerCapture(e.pointerId) } catch (_) {}
+  emit('select')
+  const box = e.currentTarget.closest('.we')
+  const r = box.getBoundingClientRect()
+  const cx = r.left + r.width / 2
+  const cy = r.top + r.height / 2
+  const dx = e.clientX - cx
+  const dy = e.clientY - cy
+  const d = Math.hypot(dx, dy) || 1
+  handle = { pid: e.pointerId, which, cx, cy }
+  if (which === 'tl') {
+    handle.mode = 'rotate'
+    handle.startAngle = Math.atan2(dy, dx)
+    handle.startRot = props.el.rotation || 0
+  } else {
+    handle.mode = 'sr'
+    handle.ux = dx / d // 径向单位向量（沿角点外指）
+    handle.uy = dy / d
+    handle.vx = -dy / d // 切向单位向量
+    handle.vy = dx / d
+    handle.p0x = e.clientX
+    handle.p0y = e.clientY
+    handle.startDist = d
+    handle.startScale = props.el.scale || 1
+    handle.startRot = props.el.rotation || 0
+  }
+}
+
+function applyHandle(e) {
+  const el = props.el
+  if (handle.mode === 'rotate') {
+    const a = Math.atan2(e.clientY - handle.cy, e.clientX - handle.cx)
+    el.rotation = handle.startRot + ((a - handle.startAngle) * 180) / Math.PI
+  } else {
+    const dpx = e.clientX - handle.p0x
+    const dpy = e.clientY - handle.p0y
+    const radial = dpx * handle.ux + dpy * handle.uy // 径向位移 → 缩放
+    const tangent = dpx * handle.vx + dpy * handle.vy // 切向位移 → 旋转
+    const ratio = 1 + radial / Math.max(40, handle.startDist * 1.2)
+    el.scale = clamp(handle.startScale * ratio, 0.2, 6)
+    el.rotation = handle.startRot + tangent * 0.6
+  }
+}
+
 function onMove(e) {
-  if (!props.editable || !pointers.has(e.pointerId)) return
+  if (!props.editable) return
+  if (handle && handle.pid === e.pointerId) {
+    applyHandle(e)
+    return
+  }
+  if (!pointers.has(e.pointerId)) return
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
 
   if (pointers.size === 1 && dragStart) {
@@ -138,6 +193,12 @@ function onMove(e) {
 }
 
 function onUp(e) {
+  if (handle && handle.pid === e.pointerId) {
+    try { e.target.releasePointerCapture(e.pointerId) } catch (_) {}
+    handle = null
+    emit('change')
+    return
+  }
   if (!pointers.has(e.pointerId)) return
   pointers.delete(e.pointerId)
   try { e.target.releasePointerCapture(e.pointerId) } catch (_) {}
@@ -244,12 +305,24 @@ function onDblClick() {
 
 .we-corner {
   position: absolute;
-  width: 9px;
-  height: 9px;
-  background: var(--accent);
-  border-radius: 50%;
-  border: 2px solid #fff;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+  z-index: 5;
 }
-.we-corner.tl { left: -6px; top: -6px; }
-.we-corner.br { right: -6px; bottom: -6px; }
+.we-corner::before {
+  content: '';
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: var(--accent);
+  border: 2px solid #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
+}
+.we-corner.tl { left: -16px; top: -16px; cursor: grab; }
+.we-corner.tl:active { cursor: grabbing; }
+.we-corner.br { right: -16px; bottom: -16px; cursor: nwse-resize; }
 </style>

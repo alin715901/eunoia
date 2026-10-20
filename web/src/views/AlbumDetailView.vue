@@ -9,6 +9,7 @@
     <PhotoWallCanvas ref="canvasRef" :wall-id="wallId" :editable="editing" />
 
     <p v-if="!editing" class="ad-hint">左右滑动浏览 · 点右上角「装饰」可添加照片、贴纸与文字</p>
+    <p v-else class="ad-hint ad-hint-edit">单指拖动移动 · 双指或圆点可缩放旋转</p>
   </div>
 </template>
 
@@ -64,4 +65,5 @@ async function toggleEdit() {
   color: var(--text-soft);
   pointer-events: none;
 }
+.ad-hint-edit { bottom: calc(104px + env(safe-area-inset-bottom)); }
 </style>
