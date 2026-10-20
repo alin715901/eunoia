@@ -28,7 +28,11 @@ export function useAutoUpdate() {
       }
       if (server !== seen) {
         localStorage.setItem(SEEN_KEY, server)
-        location.reload(true)
+        /* GitHub Pages 给 index.html 的是 max-age=600，普通 reload 会反复命中旧文档缓存，
+           导致新 bundle 迟迟不生效。先以 reload 模式重新拉一次文档本身刷新缓存副本，
+           再 reload，才能保证拿到引用新 bundle 的 index.html。 */
+        try { await fetch(location.href, { cache: 'reload' }) } catch (e) { /* 网络异常忽略，照常 reload */ }
+        location.reload()
       }
     } catch (e) {
       /* 网络异常忽略，下次再查 */
