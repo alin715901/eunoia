@@ -77,6 +77,7 @@ const routes = [
   { path: '/memo', name: 'memo', component: MemoView },
   { path: '/period', name: 'period', component: PeriodView },
   { path: '/album', name: 'album', component: AlbumView },
+  { path: '/album/:id', name: 'album-detail', component: () => import('@/views/AlbumDetailView.vue'), props: true },
   { path: '/stats', name: 'stats', component: StatsView },
   { path: '/:pathMatch(.*)*', redirect: '/' }
 ]

@@ -1,8 +1,10 @@
 <template>
   <div class="md-page">
-    <AppHeader title="相册" back>
+    <AppHeader title="相册">
       <template #right>
-        <button class="md-op" @click="pick" aria-label="添加照片"><AppIcon name="plus" :size="22" /></button>
+        <button v-if="!editing" class="md-op" @click="startCreate" aria-label="新建照片墙"><AppIcon name="plus" :size="22" /></button>
+        <button v-else class="md-op-text" @click="editing = false">完成</button>
+        <button v-if="!editing" class="md-op-text" @click="editing = true">编辑</button>
       </template>
     </AppHeader>
 
@@ -10,88 +12,203 @@
       <p v-if="loading" class="md-tip">加载中…</p>
       <template v-else>
         <div class="al-grid">
-          <div v-for="p in items" :key="p.id" class="al-cell" @click="preview = p">
-            <img :src="p.body" class="al-img" alt="" />
-            <button class="al-del" @click.stop="remove(p)" aria-label="删除"><AppIcon name="close" :size="12" color="#fff" /></button>
+          <div
+            v-for="w in walls"
+            :key="w.id"
+            class="al-cell"
+            @click="onCell(w)"
+          >
+            <div class="al-cover" :style="coverStyle(w)">
+              <img v-if="w.cover" :src="w.cover" class="al-img" alt="" />
+              <AppIcon v-else name="image" :size="34" color="rgba(255,255,255,0.85)" />
+            </div>
+            <div class="al-name">{{ w.name }}</div>
+            <button
+              v-if="editing"
+              class="al-del"
+              @click.stop="removeWall(w)"
+              aria-label="删除"
+            ><AppIcon name="close" :size="13" color="#fff" /></button>
+            <button
+              v-if="editing"
+              class="al-edit"
+              @click.stop="renameWall(w)"
+              aria-label="重命名"
+            ><AppIcon name="edit" :size="13" color="#fff" /></button>
           </div>
+
+          <!-- 新建入口（非编辑态在网格末尾显示一个 + 卡片） -->
+          <button v-if="!editing" class="al-cell al-add" @click="startCreate">
+            <AppIcon name="plus" :size="30" color="var(--text-soft)" />
+            <div class="al-name">新建照片墙</div>
+          </button>
         </div>
-        <p v-if="!items.length" class="md-empty">相册还是空的<br /><span class="md-empty-sub">点右上角「＋」上传照片</span></p>
+
+        <p v-if="!walls.length && !editing" class="md-empty">
+          还没有照片墙<br /><span class="md-empty-sub">点右上角「＋」开始记录</span>
+        </p>
       </template>
     </div>
 
-    <button class="md-fab" @click="pick" aria-label="添加照片"><AppIcon name="plus" :size="24" color="#fff" /></button>
-    <input ref="fileEl" type="file" accept="image/*" multiple hidden @change="onPick" />
-
-    <!-- 大图预览 -->
-    <div v-if="preview" class="al-mask" @click="preview = null">
-      <img :src="preview.body" class="al-big" alt="" />
-      <p class="al-cap">{{ preview.title }}</p>
-    </div>
-    <p v-if="uploading" class="al-up">上传中…</p>
+    <!-- 新建时的封面选择：手机上传 或 占位 -->
+    <input ref="fileEl" type="file" accept="image/*" hidden @change="onCoverPick" />
   </div>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
-import { useItems } from '@/composables/useItems'
-import { useNotificationsStore } from '@/stores/notifications'
-import { confirmDialog } from '@/utils/dialog'
+import { listPhotoWalls, createPhotoWall, updatePhotoWall, deletePhotoWall } from '@/api/album'
 import { uploadFile } from '@/api/settings'
 import { compressImage } from '@/utils/image'
+import { promptDialog, confirmDialog } from '@/utils/dialog'
+import { useNotificationsStore } from '@/stores/notifications'
 
-const { items, loading, load, add, remove: removeItem } = useItems('album')
 const toast = useNotificationsStore()
-const fileEl = ref(null)
-const preview = ref(null)
-const uploading = ref(false)
 
-function pick() {
-  fileEl.value?.click()
+const router = useRouter()
+const walls = ref([])
+const loading = ref(true)
+const editing = ref(false)
+const fileEl = ref(null)
+let pendingName = ''
+
+const GRADS = [
+  'linear-gradient(135deg,#f6d5a7,#f3a683)',
+  'linear-gradient(135deg,#a8c0ff,#c2a8ff)',
+  'linear-gradient(135deg,#fbc2eb,#a6c1ee)',
+  'linear-gradient(135deg,#c1f0d8,#a8e6cf)',
+  'linear-gradient(135deg,#ffe1a8,#ffb6a8)'
+]
+
+function coverStyle(w) {
+  if (w.cover) return {}
+  const i = (Number(w.id) || 0) % GRADS.length
+  return { background: GRADS[i] }
 }
-async function onPick(e) {
-  const files = [...(e.target.files || [])]
-  e.target.value = ''
-  if (!files.length) return
-  uploading.value = true
-  Promise.all(
-    files.map(async (f) => {
-      const small = await compressImage(f)
-      const res = await uploadFile(small)
-      const path = res?.path || ''
-      if (!path) throw new Error('上传失败')
-      await add({ title: '', body: path, extra: { name: f.name } })
-    })
-  )
-    .then(() => toast.pushToast({ title: '已添加', text: `${files.length} 张照片` }))
-    .catch((err) => toast.pushToast({ title: '失败', text: err.message }))
-    .finally(() => {
-      uploading.value = false
-    })
-}
-async function remove(p) {
-  if (!(await confirmDialog({ title: '删除这张照片？', danger: true }))) return
-  await removeItem(p.id)
-  toast.pushToast({ title: '已删除' })
+
+async function load() {
+  loading.value = true
+  try {
+    walls.value = await listPhotoWalls()
+  } finally {
+    loading.value = false
+  }
 }
 
 onMounted(load)
+
+async function startCreate() {
+  const name = await promptDialog({ title: '新建照片墙', text: '给照片墙起个名字', placeholder: '如：日常碎片', okText: '下一步' })
+  if (name === null) return
+  pendingName = name.trim() || '未命名照片墙'
+  // 选封面（可取消 → 用占位渐变）
+  fileEl.value && fileEl.value.click()
+}
+
+async function onCoverPick(e) {
+  const file = e.target.files && e.target.files[0]
+  e.target.value = ''
+  let cover = ''
+  if (file) {
+    try {
+      const small = await compressImage(file)
+      const res = await uploadFile(small)
+      cover = res.path
+    } catch (err) {
+      toast.pushToast({ type: 'error', title: '封面上传失败', text: err.message })
+    }
+  }
+  const w = await createPhotoWall({ name: pendingName, cover })
+  router.push(`/album/${w.id}`)
+}
+
+async function renameWall(w) {
+  const name = await promptDialog({ title: '重命名', text: '修改照片墙名称', value: w.name, placeholder: '名称', okText: '保存' })
+  if (name === null) return
+  await updatePhotoWall(w.id, { name: name.trim() || w.name })
+  await load()
+}
+
+async function removeWall(w) {
+  const ok = await confirmDialog({ title: '删除照片墙', text: `确定删除「${w.name}」？墙内所有照片与装饰会一并清除。`, okText: '删除', danger: true })
+  if (!ok) return
+  await deletePhotoWall(w.id)
+  await load()
+}
+
+function onCell(w) {
+  if (editing) return
+  router.push(`/album/${w.id}`)
+}
 </script>
 
 <style scoped>
-.al-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
-.al-cell { position: relative; aspect-ratio: 1 / 1; border-radius: 10px; overflow: hidden; background: var(--bg-soft); }
+.md-page { display: flex; flex-direction: column; height: 100%; background: var(--bg-body); }
+.md-body { flex: 1; overflow-y: auto; padding: 12px; -webkit-overflow-scrolling: touch; }
+.md-tip, .md-empty { text-align: center; color: var(--text-soft); margin-top: 40%; font-size: 14px; line-height: 1.8; }
+.md-empty-sub { font-size: 12px; color: var(--text-soft); }
+
+.md-op { border: none; background: transparent; color: var(--text); padding: 0 4px; display: inline-flex; }
+.md-op-text { border: none; background: transparent; color: var(--accent); font-size: 14px; padding: 0 6px; }
+
+.al-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; }
+.al-cell {
+  position: relative;
+  border: none;
+  padding: 0;
+  background: var(--bg-screen);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+  cursor: pointer;
+  text-align: left;
+}
+.al-cover {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  background: var(--bg-soft);
+}
 .al-img { width: 100%; height: 100%; object-fit: cover; display: block; }
-.al-del {
-  position: absolute; top: 4px; right: 4px; width: 20px; height: 20px; border-radius: 50%;
-  border: none; background: rgba(0, 0, 0, 0.45); display: flex; align-items: center; justify-content: center; padding: 0;
+.al-name {
+  padding: 8px 10px;
+  font-size: 13px;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.al-mask {
-  position: fixed; inset: 0; z-index: 70; background: rgba(0, 0, 0, 0.9);
-  display: flex; flex-direction: column; align-items: center; justify-content: center;
+.al-add {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 120px;
+  box-shadow: none;
+  border: 1.5px dashed var(--border);
+  background: transparent;
 }
-.al-big { max-width: 100%; max-height: 82vh; object-fit: contain; }
-.al-cap { color: #fff; font-size: 13px; margin-top: 12px; opacity: 0.85; }
-.al-up { position: fixed; left: 0; right: 0; bottom: 24px; text-align: center; color: var(--text-soft); font-size: 13px; }
+.al-add .al-name { padding: 0; color: var(--text-soft); }
+.al-del, .al-edit {
+  position: absolute;
+  top: 6px;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+}
+.al-del { right: 6px; background: rgba(0,0,0,0.55); }
+.al-edit { right: 38px; background: var(--accent); }
 </style>

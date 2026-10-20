@@ -1567,3 +1567,71 @@ export async function deleteAnniversary(id) {
   db.prepare('DELETE FROM anniversaries WHERE id=?').run(Number(id))
   return { id: Number(id) }
 }
+
+/* ─────────── 相册：照片墙 ─────────── */
+
+export async function listPhotoWalls() {
+  return db.prepare('SELECT * FROM photo_walls ORDER BY created_at DESC, id DESC').all()
+}
+
+export async function getPhotoWall(id) {
+  return db.prepare('SELECT * FROM photo_walls WHERE id=?').get(Number(id)) || null
+}
+
+export async function createPhotoWall(payload = {}) {
+  const now = Math.floor(Date.now() / 1000)
+  const name = String(payload.name || '未命名照片墙').trim() || '未命名照片墙'
+  const info = db.prepare('INSERT INTO photo_walls(name, cover, page_count, width, created_at, updated_at) VALUES(?,?,?,?,?,?)')
+    .run(name, payload.cover || '', payload.page_count || 1, payload.width || 0, now, now)
+  return getPhotoWall(info.lastInsertRowid)
+}
+
+export async function updatePhotoWall(id, payload = {}) {
+  const iid = Number(id)
+  const cur = db.prepare('SELECT * FROM photo_walls WHERE id=?').get(iid)
+  if (!cur) fail('照片墙不存在')
+  db.prepare(`UPDATE photo_walls SET
+    name = ?, cover = ?, page_count = ?, width = ?, updated_at = ? WHERE id = ?`).run(
+    payload.name != null ? String(payload.name) : cur.name,
+    payload.cover !== undefined ? payload.cover : cur.cover,
+    payload.page_count != null ? Number(payload.page_count) : cur.page_count,
+    payload.width != null ? Number(payload.width) : cur.width,
+    Math.floor(Date.now() / 1000),
+    iid
+  )
+  return getPhotoWall(iid)
+}
+
+export async function deletePhotoWall(id) {
+  db.prepare('DELETE FROM photo_walls WHERE id=?').run(Number(id))
+  return { id: Number(id) }
+}
+
+/* 拉取某一墙的全部元素 */
+export async function listWallElements(wallId) {
+  return db.prepare('SELECT * FROM photo_wall_elements WHERE wall_id=? ORDER BY z ASC, id ASC').all(Number(wallId))
+}
+
+/* 批量保存元素：以「墙内元素集合」为准做全量替换（先删后插），简单可靠。
+   upserts 传 [{id?, type, x, y, scale, rotation, z, content}]；无 id 视为新增。
+   返回保存后的元素列表（含 id）。 */
+export async function saveWallElements(wallId, elements = []) {
+  const wid = Number(wallId)
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM photo_wall_elements WHERE wall_id=?').run(wid)
+    const ins = db.prepare(`INSERT INTO photo_wall_elements(wall_id, type, x, y, scale, rotation, z, content, created_at)
+      VALUES(?,?,?,?,?,?,?,?,?)`)
+    const now = Math.floor(Date.now() / 1000)
+    for (const e of elements) {
+      ins.run(wid, e.type, Number(e.x) || 0, Number(e.y) || 0, Number(e.scale) || 1, Number(e.rotation) || 0, Number(e.z) || 0, e.content || '', now)
+    }
+  })
+  tx()
+  return listWallElements(wid)
+}
+
+/* 字卡库里可导入的图片：带 asset_path 的字卡（图片/表情包/贴纸板块等） */
+export async function listCardImages() {
+  return db.prepare(`SELECT id, content, asset_path, category FROM cards
+    WHERE asset_path IS NOT NULL AND asset_path <> '' ORDER BY id DESC LIMIT 200`).all()
+}

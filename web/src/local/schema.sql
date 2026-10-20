@@ -311,3 +311,34 @@ CREATE TABLE IF NOT EXISTS app_items (
   updated_at INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_app_items_module ON app_items(module, contact_id);
+
+/* ─── 相册：照片墙 ─── */
+/* 一张照片墙：名称、封面（dataURL，可为空→列表用占位）、页数（决定长卷总长度）、
+   画布内容宽度（px，元素坐标基于此）、更新时间 */
+CREATE TABLE IF NOT EXISTS photo_walls (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  cover TEXT DEFAULT '',
+  page_count INTEGER DEFAULT 1,
+  width INTEGER DEFAULT 0,
+  created_at INTEGER,
+  updated_at INTEGER
+);
+
+/* 照片墙里的装饰元素：图片 / 贴纸 / 文字。
+   坐标 (x, y) 为画布世界坐标（左上角锚点，px），scale 缩放，rotation 角度(deg)，
+   z 层级；content：图片/贴纸为 dataURL，文字为文本内容 */
+CREATE TABLE IF NOT EXISTS photo_wall_elements (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  wall_id INTEGER NOT NULL,
+  type TEXT NOT NULL,
+  x REAL NOT NULL,
+  y REAL NOT NULL,
+  scale REAL DEFAULT 1,
+  rotation REAL DEFAULT 0,
+  z INTEGER DEFAULT 0,
+  content TEXT DEFAULT '',
+  created_at INTEGER,
+  FOREIGN KEY (wall_id) REFERENCES photo_walls(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_pwe_wall ON photo_wall_elements(wall_id);

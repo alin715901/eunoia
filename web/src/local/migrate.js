@@ -287,4 +287,29 @@ export function migrate() {
   }
   dropCol('contact_desktop', 'theme')
   dropCol('contact_desktop', 'notify_enabled')
+
+  // ─── 相册：照片墙 ───
+  db.exec(`CREATE TABLE IF NOT EXISTS photo_walls (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    cover TEXT DEFAULT '',
+    page_count INTEGER DEFAULT 1,
+    width INTEGER DEFAULT 0,
+    created_at INTEGER,
+    updated_at INTEGER
+  )`)
+  db.exec(`CREATE TABLE IF NOT EXISTS photo_wall_elements (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    wall_id INTEGER NOT NULL,
+    type TEXT NOT NULL,
+    x REAL NOT NULL,
+    y REAL NOT NULL,
+    scale REAL DEFAULT 1,
+    rotation REAL DEFAULT 0,
+    z INTEGER DEFAULT 0,
+    content TEXT DEFAULT '',
+    created_at INTEGER,
+    FOREIGN KEY (wall_id) REFERENCES photo_walls(id) ON DELETE CASCADE
+  )`)
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_pwe_wall ON photo_wall_elements(wall_id)`)
 }
