@@ -166,7 +166,7 @@
           </button>
           <button class="cb-box cb-period" @click="cyclePeriodCard">
             <span class="cb-label">{{ periodCard.title }}<span v-if="periodCard.suffix" class="cb-haiyou">{{ periodCard.suffix }}</span></span>
-            <span class="cb-period-big">{{ periodCard.big }}</span>
+            <span class="cb-period-big" :class="{ 'is-empty': periodCard.empty }">{{ periodCard.big }}</span>
           </button>
         </div>
 
@@ -366,7 +366,7 @@ const periodCard = computed(() => {
     if (du === 0) return { title: '距离预测经期', big: '今天来' }
     return { title: '距离预测经期', suffix: '已过', big: `${-du} 天` }
   }
-  return { title: '经期', big: '记录经期' }
+  return { title: '经期', big: '未记录', empty: true }
 })
 /* 点击卡片：auto → 排卵期 → 预测 → auto */
 function cyclePeriodCard() {
@@ -1309,6 +1309,8 @@ function onUnmountedClear(t) {
 /* 经期卡片：与第 1 页纪念日卡片排布一致 —— 小字标题上方居中 + 状态大字（点击在 排卵期/预测 间切换） */
 .cb-period { align-items: center; text-align: center; }
 .cb-period-big { font-size: 30px; font-weight: 700; color: var(--accent); font-family: var(--font-serif); line-height: 1.15; letter-spacing: 0.5px; }
+/* 无记录空态：小字灰色提示（对齐备忘录卡「记点什么…」观感），不用大字 */
+.cb-period-big.is-empty { font-size: 13px; font-weight: 400; color: var(--text-soft); font-family: inherit; letter-spacing: 1px; }
 /* 备忘录卡标签行居中（「备忘录」+「待办/便签」角标整体居中，不靠左） */
 .cb-box .cb-label { text-align: center; }
 /* 备忘录卡类型角标：标签右侧纯文字标注「待办/便签」（无外框） */
