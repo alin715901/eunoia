@@ -37,6 +37,18 @@
           <span class="ent-go">›</span>
         </button>
 
+        <!-- 关怀文案入口（经期特殊关怀发送的话语，可自定义） -->
+        <button class="ent ent-care" @click="router.push('/settings/care-texts')">
+          <span class="ent-ico ent-ico-poke">
+            <AppIcon name="heart" :size="20" />
+          </span>
+          <span class="ent-main">
+            <span class="ent-title">关怀文案</span>
+          </span>
+          <span class="ent-num">{{ careTextsLabel() }}</span>
+          <span class="ent-go">›</span>
+        </button>
+
         <div class="hub-label">联系人专属字卡</div>
 
         <button
@@ -401,6 +413,7 @@ import { useNotificationsStore } from '@/stores/notifications'
 import { confirmDialog } from '@/utils/dialog'
 import { useUiStore } from '@/stores/ui'
 import { uploadFile } from '@/api/settings'
+import { CARE_TEXTS_KEY } from '@/utils/careTexts'
 
 /* 媒体网格正方形格子：实测容器宽度后用像素值直接定高。
  * 部分安卓 WebView 对 aspect-ratio 和 padding-top 百分比在 grid 内的计算都有偏差
@@ -626,6 +639,15 @@ function dotColor(g) {
 /* ---------- 枢纽 ---------- */
 const ui = useUiStore()
 const router = useRouter()
+
+/* 关怀文案入口状态：localStorage 非响应式，用函数在每次渲染时读最新值 */
+function careTextsLabel() {
+  try {
+    return localStorage.getItem(CARE_TEXTS_KEY) ? '已自定义' : '默认文案'
+  } catch (e) {
+    return '默认文案'
+  }
+}
 
 /* 管理态顶部标题：通用库 / 联系人名 */
 const manageTitle = computed(() => (scope.value === 'contact' ? contactName.value : '通用字卡库'))

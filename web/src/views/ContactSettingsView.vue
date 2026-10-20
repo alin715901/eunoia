@@ -114,7 +114,7 @@
         <div v-if="!isGroup" class="switch-row">
           <div class="row-main">
             <div class="row-title">特殊关怀</div>
-            <p class="hint">开启后，经期来时或快到时他会主动在聊天里关心你</p>
+            <p class="hint">开启后，经期来时或快到时对方会主动关心你</p>
           </div>
           <ToggleSwitch v-model="periodCare" @update:modelValue="savePeriodCare" />
         </div>

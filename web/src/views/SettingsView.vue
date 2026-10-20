@@ -67,21 +67,6 @@
         </p>
       </div>
 
-      <!-- 经期关怀文案（全局）：TA 在经期/经期前发送的关心话，可自定义 -->
-      <div class="panel sec">
-        <button class="row-item" @click="goCareTexts">
-          <span class="ri-icon"><AppIcon name="heart" :size="18" /></span>
-          <span class="ri-label">
-            关怀文案
-            <span class="scope-tag global">全局</span>
-          </span>
-          <span class="spacer"></span>
-          <span class="ri-value">{{ careTextsLabel() }}</span>
-          <AppIcon name="chevron-right" :size="16" color="var(--text-soft)" />
-        </button>
-        <p class="sub mode-sub">TA 在经期及经期前发给你的关心话，可在内置句子上微调</p>
-      </div>
-
       <!-- 分组：内存数据 / 关于 -->
       <div class="panel sec">
         <button class="row-item" @click="goStorage">
@@ -119,7 +104,6 @@ import { useContactsStore } from '@/stores/contacts'
 import { useDesktopStore } from '@/stores/desktop'
 import { useSettingsStore, FONTS, APPEARANCES } from '@/stores/settings'
 import { useKeepAlive } from '@/composables/useKeepAlive'
-import { CARE_TEXTS_KEY } from '@/utils/careTexts'
 
 const router = useRouter()
 const toast = useNotificationsStore()
@@ -186,18 +170,6 @@ function goAbout() {
 }
 function goStorage() {
   router.push('/storage')
-}
-/* 关怀文案入口：右侧显示当前是默认还是自定义（与 CareTextsView 同一存储 key）。
-   用函数而非 computed：localStorage 非响应式，从编辑页返回时需要即时重算 */
-function careTextsLabel() {
-  try {
-    return localStorage.getItem(CARE_TEXTS_KEY) ? '已自定义' : '默认文案'
-  } catch (e) {
-    return '默认文案'
-  }
-}
-function goCareTexts() {
-  router.push('/settings/care-texts')
 }
 
 /* 通知开关：全局 */
