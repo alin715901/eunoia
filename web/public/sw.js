@@ -13,8 +13,12 @@
      挂起、SW 迟迟不激活。改为 install 立即 skipWaiting，资源在首次
      fetch 时按需进缓存（首访末段 + 二访起全部命中）。
    - version.json 不缓存：使用方本就 no-store 拉取，保证版本检测灵敏。
-   - config.js：运行时配置，network-first，失败回落缓存。 */
-const CACHE = 'eunoia-sw-v2'
+   - config.js：运行时配置，network-first，失败回落缓存。
+   冷打开防旧版：导航 fetch 必须带 cache:'reload'——GitHub Pages 的
+   index.html 带 max-age=600，SW 里默认模式的 fetch 会命中浏览器 HTTP
+   缓存返回旧 HTML（旧 bundle → 旧样式/旧逻辑，用户侧表现为「改了没生效」）。
+   reload 模式绕过 HTTP 缓存真正联网，HTML 只占一次请求，代价可忽略。 */
+const CACHE = 'eunoia-sw-v3'
 
 self.addEventListener('install', () => {
   self.skipWaiting()
@@ -37,11 +41,12 @@ self.addEventListener('fetch', (event) => {
   /* version.json：使用方 no-store 拉取，SW 不拦不缓存 */
   if (url.pathname.endsWith('/version.json')) return
 
-  /* 导航（HTML）：network-first，失败回落缓存——杜绝旧缓存 HTML 引用
-     已下线的旧 hash chunk 导致的白屏/卡死 */
+  /* 导航（HTML）：network-first + 绕过 HTTP 缓存（cache:'reload'），失败回落缓存
+     ——GitHub Pages index.html max-age=600，默认 fetch 会命中旧文档缓存，
+     导致冷打开仍是旧 bundle；reload 模式强制联网拿最新 HTML */
   if (req.mode === 'navigate') {
     event.respondWith(
-      fetch(req)
+      fetch(req, { cache: 'reload' })
         .then((res) => {
           if (res && res.ok) {
             const copy = res.clone()

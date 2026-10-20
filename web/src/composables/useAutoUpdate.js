@@ -33,8 +33,13 @@ export function useAutoUpdate() {
       const mine = bundleVersion()
       if (!server || !mine) return
       if (server !== mine) {
-        /* 先以 reload 模式重新拉一次文档本身，刷新浏览器对 index.html 的缓存副本，
-           再 reload —— 否则 max-age=600 会让 reload 反复命中旧文档 */
+        /* 先强制 SW 更新（新 sw.js 若因自身 10 分钟缓存没到位，这里推一把），
+           再以 reload 模式重新拉一次文档本身，刷新浏览器对 index.html 的缓存副本，
+           最后 reload —— 否则 max-age=600 会让 reload 反复命中旧文档 */
+        try {
+          const reg = await navigator.serviceWorker?.getRegistration()
+          if (reg) await reg.update()
+        } catch (e) { /* SW 不可用忽略，照常走文档刷新 */ }
         try { await fetch(location.href, { cache: 'reload' }) } catch (e) { /* 网络异常忽略，照常 reload */ }
         location.reload()
       }
