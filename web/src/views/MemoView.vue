@@ -437,9 +437,9 @@ onMounted(load)
 .mm-empty { text-align: center; color: var(--text-soft); margin-top: 40px; font-size: 14px; line-height: 1.8; }
 .mm-tip { text-align: center; color: var(--text-soft); margin-top: 30px; }
 
-/* 弹层 */
+/* 弹层（左右留白 22px：输入框不贴弹窗边缘，避免高亮边框显得被截断） */
 .mm-mask { position: fixed; inset: 0; background: rgba(0,0,0,.4); display: flex; align-items: flex-end; z-index: 50; }
-.mm-sheet { width: 100%; background: var(--bg-screen); border-radius: 16px 16px 0 0; padding: 16px 16px calc(16px + env(safe-area-inset-bottom)); max-height: 86vh; display: flex; flex-direction: column; overflow: hidden; }
+.mm-sheet { width: 100%; background: var(--bg-screen); border-radius: 16px 16px 0 0; padding: 16px 22px calc(16px + env(safe-area-inset-bottom)); max-height: 86vh; display: flex; flex-direction: column; overflow: hidden; }
 .mm-sheet-title { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
 .mm-type-pick { display: flex; gap: 8px; margin-bottom: 12px; }
 .mm-type-btn { flex: 1; border: 1px solid var(--border); background: var(--bg-soft); border-radius: 10px; padding: 10px; font-size: 14px; color: var(--text-soft); }
