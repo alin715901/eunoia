@@ -1304,10 +1304,9 @@ function onUnmountedClear(t) {
   overflow: hidden;
 }
 .cb-text.empty { color: var(--text-soft); }
-/* 经期卡片：小字标题上方居中 + 状态大字（点击在 排卵期/预测 间切换） */
-.cb-period { align-items: center; justify-content: center; text-align: center; gap: 6px; padding: 12px; }
-.cb-period .cb-label { text-align: center; }
-.cb-period-big { font-size: 22px; font-weight: 700; color: var(--accent); font-family: var(--font-serif); line-height: 1.15; }
+/* 经期卡片：与第 1 页纪念日卡片排布一致 —— 小字标题上方居中 + 状态大字（点击在 排卵期/预测 间切换） */
+.cb-period { align-items: center; text-align: center; }
+.cb-period-big { font-size: 30px; font-weight: 700; color: var(--accent); font-family: var(--font-serif); line-height: 1.15; letter-spacing: 0.5px; }
 /* 备忘录卡类型角标：标签右侧纯文字标注「待办/便签」（无外框） */
 .cb-memo-type {
   margin-left: 6px; font-size: 10px; letter-spacing: 1px; vertical-align: 1px;
