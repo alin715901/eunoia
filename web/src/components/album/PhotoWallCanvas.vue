@@ -239,12 +239,12 @@
             >无</button>
             <button
               v-for="n in noteCellStyles"
-              :key="n.c"
+              :key="n.key"
               class="note-cell"
               :style="n.style"
-              aria-label="便签纸"
-              @click="pickNote('sticky:' + n.c)"
-            ></button>
+              :aria-label="n.name || n.key"
+              @click="pickNote('sticky:' + n.key)"
+            ><span class="note-cap">{{ n.name }}</span></button>
             <button
               v-for="(p, i) in notePresets"
               :key="p.id"
@@ -369,12 +369,13 @@ import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import ImageCropper from '@/components/common/ImageCropper.vue'
 import WallElement from './WallElement.vue'
-import { FONTS, PAPERS, STICKERS, STICKER_CATEGORIES, STICKY_COLORS, noteBg, paperBg } from './presets'
+import { FONTS, PAPERS, STICKERS, STICKER_CATEGORIES, STICKY_COLORS, NOTE_PRESETS, noteBg, paperBg } from './presets'
 
-/* 便签宫格 6 款手账纸面缩略图样式（url 带引号，data URL 里的括号才不会被浏览器丢弃） */
-const noteCellStyles = STICKY_COLORS.map((c) => ({
-  c,
-  style: { backgroundImage: `url("${noteBg(c)}")`, backgroundSize: '100% 100%' }
+/* 便签宫格 16 款手账纸面缩略图样式（url 带引号，data URL 里的括号才不会被浏览器丢弃） */
+const noteCellStyles = NOTE_PRESETS.map((p) => ({
+  key: p.key,
+  name: p.name,
+  style: { backgroundImage: `url("${p.paper}")`, backgroundSize: '100% 100%' }
 }))
 import {
   getPhotoWall, listWallElements, saveWallElements, updatePhotoWall, listCardImages
@@ -1424,6 +1425,21 @@ defineExpose({ save: flushSave })
   -webkit-tap-highlight-color: transparent;
 }
 .note-cell:active { opacity: 0.85; }
+/* 便签纸面名称标签，叠在缩略图底部便于区分多款预设 */
+.note-cap {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 2px 0;
+  font-size: 10px;
+  line-height: 1.3;
+  text-align: center;
+  color: var(--text);
+  background: linear-gradient(to top, rgba(255, 255, 255, 0.92), rgba(255, 255, 255, 0.55));
+  border-bottom-left-radius: 10px;
+  border-bottom-right-radius: 10px;
+}
 /* 设置模式的「无便签」格：去掉便签底变回普通文字 */
 .note-none {
   border: 1.5px dashed var(--border);

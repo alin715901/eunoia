@@ -44,12 +44,12 @@ export function paperBg(key) {
   return p ? p.bg : PAPERS[0].bg
 }
 
-/* ── 便利贴配色（一色一款手账便签纸，见 noteBg） ── */
+/* ── 便利贴配色（保留给旧数据兼容：sticky:#fff3b0 等仍指向对应纸面） ── */
 export const STICKY_COLORS = ['#fff3b0', '#ffd9e0', '#d7f0ff', '#ddf7d3', '#efe1ff', '#ffe9c9']
 
-/* ── 手账便签纸：按 STICKY_COLORS 生成 6 款纸面（横线/方格/虚线框/碎花/双框/撕边，
-   都带胶带或纸纹，避免纯色块的死板感）。viewBox 100×100 + preserveAspectRatio=none，
-   任意长宽都整张铺满（线条会随手势拉伸，符合纸质观感）。 ── */
+/* ── 手账便签纸：16 款纸面（横线/方格/虚线框/碎花/双框/撕边，外加波点/格纹/爱心/星星/
+   波浪/斜纹/双虚框/信封/云朵/角花；都带胶带或纸纹，避免纯色块的死板感）。参考手账风便签图。
+   viewBox 100×100 + preserveAspectRatio=none，任意长宽都整张铺满（线条随手势拉伸，符合纸质观感）。 ── */
 function noteData(inner) {
   const s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="none">${inner}</svg>`
   return 'data:image/svg+xml,' + encodeURIComponent(s)
@@ -76,7 +76,7 @@ function noteGrid(color, gap) {
 /* 撕纸毛边（顶部锯齿白边，确定性伪随机抖动） */
 function tornTop(fill) {
   let d = 'M0 0 H100 V4.5'
-  for (let x = 100; x >= 0; x -= 5) d += ` L${x} ${4.5 + 3.5 * Math.abs(Math.sin(x * 1.7))}`
+  for (let x = 100; x >= 0; x -= 5) d += ` L${x} ${(4.5 + 3.5 * Math.abs(Math.sin(x * 1.7))).toFixed(1)}`
   return `<path d="${d} Z" fill="${fill}"/>`
 }
 /* 碎花（五瓣小白花散布） */
@@ -92,7 +92,82 @@ function noteFlowers() {
   }
   return p
 }
+/* 波点 */
+function noteDots(color, gap, r) {
+  let p = ''
+  let row = 0
+  for (let y = gap; y < 100; y += gap) {
+    const off = row % 2 ? gap / 2 : 0
+    for (let x = gap + off; x < 100; x += gap) p += `<circle cx="${x}" cy="${y}" r="${r}" fill="${color}"/>`
+    row++
+  }
+  return p
+}
+/* 格纹（双向半透明条纹叠出交叉深色，像棉布格纹） */
+function noteGingham(color) {
+  const step = 12
+  let p = ''
+  for (let i = 0; i < 100; i += step) {
+    p += `<rect x="${i}" y="0" width="${step / 2}" height="100" fill="${color}" opacity="0.4"/>`
+    p += `<rect x="0" y="${i}" width="100" height="${step / 2}" fill="${color}" opacity="0.4"/>`
+  }
+  return p
+}
+/* 小爱心散布 */
+function noteHearts(color) {
+  const at = [[18, 20], [54, 15], [84, 34], [28, 52], [66, 60], [16, 84], [52, 90], [86, 82]]
+  let p = ''
+  for (const [cx, cy] of at) {
+    const s = 3.6
+    p += `<path d="M${cx} ${(cy + s * 0.7).toFixed(1)} C ${(cx - s).toFixed(1)} ${(cy - s * 0.3).toFixed(1)}, ${(cx - s * 0.7).toFixed(1)} ${(cy - s).toFixed(1)}, ${cx} ${(cy - s * 0.3).toFixed(1)} C ${(cx + s * 0.7).toFixed(1)} ${(cy - s).toFixed(1)}, ${(cx + s).toFixed(1)} ${(cy - s * 0.3).toFixed(1)}, ${cx} ${(cy + s * 0.7).toFixed(1)} Z" fill="${color}" opacity="0.85"/>`
+  }
+  return p
+}
+/* 四角星小涂鸦散布 */
+function noteStars(color) {
+  const at = [[18, 18], [52, 14], [84, 30], [28, 54], [66, 62], [16, 84], [50, 88], [86, 80]]
+  let p = ''
+  for (const [cx, cy] of at) {
+    p += `<path d="M${cx} ${cy - 4} L${cx + 1} ${cy - 1} L${cx + 4} ${cy} L${cx + 1} ${cy + 1} L${cx} ${cy + 4} L${cx - 1} ${cy + 1} L${cx - 4} ${cy} L${cx - 1} ${cy - 1} Z" fill="${color}" opacity="0.8"/>`
+  }
+  return p
+}
+/* 波浪横线 */
+function noteWaves(color, y0, gap) {
+  let p = ''
+  for (let y = y0; y <= 94; y += gap) p += `<path d="M7 ${y} q 10 -4 21 0 t 21 0 t 21 0 t 21 0" fill="none" stroke="${color}" stroke-width="1"/>`
+  return p
+}
+/* 斜纹 */
+function noteStripes(color, gap) {
+  let p = ''
+  for (let i = -100; i < 200; i += gap) p += `<line x1="${i}" y1="0" x2="${i + 100}" y2="100" stroke="${color}" stroke-width="3"/>`
+  return p
+}
+/* 角花：左上角一片小枝叶 + 花苞 */
+function noteCorner() {
+  return `<path d="M4 4 C20 6 30 16 34 32" fill="none" stroke="rgba(150,190,130,0.7)" stroke-width="1.2"/>` +
+    `<path d="M12 10c3-3 7-2 8 1-3 2-7 1-8-1z" fill="rgba(170,205,150,0.85)"/>` +
+    `<path d="M22 20c3-3 7-2 8 1-3 2-7 1-8-1z" fill="rgba(170,205,150,0.85)"/>` +
+    `<circle cx="30" cy="28" r="2.4" fill="rgba(245,200,120,0.9)"/>`
+}
+/* 信封：上下折线 + 四边圆角框 */
+function noteEnvelope(color) {
+  return `<rect x="6" y="8" width="88" height="84" rx="3" fill="none" stroke="${color}" stroke-width="1" opacity="0.6"/>` +
+    `<path d="M6 9 L50 42 L94 9" fill="none" stroke="${color}" stroke-width="1.2"/>` +
+    `<line x1="6" y1="91" x2="94" y2="91" stroke="${color}" stroke-width="1.2"/>`
+}
+/* 云朵涂鸦散布 */
+function noteClouds(color) {
+  const at = [[24, 26], [70, 20], [40, 64], [82, 70]]
+  let p = ''
+  for (const [cx, cy] of at) {
+    p += `<g fill="${color}" opacity="0.85"><circle cx="${cx - 6}" cy="${cy}" r="5"/><circle cx="${cx}" cy="${cy - 3}" r="6.5"/><circle cx="${cx + 6}" cy="${cy}" r="5"/><rect x="${cx - 11}" y="${cy}" width="22" height="6" rx="3"/></g>`
+  }
+  return p
+}
 
+/* 内置便签纸面：键名含 6 个旧色值（兼容旧数据），其余为新款式 key */
 const NOTE_DESIGNS = {
   /* 黄 · 横线便签 + 顶部米色胶带 */
   '#fff3b0': `<rect width="100" height="100" fill="#fff9d6"/>${noteLines('rgba(214,182,110,0.42)', 18, 11)}${tape(38, 24, -4, '#e9cfa0')}`,
@@ -105,11 +180,45 @@ const NOTE_DESIGNS = {
   /* 紫 · 双线框 + 顶角胶带 */
   '#efe1ff': `<rect width="100" height="100" fill="#f5eeff"/><rect x="5" y="5" width="90" height="90" rx="3" fill="none" stroke="rgba(180,150,220,0.65)" stroke-width="1"/><rect x="9" y="9" width="82" height="82" rx="2" fill="none" stroke="rgba(180,150,220,0.4)" stroke-width="0.7" stroke-dasharray="3 2.4"/>${noteLines('rgba(180,150,220,0.3)', 22, 12)}${tape(8, 15, -40, '#cbb2e8')}${tape(77, 15, 40, '#cbb2e8')}`,
   /* 橙 · 撕边横线纸 + 对角胶带 */
-  '#ffe9c9': `<rect width="100" height="100" fill="#fff3e2"/>${tornTop('#fffdf8')}${noteLines('rgba(210,170,120,0.42)', 16, 11)}${tape(6, 16, -38, '#e2b98c')}${tape(78, 16, 38, '#e2b98c')}`
+  '#ffe9c9': `<rect width="100" height="100" fill="#fff3e2"/>${tornTop('#fffdf8')}${noteLines('rgba(210,170,120,0.42)', 16, 11)}${tape(6, 16, -38, '#e2b98c')}${tape(78, 16, 38, '#e2b98c')}`,
+  /* 黄 · 波点纸 */
+  'yellow-dot': `<rect width="100" height="100" fill="#fff7d6"/>${noteDots('rgba(230,190,90,0.45)', 15, 2.4)}${tape(40, 20, -4, '#e9cfa0')}`,
+  /* 粉 · 爱心点点纸 */
+  'pink-heart': `<rect width="100" height="100" fill="#ffe9ef"/>${noteHearts('rgba(235,130,150,0.85)')}${tape(58, 20, 5, '#f5b9c6')}`,
+  /* 蓝 · 格纹棉布纸 */
+  'blue-gingham': `<rect width="100" height="100" fill="#e8f4ff"/>${noteGingham('rgba(120,170,215,0.9)')}${tape(40, 20, -3, '#bcd6ee')}`,
+  /* 绿 · 波浪横线纸 */
+  'green-wave': `<rect width="100" height="100" fill="#eaf8e2"/>${noteWaves('rgba(140,185,120,0.5)', 20, 12)}${tape(40, 20, -3, '#bfe0a8')}`,
+  /* 紫 · 星星涂鸦纸 */
+  'purple-star': `<rect width="100" height="100" fill="#f3eaff"/>${noteStars('rgba(180,140,220,0.85)')}${tape(8, 15, -40, '#cbb2e8')}${tape(77, 15, 40, '#cbb2e8')}`,
+  /* 橙 · 斜纹纸 */
+  'orange-stripe': `<rect width="100" height="100" fill="#fff1e0"/>${noteStripes('rgba(225,175,120,0.5)', 14)}${tape(42, 20, -4, '#e2b98c')}`,
+  /* 薄荷 · 双虚线框 + 角花 */
+  'mint-frame': `<rect width="100" height="100" fill="#e4f6f0"/><rect x="5" y="5" width="90" height="90" rx="3" fill="none" stroke="rgba(120,190,165,0.7)" stroke-width="1"/><rect x="9" y="9" width="82" height="82" rx="2" fill="none" stroke="rgba(120,190,165,0.4)" stroke-width="0.7" stroke-dasharray="3 2.4"/>${noteCorner()}`,
+  /* 米色 · 信封纸 */
+  'cream-env': `<rect width="100" height="100" fill="#faf3e6"/>${noteEnvelope('rgba(200,160,110,0.7)')}${tape(40, 20, -4, '#d9bf94')}`,
+  /* 天蓝 · 云朵纸 */
+  'sky-cloud': `<rect width="100" height="100" fill="#eaf4ff"/>${noteClouds('rgba(150,190,225,0.85)')}${noteLines('rgba(150,185,220,0.25)', 24, 14)}`,
+  /* 桃色 · 角花纸 */
+  'peach-corner': `<rect width="100" height="100" fill="#ffe9e1"/>${noteLines('rgba(220,150,130,0.3)', 22, 13)}${noteCorner()}`
 }
 
-export function noteBg(color) {
-  return noteData(NOTE_DESIGNS[color] || NOTE_DESIGNS[STICKY_COLORS[0]])
+const NOTE_NAMES = {
+  '#fff3b0': '黄·横线', '#ffd9e0': '粉·方格', '#d7f0ff': '蓝·虚线框', '#ddf7d3': '绿·碎花',
+  '#efe1ff': '紫·双框', '#ffe9c9': '橙·撕边',
+  'yellow-dot': '黄·波点', 'pink-heart': '粉·爱心', 'blue-gingham': '蓝·格纹', 'green-wave': '绿·波浪',
+  'purple-star': '紫·星星', 'orange-stripe': '橙·斜纹', 'mint-frame': '薄荷·双虚框', 'cream-env': '米·信封',
+  'sky-cloud': '天蓝·云朵', 'peach-corner': '桃·角花'
+}
+/* 便签宫格数据源：key 即存入 frame 的标识 */
+export const NOTE_PRESETS = Object.keys(NOTE_DESIGNS).map((k) => ({
+  key: k,
+  name: NOTE_NAMES[k] || '',
+  paper: noteData(NOTE_DESIGNS[k])
+}))
+
+export function noteBg(key) {
+  return noteData(NOTE_DESIGNS[key] || NOTE_DESIGNS['#fff3b0'])
 }
 
 /* ── 内置贴纸分类 ── */

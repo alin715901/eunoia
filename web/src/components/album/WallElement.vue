@@ -75,20 +75,21 @@ const customFrameSrc = computed(() => {
   return f.startsWith('custom:') ? f.slice('custom:'.length) : ''
 })
 const isSticky = computed(() => frameCls.value === 'sticky')
-const stickyColor = computed(() => {
+/* 内置便签 key：frame 形如 sticky:<key>，key 为 NOTE_DESIGNS 的键（含旧色值兼容） */
+const stickyKey = computed(() => {
   const f = props.el.frame || ''
   const c = f.split(':')[1]
-  return STICKY_COLORS.includes(c) ? c : STICKY_COLORS[0]
+  return c || STICKY_COLORS[0]
 })
-/* 自定义便签纸：note: 前缀时用上传图作背景（cover 铺满纸面），否则用便利贴底色 */
+/* 自定义便签纸：note: 前缀时用上传图作背景（cover 铺满纸面），否则用内置手账纸面 */
 const noteSrc = computed(() => {
   const f = props.el.frame || ''
   return f.startsWith('note:') ? f.slice('note:'.length) : ''
 })
-/* 内置便签：整张手账纸面（横线/方格/胶带/碎花），随元素任意拉伸铺满 */
+/* 内置便签：整张手账纸面（横线/方格/胶带/碎花…，共 16 款），随元素任意拉伸铺满 */
 const stickyBg = computed(() => (noteSrc.value
   ? `url("${noteSrc.value}") center / cover no-repeat`
-  : `url("${noteBg(stickyColor.value)}") center / 100% 100% no-repeat`))
+  : `url("${noteBg(stickyKey.value)}") center / 100% 100% no-repeat`))
 
 const textStyle = computed(() => ({
   fontFamily: fontCss(props.el.font),
