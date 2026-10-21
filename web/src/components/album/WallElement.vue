@@ -13,7 +13,7 @@
       <img :src="el.content" class="we-media" alt="" draggable="false" />
     </template>
     <template v-else-if="isSticky">
-      <div class="we-sticky" :style="{ background: stickyColor }">
+      <div class="we-sticky" :style="{ background: stickyBg }">
         <div class="we-text" :style="textStyle">{{ el.content || '双击编辑文字' }}</div>
       </div>
     </template>
@@ -50,6 +50,7 @@ const BASE = { image: 150, sticker: 96, text: 0 }
    'polaroid-h'        → 拍立得白边（横版：右边留宽）
    'tape'              → 一键电子胶带（贴在图片上方）
    'sticky' / 'sticky:#fff3b0' → 便利贴（可带底色）
+   'note:' + 图片地址  → 自定义便签纸（图片作背景，文字写在纸上）
    'custom:' + 图片地址 → 自定义相框（图片盖在元素上方，透明区透出内容） */
 const frameCls = computed(() => {
   const f = props.el.frame || ''
@@ -57,6 +58,7 @@ const frameCls = computed(() => {
   if (f === 'polaroid-h') return 'polaroid polaroid-h'
   if (f === 'tape') return 'tape'
   if (f.startsWith('sticky')) return 'sticky'
+  if (f.startsWith('note:')) return 'sticky'
   if (f.startsWith('custom:')) return 'custom-frame'
   return ''
 })
@@ -70,6 +72,14 @@ const stickyColor = computed(() => {
   const c = f.split(':')[1]
   return STICKY_COLORS.includes(c) ? c : STICKY_COLORS[0]
 })
+/* 自定义便签纸：note: 前缀时用上传图作背景（cover 铺满纸面），否则用便利贴底色 */
+const noteSrc = computed(() => {
+  const f = props.el.frame || ''
+  return f.startsWith('note:') ? f.slice('note:'.length) : ''
+})
+const stickyBg = computed(() => (noteSrc.value
+  ? `url("${noteSrc.value}") center / cover no-repeat`
+  : stickyColor.value))
 
 const textStyle = computed(() => ({
   fontFamily: fontCss(props.el.font),

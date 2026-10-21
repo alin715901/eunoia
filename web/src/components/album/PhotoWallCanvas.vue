@@ -214,32 +214,61 @@
       </div>
     </div>
 
-    <!-- 添加文字：先选样式（普通文字字体 / 便利贴色），再输入内容 -->
+    <!-- 添加文字：字体 / 便签 两个分类的宫格（布局同贴纸；便签可自定义上传，不限量） -->
     <div v-if="textSheet" class="sheet-mask" @click="textSheet = false">
-      <div class="sheet" @click.stop>
-        <div class="sheet-title">添加文字</div>
-        <div class="ts-label">普通文字</div>
-        <div class="ts-row">
-          <button
-            v-for="f in FONTS"
-            :key="f.key"
-            class="ts-font"
-            :style="{ fontFamily: f.css }"
-            @click="addTextWith('', f.key)"
-          >{{ f.name }}</button>
+      <div class="sheet sheet-sticker" @click.stop>
+        <div class="sh-head">
+          <div class="sheet-title">添加文字</div>
+          <button class="sh-close" aria-label="关闭" @click="textSheet = false"><AppIcon name="close" :size="18" color="var(--text-soft)" /></button>
         </div>
-        <div class="ts-label">便利贴</div>
-        <div class="ts-row">
-          <button
-            v-for="c in STICKY_COLORS"
-            :key="c"
-            class="ts-color"
-            :style="{ background: c }"
-            aria-label="便利贴"
-            @click="addTextWith('sticky:' + c, 'hand')"
-          ></button>
+        <div class="st-cat-row">
+          <button class="st-cat" :class="{ on: textCat === 'font' }" @click="textCat = 'font'">字体</button>
+          <button class="st-cat" :class="{ on: textCat === 'note' }" @click="textCat = 'note'">便签</button>
         </div>
-        <button class="sheet-cancel" @click="textSheet = false">取消</button>
+        <div class="st-scroll">
+          <!-- 字体：内置字体宫格，点选后输入文字 -->
+          <div v-if="textCat === 'font'" class="font-grid">
+            <button
+              v-for="f in FONTS"
+              :key="f.key"
+              class="font-cell"
+              :style="{ fontFamily: f.css }"
+              @click="addTextWith('', f.key)"
+            >{{ f.name }}</button>
+          </div>
+          <!-- 便签：内置颜色 + 自定义上传便签纸（不限量；上传后自动存预设） -->
+          <div v-else class="sticker-grid">
+            <button
+              v-for="c in STICKY_COLORS"
+              :key="c"
+              class="note-cell"
+              :style="{ background: c }"
+              aria-label="便利贴"
+              @click="addTextWith('sticky:' + c, 'hand')"
+            ></button>
+            <button
+              v-for="(p, i) in notePresets"
+              :key="p.id"
+              class="note-cell note-cell-img"
+              :style="{ backgroundImage: 'url(' + p.path + ')' }"
+              @click="addTextWith('note:' + p.path, 'hand')"
+            >
+              <span class="note-num">{{ i + 1 }}</span>
+              <span
+                class="mine-del"
+                role="button"
+                tabindex="0"
+                aria-label="删除这个便签"
+                @click.stop="removeNotePreset(p)"
+                @keydown.enter.stop="removeNotePreset(p)"
+              >×</span>
+            </button>
+            <button class="sticker-thumb st-upload" @click="pickCustomNote">
+              <AppIcon name="plus" :size="24" color="var(--text-soft)" />
+              <span>上传便签</span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -261,11 +290,11 @@
           </button>
         </div>
 
-        <!-- 我的底纸：上传后自动存为预设（最多 4 张）；点缩略图应用，点右上角 × 删除 -->
+        <!-- 我的底纸：上传后自动存为预设（不限数量）；点缩略图应用，点右上角 × 删除 -->
         <div class="paper-mine">
           <div class="paper-mine-head">
             <span class="paper-mine-title">我的底纸</span>
-            <span class="paper-mine-count">{{ bgPresets.length }}/4</span>
+            <span class="paper-mine-count">{{ bgPresets.length }}</span>
           </div>
           <div class="paper-grid">
             <button
@@ -300,8 +329,6 @@
             </button>
           </div>
         </div>
-
-        <p class="paper-hint">上传后可按屏幕比例裁剪，自动存入「我的底纸」（最多 4 张）；装饰时双指或右上角 －＋ 可缩放长卷</p>
       </div>
     </div>
 
@@ -319,6 +346,7 @@
     <input ref="stFileEl" type="file" accept="image/*" hidden @change="onCustomStickerPick" />
     <input ref="bgFileEl" type="file" accept="image/*" hidden @change="onCustomBgPick" />
     <input ref="frFileEl" type="file" accept="image/*" hidden @change="onCustomFramePick" />
+    <input ref="ntFileEl" type="file" accept="image/*" hidden @change="onCustomNotePick" />
 
     <!-- 自定义底纸裁剪：与聊天背景一致，先裁后传；比例跟随当前长卷，裁完即铺满 -->
     <ImageCropper
@@ -343,7 +371,7 @@ import { FONTS, PAPERS, STICKERS, STICKER_CATEGORIES, STICKY_COLORS, paperBg } f
 import {
   getPhotoWall, listWallElements, saveWallElements, updatePhotoWall, listCardImages
 } from '@/api/album'
-import { uploadFile, getWallBgPresets, saveWallBgPresets, getAlbumStickerCats, saveAlbumStickerCats, getWallFramePresets, saveWallFramePresets } from '@/api/settings'
+import { uploadFile, getWallBgPresets, saveWallBgPresets, getAlbumStickerCats, saveAlbumStickerCats, getWallFramePresets, saveWallFramePresets, getWallNotePresets, saveWallNotePresets } from '@/api/settings'
 import { compressImage, prepareUpload } from '@/utils/image'
 import { promptDialog, confirmDialog } from '@/utils/dialog'
 import { useNotificationsStore } from '@/stores/notifications'
@@ -359,6 +387,7 @@ const imgFileEl = ref(null)
 const stFileEl = ref(null)
 const bgFileEl = ref(null)
 const frFileEl = ref(null)
+const ntFileEl = ref(null)
 
 const wall = ref({ page_count: 1, width: 0, bg: 'cream' })
 const elements = ref([])
@@ -620,7 +649,61 @@ function addElement(type, content, meta = {}) {
   scheduleSave()
 }
 
-/* ── 文字：先选样式再输入（普通文字按字体 / 便利贴按颜色） ── */
+/* ── 文字：先选样式（字体 / 便签）再输入内容 ── */
+const textCat = ref('font') // 'font' 字体 | 'note' 便签
+/* 文字弹窗每次打开重读便签预设：keep-alive 复用实例时不会拿到陈旧列表 */
+watch(textSheet, (v) => {
+  if (v) loadNotePresets()
+})
+
+/* ── 自定义便签纸：上传即存（按 path 去重），不限数量 ── */
+const notePresets = ref([])
+async function loadNotePresets() {
+  try {
+    notePresets.value = await getWallNotePresets()
+  } catch (e) {
+    console.error('[album] 便签预设读取失败', e)
+  }
+}
+async function addNotePreset(path) {
+  if (!path) return
+  const list = notePresets.value.filter((p) => p.path !== path)
+  list.unshift({ id: 'ntp' + Date.now(), path })
+  notePresets.value = list
+  try {
+    await saveWallNotePresets(list)
+  } catch (e) {
+    console.error('[album] 便签预设保存失败', e)
+  }
+}
+async function removeNotePreset(p) {
+  const next = notePresets.value.filter((x) => x.id !== p.id)
+  notePresets.value = next
+  try {
+    await saveWallNotePresets(next)
+    toast.pushToast({ type: 'info', title: '已删除这个便签' })
+  } catch (e) {
+    toast.pushToast({ type: 'error', title: '删除失败', text: e.message })
+  }
+}
+function pickCustomNote() {
+  ntFileEl.value && ntFileEl.value.click()
+}
+async function onCustomNotePick(e) {
+  const file = e.target.files && e.target.files[0]
+  e.target.value = ''
+  if (!file) return
+  try {
+    // PNG 可能带透明底，跳过填白压缩，保留 alpha
+    const small = await prepareUpload(file)
+    const res = await uploadFile(small)
+    await addNotePreset(res.path)
+    toast.pushToast({ type: 'info', title: '便签已存入', text: '写文字时即可选用这张便签纸' })
+  } catch (err) {
+    toast.pushToast({ type: 'error', title: '便签上传失败', text: err.message })
+  }
+}
+
 async function addTextWith(frame, font) {
   textSheet.value = false
   const text = await promptDialog({ title: frame ? '写便利贴' : '添加文字', text: '写下想留在墙上的话', placeholder: '如：今天也很想你', okText: '添加' })
@@ -781,7 +864,7 @@ async function onBgCropped(blob) {
     wall.value.bg = res.path
     await updatePhotoWall(props.wallId, { bg: res.path })
     await addBgPreset(res.path)
-    toast.pushToast({ type: 'info', title: '底纸已更换', text: evictedOldest.value ? '已存入我的底纸（替换最旧一张）' : '已存入我的底纸' })
+    toast.pushToast({ type: 'info', title: '底纸已更换', text: '已存入我的底纸' })
   } catch (err) {
     toast.pushToast({ type: 'error', title: '底纸上传失败', text: err.message })
   }
@@ -792,8 +875,7 @@ function onBgCropError(msg) {
   toast.pushToast({ type: 'error', title: '底纸上传失败', text: msg || '图片无法读取，请换一张 JPG / PNG 图片' })
 }
 
-/* ── 底纸预设：上传即存（去重置顶），最多 4 张，超出淘汰最旧 ── */
-const evictedOldest = ref(false)
+/* ── 底纸预设：上传即存（去重置顶），不限数量 ── */
 async function loadBgPresets() {
   try {
     bgPresets.value = await getWallBgPresets()
@@ -804,12 +886,10 @@ async function loadBgPresets() {
 async function addBgPreset(path) {
   if (!path) return
   const list = bgPresets.value.filter((p) => p.path !== path)
-  evictedOldest.value = list.length >= 4
   list.unshift({ id: 'bgp' + Date.now(), path })
-  const next = list.slice(0, 4)
-  bgPresets.value = next
+  bgPresets.value = list
   try {
-    await saveWallBgPresets(next)
+    await saveWallBgPresets(list)
   } catch (e) {
     console.error('[album] 底纸预设保存失败', e)
   }
@@ -1065,15 +1145,6 @@ defineExpose({ save: flushSave })
   pointer-events: none;
   z-index: 200;
 }
-/* 底纸弹窗提示 */
-.paper-hint {
-  font-size: 11px;
-  color: var(--text-soft);
-  text-align: center;
-  margin: 10px 0 0;
-  line-height: 1.5;
-}
-
 /* 选中元素上下文操作栏 */
 .pwc-ctx {
   position: absolute;
@@ -1288,26 +1359,57 @@ defineExpose({ save: flushSave })
   padding: 0;
 }
 
-/* 添加文字：样式选择 */
-.ts-label { font-size: 12px; color: var(--text-soft); margin: 8px 2px 6px; }
-.ts-row { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
-.ts-font {
+/* 文字弹窗：字体宫格 + 便签宫格（复用贴纸弹窗的布局语言） */
+.font-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  align-content: start;
+}
+.font-cell {
+  aspect-ratio: 1;
   border: 1.5px solid var(--border);
   background: var(--bg-screen);
   border-radius: 10px;
-  padding: 8px 14px;
-  font-size: 15px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  line-height: 1.25;
+  text-align: center;
   color: var(--text);
+  padding: 4px;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
-.ts-font:active { border-color: var(--accent); }
-.ts-color {
-  width: 40px;
-  height: 40px;
+.font-cell:active { border-color: var(--accent); color: var(--accent); }
+.note-cell {
+  position: relative;
+  aspect-ratio: 1;
   border-radius: 10px;
-  border: 1.5px solid rgba(0, 0, 0, 0.1);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+  border: 1px solid rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+  background-size: cover;
+  background-position: center;
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.note-cell:active { opacity: 0.85; }
+/* 自定义便签纸缩略图左上角序号，便于与内置色块区分 */
+.note-num {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  min-width: 15px;
+  height: 15px;
+  padding: 0 3px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  font-size: 10px;
+  line-height: 15px;
+  text-align: center;
+  z-index: 2;
 }
 
 /* 底纸选择 */

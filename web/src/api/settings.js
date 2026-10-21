@@ -12,6 +12,8 @@ export {
   saveAlbumStickerCats,
   getWallFramePresets,
   saveWallFramePresets,
+  getWallNotePresets,
+  saveWallNotePresets,
   getBackupOverview,
   buildBackup,
   importBackup,
