@@ -179,15 +179,17 @@
             <span class="frame-name">电子胶带</span>
             <AppIcon v-if="selEl.frame === 'tape'" name="check" :size="14" color="var(--accent)" class="frame-check" />
           </button>
-          <!-- 我的相框：上传后自动存为预设（最多 8 张）；点缩略图应用，点右上角 × 删除 -->
+          <!-- 我的相框：上传后自动存为预设（不限数量）；点缩略图应用，点右上角 × 删除 -->
           <button
-            v-for="p in framePresets"
+            v-for="(p, i) in framePresets"
             :key="p.id"
             class="frame-cell"
             :class="{ on: currentCustomFrame === p.path }"
             @click="applyFramePreset(p)"
           >
             <span class="frame-thumb" :style="{ backgroundImage: 'url(' + p.path + ')' }"></span>
+            <span class="frame-name">相框 {{ i + 1 }}</span>
+            <AppIcon v-if="currentCustomFrame === p.path" name="check" :size="14" color="var(--accent)" class="frame-check frame-check-left" />
             <span
               class="mine-del"
               role="button"
@@ -208,8 +210,7 @@
             <AppIcon v-if="showCustomFrameOnUpload" name="check" :size="14" color="var(--accent)" class="frame-check" />
           </button>
         </div>
-        <p class="frame-hint">上传后自动存入相框预设（最多 8 张，超出替换最旧）；点预设右上角 × 可删除</p>
-        <button class="sheet-cancel" @click="frameSheet = false">取消</button>
+        <p class="frame-hint">上传后自动存入相框预设；点预设右上角 × 可删除</p>
       </div>
     </div>
 
@@ -846,8 +847,7 @@ const currentCustomFrame = computed(() => {
 const showCustomFrameOnUpload = computed(() =>
   !!currentCustomFrame.value && !framePresets.value.some((p) => p.path === currentCustomFrame.value))
 
-/* ── 相框预设：上传即存（按 path 去重），最多 8 张，超出淘汰最旧 ── */
-const FRAME_PRESET_MAX = 8
+/* ── 相框预设：上传即存（按 path 去重），不限数量 ── */
 const framePresets = ref([])
 async function loadFramePresets() {
   try {
@@ -857,18 +857,15 @@ async function loadFramePresets() {
   }
 }
 async function addFramePreset(path) {
-  if (!path) return false
+  if (!path) return
   const list = framePresets.value.filter((p) => p.path !== path)
-  const evicted = list.length >= FRAME_PRESET_MAX
   list.unshift({ id: 'frp' + Date.now(), path })
-  const next = list.slice(0, FRAME_PRESET_MAX)
-  framePresets.value = next
+  framePresets.value = list
   try {
-    await saveWallFramePresets(next)
+    await saveWallFramePresets(list)
   } catch (e) {
     console.error('[album] 相框预设保存失败', e)
   }
-  return evicted
 }
 async function removeFramePreset(p) {
   const next = framePresets.value.filter((x) => x.id !== p.id)
@@ -895,8 +892,8 @@ async function onCustomFramePick(e) {
     ctxPanel.value = null
     scheduleSave()
     // 上传后自动存入相框预设，下次可直接从宫格选用
-    const evicted = await addFramePreset(res.path)
-    toast.pushToast({ type: 'info', title: '相框已应用', text: evicted ? '已存入相框预设（替换最旧一张）' : '已存入相框预设' })
+    await addFramePreset(res.path)
+    toast.pushToast({ type: 'info', title: '相框已应用', text: '已存入相框预设' })
   } catch (err) {
     toast.pushToast({ type: 'error', title: '相框上传失败', text: err.message })
   }
@@ -1404,25 +1401,23 @@ defineExpose({ save: flushSave })
 .frame-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
+  gap: 10px 8px;
   margin-bottom: 10px;
 }
+/* 无外框直接布局：缩略图 + 下方文字；选中态 = 文字着色 + 右上角 ✓ */
 .frame-cell {
   position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 5px;
-  padding: 8px 4px 7px;
-  border: 1.5px solid var(--border);
-  border-radius: 12px;
-  background: var(--bg-screen);
+  gap: 6px;
+  padding: 4px 2px;
+  border: none;
+  background: transparent;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-.frame-cell:active { background: var(--bg-soft); }
-.frame-cell.on { border-color: var(--accent); }
-.frame-cell.on .frame-name { color: var(--accent); }
+.frame-cell:active .frame-thumb { opacity: 0.82; }
 .frame-thumb {
   width: 46px;
   height: 46px;
@@ -1441,20 +1436,20 @@ defineExpose({ save: flushSave })
   color: var(--text-soft);
   white-space: nowrap;
 }
+.frame-cell.on .frame-name { color: var(--accent); font-weight: 700; }
 .frame-check {
   position: absolute;
-  top: 5px;
-  right: 5px;
-  background: var(--bg-screen);
-  border-radius: 50%;
-  padding: 1px;
-  box-sizing: content-box;
+  top: 0;
+  right: 0;
+  color: var(--accent);
 }
+/* 预设格右上角有删除 ×，选中勾放左上角避免重叠 */
+.frame-check-left { right: auto; left: 0; }
 .frame-hint {
   font-size: 11px;
   color: var(--text-soft);
   text-align: center;
-  margin: 0 0 8px;
+  margin: 0;
   line-height: 1.5;
 }
 /* 内置相框的 mini 预览：白边拍立得（竖：下边宽；横：右边宽）与斜贴胶带 */
