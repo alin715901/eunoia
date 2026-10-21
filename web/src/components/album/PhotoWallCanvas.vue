@@ -202,7 +202,6 @@
             <AppIcon v-if="showCustomFrameOnUpload" name="check" :size="14" color="var(--accent)" class="frame-check" />
           </button>
         </div>
-        <p class="frame-hint">上传后自动存入相框预设；点预设右上角 × 可删除</p>
       </div>
     </div>
 
@@ -1573,13 +1572,6 @@ defineExpose({ save: flushSave })
 }
 /* 预设格右上角有删除 ×，选中勾放左上角避免重叠 */
 .frame-check-left { right: auto; left: 0; }
-.frame-hint {
-  font-size: 11px;
-  color: var(--text-soft);
-  text-align: center;
-  margin: 0;
-  line-height: 1.5;
-}
 /* 内置相框的 mini 预览：白边拍立得（竖：下边宽；横：右边宽）与斜贴胶带 */
 .ft-polaroid, .ft-polaroid-h, .ft-tape { position: relative; background: #fff; border: 1px solid rgba(0, 0, 0, 0.08); }
 .ft-polaroid::before, .ft-polaroid-h::before, .ft-tape::before { content: ''; position: absolute; }
