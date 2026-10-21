@@ -45,7 +45,8 @@
       <button class="ctx-btn" @click="zOp('down')">下移</button>
       <button class="ctx-btn" @click="zOp('back')">置底</button>
       <button v-if="selEl.type === 'text'" class="ctx-btn" @click="togglePanel('font')">字体</button>
-      <button v-if="selEl.type === 'text' || selEl.type === 'image'" class="ctx-btn" @click="togglePanel('frame')">相框</button>
+      <button v-if="selEl.type === 'text'" class="ctx-btn" @click="togglePanel('frame')">相框</button>
+      <button v-else-if="selEl.type === 'image'" class="ctx-btn" @click="frameSheet = true">相框</button>
       <button class="ctx-btn danger" @click="removeSelected">删除</button>
     </div>
 
@@ -62,24 +63,15 @@
         >{{ f.name }}</button>
       </template>
       <template v-else-if="ctxPanel === 'frame'">
-        <template v-if="selEl.type === 'image'">
-          <button class="pop-item" :class="{ on: !selEl.frame }" @click="setFrame('')">原图</button>
-          <button class="pop-item" :class="{ on: selEl.frame === 'polaroid' }" @click="setFrame('polaroid')">拍立得白边</button>
-          <button class="pop-item" :class="{ on: selEl.frame === 'tape' }" @click="setFrame('tape')">电子胶带</button>
-          <button class="pop-item" :class="{ on: isCustomFrame }" @click="pickCustomFrame">
-            <AppIcon name="plus" :size="14" color="var(--text-soft)" />上传相框
-          </button>
-        </template>
-        <template v-else>
-          <button class="pop-item" :class="{ on: !selEl.frame }" @click="setFrame('')">普通文字</button>
-          <button
-            v-for="c in STICKY_COLORS"
-            :key="c"
-            class="pop-item"
-            :class="{ on: selEl.frame === 'sticky:' + c }"
-            @click="setFrame('sticky:' + c)"
-          ><span class="pop-dot" :style="{ background: c }"></span>便利贴</button>
-        </template>
+        <!-- 图片的相框走宫格弹窗（frameSheet）；这里只留文字的便利贴底色 -->
+        <button class="pop-item" :class="{ on: !selEl.frame }" @click="setFrame('')">普通文字</button>
+        <button
+          v-for="c in STICKY_COLORS"
+          :key="c"
+          class="pop-item"
+          :class="{ on: selEl.frame === 'sticky:' + c }"
+          @click="setFrame('sticky:' + c)"
+        ><span class="pop-dot" :style="{ background: c }"></span>便利贴</button>
       </template>
     </div>
 
@@ -156,6 +148,68 @@
             <span>上传贴纸</span>
           </button>
         </div>
+      </div>
+    </div>
+
+    <!-- 相框：宫格选择（原图 / 拍立得竖·横 / 电子胶带 / 自定义上传预设），布局同贴纸 -->
+    <div v-if="frameSheet" class="sheet-mask" @click="frameSheet = false">
+      <div class="sheet sheet-frame" @click.stop>
+        <div class="sh-head">
+          <div class="sheet-title">相框</div>
+          <button class="sh-close" aria-label="关闭" @click="frameSheet = false"><AppIcon name="close" :size="18" color="var(--text-soft)" /></button>
+        </div>
+        <div class="frame-grid">
+          <button class="frame-cell" :class="{ on: !selEl.frame }" @click="setFrame('')">
+            <span class="frame-thumb frame-thumb-none"><AppIcon name="image" :size="20" color="var(--text-soft)" /></span>
+            <span class="frame-name">原图</span>
+            <AppIcon v-if="!selEl.frame" name="check" :size="14" color="var(--accent)" class="frame-check" />
+          </button>
+          <button class="frame-cell" :class="{ on: selEl.frame === 'polaroid' }" @click="setFrame('polaroid')">
+            <span class="frame-thumb ft-polaroid"></span>
+            <span class="frame-name">拍立得·竖</span>
+            <AppIcon v-if="selEl.frame === 'polaroid'" name="check" :size="14" color="var(--accent)" class="frame-check" />
+          </button>
+          <button class="frame-cell" :class="{ on: selEl.frame === 'polaroid-h' }" @click="setFrame('polaroid-h')">
+            <span class="frame-thumb ft-polaroid-h"></span>
+            <span class="frame-name">拍立得·横</span>
+            <AppIcon v-if="selEl.frame === 'polaroid-h'" name="check" :size="14" color="var(--accent)" class="frame-check" />
+          </button>
+          <button class="frame-cell" :class="{ on: selEl.frame === 'tape' }" @click="setFrame('tape')">
+            <span class="frame-thumb ft-tape"></span>
+            <span class="frame-name">电子胶带</span>
+            <AppIcon v-if="selEl.frame === 'tape'" name="check" :size="14" color="var(--accent)" class="frame-check" />
+          </button>
+          <!-- 我的相框：上传后自动存为预设（最多 8 张）；点缩略图应用，点右上角 × 删除 -->
+          <button
+            v-for="p in framePresets"
+            :key="p.id"
+            class="frame-cell"
+            :class="{ on: currentCustomFrame === p.path }"
+            @click="applyFramePreset(p)"
+          >
+            <span class="frame-thumb" :style="{ backgroundImage: 'url(' + p.path + ')' }"></span>
+            <span
+              class="mine-del"
+              role="button"
+              tabindex="0"
+              aria-label="删除这个相框"
+              @click.stop="removeFramePreset(p)"
+              @keydown.enter.stop="removeFramePreset(p)"
+            >×</span>
+          </button>
+          <!-- 上传相框：PNG 透明区会透出下面的照片；当前相框是预设外的旧自定义框时显示选中态 -->
+          <button
+            class="frame-cell frame-cell-upload"
+            :class="{ on: showCustomFrameOnUpload }"
+            @click="pickCustomFrame"
+          >
+            <span class="frame-thumb frame-thumb-none"><AppIcon name="plus" :size="20" color="var(--text-soft)" /></span>
+            <span class="frame-name">上传相框</span>
+            <AppIcon v-if="showCustomFrameOnUpload" name="check" :size="14" color="var(--accent)" class="frame-check" />
+          </button>
+        </div>
+        <p class="frame-hint">上传后自动存入相框预设（最多 8 张，超出替换最旧）；点预设右上角 × 可删除</p>
+        <button class="sheet-cancel" @click="frameSheet = false">取消</button>
       </div>
     </div>
 
@@ -288,7 +342,7 @@ import { FONTS, PAPERS, STICKERS, STICKER_CATEGORIES, STICKY_COLORS, paperBg } f
 import {
   getPhotoWall, listWallElements, saveWallElements, updatePhotoWall, listCardImages
 } from '@/api/album'
-import { uploadFile, getWallBgPresets, saveWallBgPresets, getAlbumStickerCats, saveAlbumStickerCats } from '@/api/settings'
+import { uploadFile, getWallBgPresets, saveWallBgPresets, getAlbumStickerCats, saveAlbumStickerCats, getWallFramePresets, saveWallFramePresets } from '@/api/settings'
 import { compressImage, prepareUpload } from '@/utils/image'
 import { promptDialog, confirmDialog } from '@/utils/dialog'
 import { useNotificationsStore } from '@/stores/notifications'
@@ -376,6 +430,11 @@ const stickerSheet = ref(false)
 const textSheet = ref(false)
 const paperSheet = ref(false)
 const pageSheet = ref(false)
+const frameSheet = ref(false)
+/* 相框弹窗每次打开都重读预设：keep-alive 复用实例时列表不会陈旧 */
+watch(frameSheet, (v) => {
+  if (v) loadFramePresets()
+})
 /* 底纸弹窗每次打开都重读预设：keep-alive 复用实例时列表不会陈旧（别的墙新传的底纸也能看到） */
 watch(paperSheet, (v) => {
   if (v) loadBgPresets()
@@ -385,8 +444,6 @@ const ctxPanel = ref(null) // 'font' | 'frame'
 
 /* ── 选中元素 & 上下文操作 ── */
 const selEl = computed(() => elements.value.find((e) => e._k === selectedId.value) || null)
-/* 自定义相框：frame = 'custom:' + 图片（dataURL / 路径） */
-const isCustomFrame = computed(() => (selEl.value && selEl.value.frame || '').startsWith('custom:'))
 const selLabel = computed(() => {
   const t = selEl.value && selEl.value.type
   if (t === 'image') return '图片'
@@ -434,6 +491,7 @@ function setFont(key) {
 function setFrame(f) {
   if (selEl.value) selEl.value.frame = f
   ctxPanel.value = null
+  frameSheet.value = false
   scheduleSave()
 }
 
@@ -779,16 +837,66 @@ async function applyBgPreset(p) {
 function pickCustomFrame() {
   frFileEl.value && frFileEl.value.click()
 }
+/* 当前元素用的自定义相框地址（frame = 'custom:' + 图片） */
+const currentCustomFrame = computed(() => {
+  const f = (selEl.value && selEl.value.frame) || ''
+  return f.startsWith('custom:') ? f.slice(7) : ''
+})
+/* 当前自定义相框不在预设里（旧数据/被淘汰）时，仍在上传格上显示选中态 */
+const showCustomFrameOnUpload = computed(() =>
+  !!currentCustomFrame.value && !framePresets.value.some((p) => p.path === currentCustomFrame.value))
+
+/* ── 相框预设：上传即存（按 path 去重），最多 8 张，超出淘汰最旧 ── */
+const FRAME_PRESET_MAX = 8
+const framePresets = ref([])
+async function loadFramePresets() {
+  try {
+    framePresets.value = await getWallFramePresets()
+  } catch (e) {
+    console.error('[album] 相框预设读取失败', e)
+  }
+}
+async function addFramePreset(path) {
+  if (!path) return false
+  const list = framePresets.value.filter((p) => p.path !== path)
+  const evicted = list.length >= FRAME_PRESET_MAX
+  list.unshift({ id: 'frp' + Date.now(), path })
+  const next = list.slice(0, FRAME_PRESET_MAX)
+  framePresets.value = next
+  try {
+    await saveWallFramePresets(next)
+  } catch (e) {
+    console.error('[album] 相框预设保存失败', e)
+  }
+  return evicted
+}
+async function removeFramePreset(p) {
+  const next = framePresets.value.filter((x) => x.id !== p.id)
+  framePresets.value = next
+  try {
+    await saveWallFramePresets(next)
+    toast.pushToast({ type: 'info', title: '已删除这个相框' })
+  } catch (e) {
+    toast.pushToast({ type: 'error', title: '删除失败', text: e.message })
+  }
+}
+function applyFramePreset(p) {
+  setFrame('custom:' + p.path)
+}
 async function onCustomFramePick(e) {
   const file = e.target.files && e.target.files[0]
   e.target.value = ''
   if (!file) return
   try {
+    // PNG 可能带透明底，跳过填白压缩，保留 alpha
     const small = await prepareUpload(file)
     const res = await uploadFile(small)
     if (selEl.value) selEl.value.frame = 'custom:' + res.path
     ctxPanel.value = null
     scheduleSave()
+    // 上传后自动存入相框预设，下次可直接从宫格选用
+    const evicted = await addFramePreset(res.path)
+    toast.pushToast({ type: 'info', title: '相框已应用', text: evicted ? '已存入相框预设（替换最旧一张）' : '已存入相框预设' })
   } catch (err) {
     toast.pushToast({ type: 'error', title: '相框上传失败', text: err.message })
   }
@@ -1285,4 +1393,96 @@ defineExpose({ save: flushSave })
   -webkit-tap-highlight-color: transparent;
 }
 .mine-del:active { background: rgba(0, 0, 0, 0.78); }
+
+/* 相框宫格弹窗（布局同贴纸：标题 + 右上 × + 宫格） */
+.sheet-frame {
+  max-height: 72vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+}
+.frame-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.frame-cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  padding: 8px 4px 7px;
+  border: 1.5px solid var(--border);
+  border-radius: 12px;
+  background: var(--bg-screen);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.frame-cell:active { background: var(--bg-soft); }
+.frame-cell.on { border-color: var(--accent); }
+.frame-cell.on .frame-name { color: var(--accent); }
+.frame-thumb {
+  width: 46px;
+  height: 46px;
+  border-radius: 8px;
+  background: var(--bg-soft);
+  background-size: contain;
+  background-position: center;
+  background-repeat: no-repeat;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.frame-name {
+  font-size: 11px;
+  color: var(--text-soft);
+  white-space: nowrap;
+}
+.frame-check {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  background: var(--bg-screen);
+  border-radius: 50%;
+  padding: 1px;
+  box-sizing: content-box;
+}
+.frame-hint {
+  font-size: 11px;
+  color: var(--text-soft);
+  text-align: center;
+  margin: 0 0 8px;
+  line-height: 1.5;
+}
+/* 内置相框的 mini 预览：白边拍立得（竖：下边宽；横：右边宽）与斜贴胶带 */
+.ft-polaroid, .ft-polaroid-h, .ft-tape { position: relative; background: #fff; border: 1px solid rgba(0, 0, 0, 0.08); }
+.ft-polaroid::before, .ft-polaroid-h::before, .ft-tape::before { content: ''; position: absolute; }
+.ft-polaroid::before {
+  left: 5px;
+  right: 5px;
+  top: 5px;
+  bottom: 13px;
+  background: linear-gradient(135deg, #c9b8a3, #9a8a72);
+}
+.ft-polaroid-h::before {
+  left: 5px;
+  right: 13px;
+  top: 5px;
+  bottom: 5px;
+  background: linear-gradient(135deg, #c9b8a3, #9a8a72);
+}
+.ft-tape { background: linear-gradient(135deg, #b9ac97, #96886f); }
+.ft-tape::before {
+  left: 2px;
+  right: 2px;
+  top: 50%;
+  height: 11px;
+  transform: translateY(-50%) rotate(-9deg);
+  background: rgba(255, 255, 255, 0.82);
+  border-top: 1px solid rgba(0, 0, 0, 0.05);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+}
 </style>

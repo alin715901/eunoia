@@ -46,13 +46,15 @@ const BASE = { image: 150, sticker: 96, text: 0 }
 
 /* frame 字段编码：
    ''                  → 无相框（图片原图 / 普通文字）
-   'polaroid'          → 拍立得白边
+   'polaroid'          → 拍立得白边（竖版：下边留宽）
+   'polaroid-h'        → 拍立得白边（横版：右边留宽）
    'tape'              → 一键电子胶带（贴在图片上方）
    'sticky' / 'sticky:#fff3b0' → 便利贴（可带底色）
    'custom:' + 图片地址 → 自定义相框（图片盖在元素上方，透明区透出内容） */
 const frameCls = computed(() => {
   const f = props.el.frame || ''
   if (f === 'polaroid') return 'polaroid'
+  if (f === 'polaroid-h') return 'polaroid polaroid-h'
   if (f === 'tape') return 'tape'
   if (f.startsWith('sticky')) return 'sticky'
   if (f.startsWith('custom:')) return 'custom-frame'
@@ -289,6 +291,8 @@ function onDblClick() {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
 }
 .we.polaroid .we-media { border-radius: 1px; }
+/* 拍立得·横版：右边留宽（横放的拍立得） */
+.we.polaroid-h { padding: 7px 26px 7px 7px; }
 
 /* ── 一键电子胶带：斜贴一条半透明胶带在元素上方 ── */
 .we.tape::before {

@@ -1620,6 +1620,25 @@ export async function saveAlbumStickerCats(list) {
   return clean
 }
 
+/* 自定义相框预设：上传后自动存入（global_settings KV），最多 8 张，超出淘汰最旧。
+   相框是带透明底的 PNG 盖层，体积大，与贴纸同理不放 localStorage。 */
+const WALL_FRAME_PRESETS_KEY = 'wall_frame_presets'
+const WALL_FRAME_PRESETS_MAX = 8
+
+export async function getWallFramePresets() {
+  const v = settingsRepo.getGlobal(WALL_FRAME_PRESETS_KEY)
+  if (!Array.isArray(v)) return []
+  return v.filter((p) => p && typeof p.path === 'string' && p.path)
+}
+
+export async function saveWallFramePresets(list) {
+  const clean = (Array.isArray(list) ? list : [])
+    .filter((p) => p && typeof p.path === 'string' && p.path)
+    .slice(0, WALL_FRAME_PRESETS_MAX)
+  settingsRepo.setGlobal(WALL_FRAME_PRESETS_KEY, clean)
+  return clean
+}
+
 export async function listPhotoWalls() {
   return db.prepare('SELECT * FROM photo_walls ORDER BY created_at DESC, id DESC').all()
 }
