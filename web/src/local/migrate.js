@@ -316,4 +316,7 @@ export function migrate() {
   addCol('photo_walls', 'bg', "TEXT DEFAULT 'cream'")
   addCol('photo_wall_elements', 'font', "TEXT DEFAULT ''")
   addCol('photo_wall_elements', 'frame', "TEXT DEFAULT ''")
+  // 相册列表编辑弹窗可手动换封面：cover_manual=1 时钉住用户选的封面，
+  // 装饰保存不再用「最靠左图片」自动覆盖（移除封面后恢复自动）
+  addCol('photo_walls', 'cover_manual', 'INTEGER DEFAULT 0')
 }

@@ -8,6 +8,8 @@ export {
   uploadFile,
   getWallBgPresets,
   saveWallBgPresets,
+  getAlbumStickerCats,
+  saveAlbumStickerCats,
   getBackupOverview,
   buildBackup,
   importBackup,

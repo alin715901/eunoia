@@ -1588,6 +1588,38 @@ export async function saveWallBgPresets(list) {
   return clean
 }
 
+/* 相册贴纸分类：自定义分类名 + 各分类下用户上传的贴纸。
+   贴纸多为带透明底的 PNG、体积大，走 global_settings KV（IndexedDB）而非 localStorage。
+   内置分类（心情/天气/记号…）同样按分类名作 key——在哪个分类上传就存到哪个分类。 */
+const ALBUM_STICKER_CATS_KEY = 'album_sticker_cats'
+
+function normalizeStickerCats(v) {
+  const out = { names: [], stickers: {} }
+  if (!v || typeof v !== 'object') return out
+  if (Array.isArray(v.names)) {
+    out.names = v.names.filter((n) => typeof n === 'string' && n)
+  }
+  if (v.stickers && typeof v.stickers === 'object') {
+    for (const k of Object.keys(v.stickers)) {
+      const arr = Array.isArray(v.stickers[k]) ? v.stickers[k] : []
+      out.stickers[k] = arr
+        .filter((s) => s && typeof s.data === 'string' && s.data)
+        .map((s) => ({ name: String(s.name || ''), data: s.data }))
+    }
+  }
+  return out
+}
+
+export async function getAlbumStickerCats() {
+  return normalizeStickerCats(settingsRepo.getGlobal(ALBUM_STICKER_CATS_KEY))
+}
+
+export async function saveAlbumStickerCats(list) {
+  const clean = normalizeStickerCats(list)
+  settingsRepo.setGlobal(ALBUM_STICKER_CATS_KEY, clean)
+  return clean
+}
+
 export async function listPhotoWalls() {
   return db.prepare('SELECT * FROM photo_walls ORDER BY created_at DESC, id DESC').all()
 }
@@ -1609,9 +1641,10 @@ export async function updatePhotoWall(id, payload = {}) {
   const cur = db.prepare('SELECT * FROM photo_walls WHERE id=?').get(iid)
   if (!cur) fail('照片墙不存在')
   db.prepare(`UPDATE photo_walls SET
-    name = ?, cover = ?, bg = ?, page_count = ?, width = ?, updated_at = ? WHERE id = ?`).run(
+    name = ?, cover = ?, cover_manual = ?, bg = ?, page_count = ?, width = ?, updated_at = ? WHERE id = ?`).run(
     payload.name != null ? String(payload.name) : cur.name,
     payload.cover !== undefined ? payload.cover : cur.cover,
+    payload.cover_manual != null ? (Number(payload.cover_manual) ? 1 : 0) : (cur.cover_manual || 0),
     payload.bg !== undefined ? payload.bg : cur.bg,
     payload.page_count != null ? Number(payload.page_count) : cur.page_count,
     payload.width != null ? Number(payload.width) : cur.width,

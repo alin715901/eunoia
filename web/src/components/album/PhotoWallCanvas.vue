@@ -6,6 +6,7 @@
         class="pwc-scroll"
         :class="{ locked: !editable, zoomed: viewZoom !== 1 }"
         @pointerdown="onStripDown"
+        @scroll="syncCurPage"
         @touchstart="onScrollTouchStart"
         @touchmove="onScrollTouchMove"
         @touchend="onScrollTouchEnd"
@@ -32,6 +33,9 @@
       <button class="zh-val" type="button" @click="resetZoom">{{ Math.round(viewZoom * 100) }}%</button>
       <button class="zh-btn" type="button" aria-label="放大" @click="zoomBy(1.25)">＋</button>
     </div>
+
+    <!-- 当前页指示：装饰时左上角标明「第几页 / 共几页」 -->
+    <div v-if="editable" class="pwc-pageind">{{ curPage }} / {{ pageCount }}</div>
 
     <!-- 选中元素的上下文操作栏：图层顺序 / 字体 / 相框 / 删除 -->
     <div v-if="editable && selEl" class="pwc-ctx">
@@ -86,7 +90,7 @@
         <button class="pt-btn" @click="stickerSheet = true"><AppIcon name="sticker" :size="19" /><span>贴纸</span></button>
         <button class="pt-btn" @click="textSheet = true"><AppIcon name="edit" :size="19" /><span>文字</span></button>
         <button class="pt-btn" @click="paperSheet = true"><AppIcon name="grid" :size="19" /><span>底纸</span></button>
-        <button class="pt-btn" @click="addPage"><AppIcon name="plus" :size="19" /><span>增加页数</span></button>
+        <button class="pt-btn" @click="pageSheet = true"><AppIcon name="cards" :size="19" /><span>页数</span></button>
       </div>
     </transition>
 
@@ -246,6 +250,16 @@
       </div>
     </div>
 
+    <!-- 页数：增加 / 减少（至少保留一页；减页会清掉被删页上的装饰） -->
+    <div v-if="pageSheet" class="sheet-mask" @click="pageSheet = false">
+      <div class="sheet" @click.stop>
+        <div class="sheet-title">页数</div>
+        <button class="sheet-item" @click="changePage(1)">增加页数</button>
+        <button class="sheet-item" :class="{ off: pageCount <= 1 }" @click="changePage(-1)">减少页数</button>
+        <button class="sheet-cancel" @click="pageSheet = false">取消</button>
+      </div>
+    </div>
+
     <input ref="imgFileEl" type="file" accept="image/*" hidden @change="onLocalImagePick" />
     <input ref="stFileEl" type="file" accept="image/*" hidden @change="onCustomStickerPick" />
     <input ref="bgFileEl" type="file" accept="image/*" hidden @change="onCustomBgPick" />
@@ -274,9 +288,9 @@ import { FONTS, PAPERS, STICKERS, STICKER_CATEGORIES, STICKY_COLORS, paperBg } f
 import {
   getPhotoWall, listWallElements, saveWallElements, updatePhotoWall, listCardImages
 } from '@/api/album'
-import { uploadFile, getWallBgPresets, saveWallBgPresets } from '@/api/settings'
+import { uploadFile, getWallBgPresets, saveWallBgPresets, getAlbumStickerCats, saveAlbumStickerCats } from '@/api/settings'
 import { compressImage, prepareUpload } from '@/utils/image'
-import { promptDialog } from '@/utils/dialog'
+import { promptDialog, confirmDialog } from '@/utils/dialog'
 import { useNotificationsStore } from '@/stores/notifications'
 
 const props = defineProps({
@@ -305,6 +319,17 @@ let seq = 1
 
 const contentWidth = computed(() => Math.max(1, (wall.value.page_count || 1) * (pageWidth.value || 360)))
 const pageCount = computed(() => wall.value.page_count || 1)
+/* 当前页：装饰时左上角显示「第几页 / 共几页」。滚动位置是屏幕像素，
+   一页在屏幕上的宽度 = pageWidth × zoom，换算后取最近页 */
+const curPage = ref(1)
+function syncCurPage() {
+  const el = scrollEl.value
+  if (!el) return
+  const pw = (pageWidth.value || 360) * (viewZoom.value || 1)
+  const p = Math.round(el.scrollLeft / pw) + 1
+  curPage.value = Math.max(1, Math.min(pageCount.value, p))
+}
+watch(viewZoom, () => syncCurPage())
 
 /* 底纸：内置款是 CSS 背景值；自定义照片经裁剪窗按「一页=一屏」输出，
    以页为单位向左平铺（repeat-x）——每页都是完整的一张，不拉伸、不裁碎，
@@ -350,6 +375,7 @@ const cardSheet = ref(false)
 const stickerSheet = ref(false)
 const textSheet = ref(false)
 const paperSheet = ref(false)
+const pageSheet = ref(false)
 /* 底纸弹窗每次打开都重读预设：keep-alive 复用实例时列表不会陈旧（别的墙新传的底纸也能看到） */
 watch(paperSheet, (v) => {
   if (v) loadBgPresets()
@@ -578,20 +604,27 @@ async function onLocalImagePick(e) {
 }
 
 /* ── 贴纸：内置 / 自定义上传 ──
-   自定义分类保存在 localStorage（设备级偏好） */
-const CAT_KEY = 'eunoia_album_sticker_cats'
-function loadCustomCats() {
+   分类名与各分类下上传的贴纸存在 global_settings KV（IndexedDB，贴纸是 PNG dataURL 体积大）。
+   内置分类同样按分类名作 key——在哪个分类上传，就自动存到该分类，下次打开可直接复用。 */
+const customCats = ref({ names: [], stickers: {} })
+async function loadCustomCats() {
   try {
-    const v = JSON.parse(localStorage.getItem(CAT_KEY))
-    return v && Array.isArray(v.names) ? v : { names: [], stickers: {} }
-  } catch (_) {
-    return { names: [], stickers: {} }
+    customCats.value = await getAlbumStickerCats()
+  } catch (e) {
+    console.error('[album] 贴纸分类读取失败', e)
   }
 }
-const customCats = ref(loadCustomCats())
-function saveCustomCats() {
-  try { localStorage.setItem(CAT_KEY, JSON.stringify(customCats.value)) } catch (_) {}
+async function saveCustomCats() {
+  try {
+    await saveAlbumStickerCats(customCats.value)
+  } catch (e) {
+    console.error('[album] 贴纸分类保存失败', e)
+  }
 }
+/* 贴纸弹窗每次打开重读：keep-alive 复用实例时不会拿到陈旧列表 */
+watch(stickerSheet, (v) => {
+  if (v) loadCustomCats()
+})
 const allCats = computed(() => [...STICKER_CATEGORIES.map((c) => c.name), ...customCats.value.names])
 const curCat = ref(STICKER_CATEGORIES[0].name)
 const curStickers = computed(() => {
@@ -607,7 +640,7 @@ async function addCat() {
   if (!n || allCats.value.includes(n)) return
   customCats.value.names.push(n)
   customCats.value.stickers[n] = customCats.value.stickers[n] || []
-  saveCustomCats()
+  await saveCustomCats()
   curCat.value = n
 }
 
@@ -627,10 +660,11 @@ async function onCustomStickerPick(e) {
     const small = await prepareUpload(file)
     const res = await uploadFile(small)
     addElement('sticker', res.path)
-    // 当前在自定义分类时，把上传的贴纸同时存入该分类，方便复用
-    if (!STICKER_CATEGORIES.some((c) => c.name === curCat.value)) {
-      customCats.value.stickers[curCat.value] = [...(customCats.value.stickers[curCat.value] || []), { name: 'custom-' + Date.now(), data: res.path }]
-      saveCustomCats()
+    // 在哪个分类上传就存到该分类（内置/自定义分类通用），方便复用；按 data 去重
+    const list = customCats.value.stickers[curCat.value] || []
+    if (!list.some((s) => s.data === res.path)) {
+      customCats.value.stickers[curCat.value] = [...list, { name: 'st' + Date.now(), data: res.path }]
+      await saveCustomCats()
     }
   } catch (err) {
     toast.pushToast({ type: 'error', title: '贴纸上传失败', text: err.message })
@@ -760,12 +794,44 @@ async function onCustomFramePick(e) {
   }
 }
 
-/* ── 增加页数：无缝延长长卷 ── */
-async function addPage() {
-  wall.value.page_count = (wall.value.page_count || 1) + 1
-  // 滚到新扩展的尾部，方便继续装饰
+/* ── 页数：弹窗里增加 / 减少（至少保留一页，最多 10 页） ── */
+const PAGE_MAX = 10
+async function changePage(delta) {
+  pageSheet.value = false
+  const cur = pageCount.value
+  const next = Math.max(1, Math.min(PAGE_MAX, cur + delta))
+  if (next === cur) {
+    if (delta < 0) toast.pushToast({ type: 'info', title: '至少保留一页', text: '照片墙至少要有一页哦' })
+    return
+  }
+  if (delta < 0) {
+    // 减页：被删页面上的装饰一并清除（先确认，避免误删）
+    const limit = contentWidth.value
+    const dropped = elements.value.filter((e) => (e.x || 0) >= limit)
+    if (dropped.length) {
+      const ok = await confirmDialog({
+        title: '减少页数',
+        text: `第 ${next + 1} 页及以后的 ${dropped.length} 个装饰会一并删除，确定减少吗？`,
+        okText: '减少',
+        danger: true
+      })
+      if (!ok) return
+      elements.value = elements.value.filter((e) => (e.x || 0) < limit)
+    }
+  }
+  wall.value.page_count = next
   await nextTick()
-  if (scrollEl.value) scrollEl.value.scrollLeft = scrollEl.value.scrollWidth
+  if (scrollEl.value) {
+    if (delta > 0) {
+      // 加页后滚到新扩展的尾部，方便继续装饰
+      scrollEl.value.scrollLeft = scrollEl.value.scrollWidth
+    } else {
+      // 减页后把滚动位置收回到新范围内
+      const max = scrollEl.value.scrollWidth - scrollEl.value.clientWidth
+      scrollEl.value.scrollLeft = Math.max(0, Math.min(scrollEl.value.scrollLeft, max))
+    }
+  }
+  syncCurPage()
   await flushSave()
 }
 
@@ -794,13 +860,16 @@ async function flushSave() {
   }))
   try {
     await saveWallElements(props.wallId, payload)
-    // 封面：取最靠左的一张图片元素，让列表页显示真实封面
+    // 封面：默认取最靠左的一张图片元素，让列表页显示真实封面；
+    // 用户在相册列表编辑弹窗里手动换过封面（cover_manual=1）则钉住，不被自动覆盖
+    const manual = !!(wall.value.cover_manual && wall.value.cover)
     const firstImg = [...elements.value].sort((a, b) => a.x - b.x).find((e) => e.type === 'image' && e.content)
     await updatePhotoWall(props.wallId, {
       page_count: wall.value.page_count,
       width: contentWidth.value,
       bg: wall.value.bg || 'cream',
-      cover: firstImg ? firstImg.content : (wall.value.cover || '')
+      cover: manual ? wall.value.cover : (firstImg ? firstImg.content : (wall.value.cover || '')),
+      cover_manual: manual ? 1 : 0
     })
   } catch (e) {
     console.error('[album] 保存失败', e)
@@ -870,6 +939,26 @@ defineExpose({ save: flushSave })
   font-family: var(--font-serif);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
+}
+/* 当前页指示（装饰态，左上角，与右上角缩放 HUD 对称） */
+.pwc-pageind {
+  position: absolute;
+  top: 10px;
+  left: 10px;
+  padding: 5px 12px;
+  background: rgba(255, 255, 255, 0.9);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  font-family: var(--font-serif);
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  z-index: 200;
 }
 /* 底纸弹窗提示 */
 .paper-hint {
@@ -1009,6 +1098,7 @@ defineExpose({ save: flushSave })
   cursor: pointer;
 }
 .sheet-cancel { background: transparent; color: var(--text-soft); margin-bottom: 0; }
+.sheet-item.off { color: var(--text-soft); opacity: 0.55; cursor: not-allowed; }
 .sheet-empty { text-align: center; color: var(--text-soft); font-size: 13px; padding: 12px; }
 
 .card-grid, .sticker-grid {
