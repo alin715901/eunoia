@@ -25,12 +25,20 @@
     <!-- 选中态：左上角手柄=旋转，右下角手柄=缩放+旋转（可拖动） -->
     <span v-if="selected && editable" class="we-corner tl" role="slider" aria-label="旋转" @pointerdown.stop="onHandleDown($event, 'tl')"></span>
     <span v-if="selected && editable" class="we-corner br" role="slider" aria-label="缩放旋转" @pointerdown.stop="onHandleDown($event, 'br')"></span>
+
+    <!-- 选中态：四边中点拉伸箭头，拖动单独调整宽 / 高（对边保持不动） -->
+    <template v-if="selected && editable">
+      <span class="we-edge t" role="slider" aria-label="上下拉伸" @pointerdown.stop="onEdgeDown($event, 't')"><i>↕</i></span>
+      <span class="we-edge b" role="slider" aria-label="上下拉伸" @pointerdown.stop="onEdgeDown($event, 'b')"><i>↕</i></span>
+      <span class="we-edge l" role="slider" aria-label="左右拉伸" @pointerdown.stop="onEdgeDown($event, 'l')"><i>↔</i></span>
+      <span class="we-edge r" role="slider" aria-label="左右拉伸" @pointerdown.stop="onEdgeDown($event, 'r')"><i>↔</i></span>
+    </template>
   </div>
 </template>
 
 <script setup>
 import { computed } from 'vue'
-import { fontCss, STICKY_COLORS } from './presets'
+import { fontCss, STICKY_COLORS, noteBg } from './presets'
 
 const props = defineProps({
   el: { type: Object, required: true },
@@ -77,9 +85,10 @@ const noteSrc = computed(() => {
   const f = props.el.frame || ''
   return f.startsWith('note:') ? f.slice('note:'.length) : ''
 })
+/* 内置便签：整张手账纸面（横线/方格/胶带/碎花），随元素任意拉伸铺满 */
 const stickyBg = computed(() => (noteSrc.value
   ? `url("${noteSrc.value}") center / cover no-repeat`
-  : stickyColor.value))
+  : `url("${noteBg(stickyColor.value)}") center / 100% 100% no-repeat`))
 
 const textStyle = computed(() => ({
   fontFamily: fontCss(props.el.font),
@@ -89,8 +98,11 @@ const textStyle = computed(() => ({
 
 const styleObj = computed(() => {
   const t = props.el.type
+  // 四边拉伸：sx/sy 为横/纵拉伸系数（默认 1），与整体 scale 相乘后分别作用于两轴
+  const sx = (props.el.scale || 1) * (props.el.sx || 1)
+  const sy = (props.el.scale || 1) * (props.el.sy || 1)
   const o = {
-    transform: `translate(${props.el.x}px, ${props.el.y}px) rotate(${props.el.rotation || 0}deg) scale(${props.el.scale || 1})`,
+    transform: `translate(${props.el.x}px, ${props.el.y}px) rotate(${props.el.rotation || 0}deg) scale(${sx}, ${sy})`,
     transformOrigin: 'center center',
     zIndex: props.el.z || 1
   }
@@ -190,10 +202,63 @@ function applyHandle(e) {
   }
 }
 
+/* ── 四边拉伸手柄：拖动边中点箭头单独改宽/高（sx/sy），对边保持不动 ── */
+let edge = null
+function onEdgeDown(e, which) {
+  if (!props.editable) return
+  try { e.target.setPointerCapture(e.pointerId) } catch (_) {}
+  emit('select')
+  const box = e.currentTarget.closest('.we')
+  // offsetWidth/Height 是未变换的布局尺寸；屏幕位移 ÷ zoom 换算回墙坐标，再 ÷ (布局尺寸×scale) 得到拉伸系数增量
+  edge = {
+    pid: e.pointerId,
+    which,
+    x0: e.clientX,
+    y0: e.clientY,
+    sx0: props.el.sx || 1,
+    sy0: props.el.sy || 1,
+    ux: Math.max(30, box.offsetWidth * (props.el.scale || 1)), // sx 每加 1 对应的墙坐标宽度
+    uy: Math.max(30, box.offsetHeight * (props.el.scale || 1)),
+    ex0: props.el.x,
+    ey0: props.el.y
+  }
+}
+
+function applyEdge(e) {
+  const el = props.el
+  const dx = (e.clientX - edge.x0) / zf()
+  const dy = (e.clientY - edge.y0) / zf()
+  const r = ((el.rotation || 0) * Math.PI) / 180
+  const cos = Math.cos(r)
+  const sin = Math.sin(r)
+  if (edge.which === 'l' || edge.which === 'r') {
+    const dw = edge.which === 'r' ? dx : -dx // 本侧边引起的宽度变化（墙坐标）
+    el.sx = clamp(edge.sx0 + dw / edge.ux, 0.3, 6)
+    // 对边钉住：中心沿元素本地 x 轴移动 dw/2
+    el.x = edge.ex0 + (dw / 2) * cos
+    el.y = edge.ey0 + (dw / 2) * sin
+  } else {
+    const dh = edge.which === 'b' ? dy : -dy
+    el.sy = clamp(edge.sy0 + dh / edge.uy, 0.3, 6)
+    // 对边钉住：中心沿元素本地 y 轴移动 dh/2（本地 y 轴方向 = (-sin, cos)）
+    if (edge.which === 'b') {
+      el.x = edge.ex0 - (dh / 2) * sin
+      el.y = edge.ey0 + (dh / 2) * cos
+    } else {
+      el.x = edge.ex0 + (dh / 2) * sin
+      el.y = edge.ey0 - (dh / 2) * cos
+    }
+  }
+}
+
 function onMove(e) {
   if (!props.editable) return
   if (handle && handle.pid === e.pointerId) {
     applyHandle(e)
+    return
+  }
+  if (edge && edge.pid === e.pointerId) {
+    applyEdge(e)
     return
   }
   if (!pointers.has(e.pointerId)) return
@@ -221,6 +286,12 @@ function onUp(e) {
   if (handle && handle.pid === e.pointerId) {
     try { e.target.releasePointerCapture(e.pointerId) } catch (_) {}
     handle = null
+    emit('change')
+    return
+  }
+  if (edge && edge.pid === e.pointerId) {
+    try { e.target.releasePointerCapture(e.pointerId) } catch (_) {}
+    edge = null
     emit('change')
     return
   }
@@ -362,4 +433,37 @@ function onDblClick() {
 .we-corner.tl { left: -16px; top: -16px; cursor: grab; }
 .we-corner.tl:active { cursor: grabbing; }
 .we-corner.br { right: -16px; bottom: -16px; cursor: nwse-resize; }
+
+/* ── 四边拉伸手柄：边中点小圆钮 + 拉伸箭头 ── */
+.we-edge {
+  position: absolute;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+  z-index: 5;
+  cursor: ns-resize;
+}
+.we-edge i {
+  font-style: normal;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--accent);
+  background: #fff;
+  border: 1.5px solid var(--accent);
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+}
+.we-edge.t { left: 50%; top: -12px; transform: translate(-50%, 0); }
+.we-edge.b { left: 50%; bottom: -12px; transform: translate(-50%, 0); }
+.we-edge.l { left: -12px; top: 50%; transform: translate(0, -50%); cursor: ew-resize; }
+.we-edge.r { right: -12px; top: 50%; transform: translate(0, -50%); cursor: ew-resize; }
 </style>

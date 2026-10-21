@@ -238,12 +238,12 @@
               @click="pickNote('')"
             >无</button>
             <button
-              v-for="c in STICKY_COLORS"
-              :key="c"
+              v-for="n in noteCellStyles"
+              :key="n.c"
               class="note-cell"
-              :style="{ background: c }"
-              aria-label="便利贴"
-              @click="pickNote('sticky:' + c)"
+              :style="n.style"
+              aria-label="便签纸"
+              @click="pickNote('sticky:' + n.c)"
             ></button>
             <button
               v-for="(p, i) in notePresets"
@@ -274,7 +274,10 @@
     <!-- 更换底纸 -->
     <div v-if="paperSheet" class="sheet-mask" @click="paperSheet = false">
       <div class="sheet" @click.stop>
-        <div class="sheet-title">更换底纸</div>
+        <div class="sh-head">
+          <div class="sheet-title">更换底纸</div>
+          <button class="sh-close" aria-label="关闭" @click="paperSheet = false"><AppIcon name="close" :size="18" color="var(--text-soft)" /></button>
+        </div>
         <div class="paper-grid">
           <button
             v-for="p in PAPERS"
@@ -366,7 +369,13 @@ import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import ImageCropper from '@/components/common/ImageCropper.vue'
 import WallElement from './WallElement.vue'
-import { FONTS, PAPERS, STICKERS, STICKER_CATEGORIES, STICKY_COLORS, paperBg } from './presets'
+import { FONTS, PAPERS, STICKERS, STICKER_CATEGORIES, STICKY_COLORS, noteBg, paperBg } from './presets'
+
+/* 便签宫格 6 款手账纸面缩略图样式（url 带引号，data URL 里的括号才不会被浏览器丢弃） */
+const noteCellStyles = STICKY_COLORS.map((c) => ({
+  c,
+  style: { backgroundImage: `url("${noteBg(c)}")`, backgroundSize: '100% 100%' }
+}))
 import {
   getPhotoWall, listWallElements, saveWallElements, updatePhotoWall, listCardImages
 } from '@/api/album'
@@ -524,6 +533,8 @@ async function load() {
     ...r,
     font: r.font || '',
     frame: r.frame || '',
+    sx: Number(r.stretch_x) || 1,
+    sy: Number(r.stretch_y) || 1,
     _k: seq++
   }))
   await loadBgPresets()
@@ -620,6 +631,8 @@ function addElement(type, content, meta = {}) {
     x: Math.round(c.x - base / 2 + off),
     y: Math.round(c.y - h / 2 + off),
     scale: 1,
+    sx: 1,
+    sy: 1,
     rotation: 0,
     z: elements.value.length + 1,
     content: content || '',
@@ -1074,7 +1087,9 @@ async function flushSave() {
     z: Number(e.z) || 0,
     content: e.content || '',
     font: e.font || '',
-    frame: e.frame || ''
+    frame: e.frame || '',
+    stretch_x: Number(e.sx) || 1,
+    stretch_y: Number(e.sy) || 1
   }))
   try {
     await saveWallElements(props.wallId, payload)

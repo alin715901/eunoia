@@ -44,8 +44,73 @@ export function paperBg(key) {
   return p ? p.bg : PAPERS[0].bg
 }
 
-/* ── 便利贴配色 ── */
+/* ── 便利贴配色（一色一款手账便签纸，见 noteBg） ── */
 export const STICKY_COLORS = ['#fff3b0', '#ffd9e0', '#d7f0ff', '#ddf7d3', '#efe1ff', '#ffe9c9']
+
+/* ── 手账便签纸：按 STICKY_COLORS 生成 6 款纸面（横线/方格/虚线框/碎花/双框/撕边，
+   都带胶带或纸纹，避免纯色块的死板感）。viewBox 100×100 + preserveAspectRatio=none，
+   任意长宽都整张铺满（线条会随手势拉伸，符合纸质观感）。 ── */
+function noteData(inner) {
+  const s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="none">${inner}</svg>`
+  return 'data:image/svg+xml,' + encodeURIComponent(s)
+}
+/* 顶部/角落的和纸胶带：半透明斜贴小条 */
+function tape(x, w, rot, fill) {
+  return `<rect x="${x}" y="-2.5" width="${w}" height="8" rx="1" fill="${fill}" opacity="0.85" transform="rotate(${rot} ${x + w / 2} 1.5)"/>`
+}
+/* 手写横线 */
+function noteLines(color, y0, gap) {
+  let p = ''
+  for (let y = y0; y <= 94; y += gap) p += `<line x1="7" y1="${y}" x2="93" y2="${y}" stroke="${color}" stroke-width="1"/>`
+  return p
+}
+/* 方格 */
+function noteGrid(color, gap) {
+  let p = ''
+  for (let i = gap; i < 100; i += gap) {
+    p += `<line x1="${i}" y1="0" x2="${i}" y2="100" stroke="${color}" stroke-width="0.8"/>`
+    p += `<line x1="0" y1="${i}" x2="100" y2="${i}" stroke="${color}" stroke-width="0.8"/>`
+  }
+  return p
+}
+/* 撕纸毛边（顶部锯齿白边，确定性伪随机抖动） */
+function tornTop(fill) {
+  let d = 'M0 0 H100 V4.5'
+  for (let x = 100; x >= 0; x -= 5) d += ` L${x} ${4.5 + 3.5 * Math.abs(Math.sin(x * 1.7))}`
+  return `<path d="${d} Z" fill="${fill}"/>`
+}
+/* 碎花（五瓣小白花散布） */
+function noteFlowers() {
+  const at = [[16, 22], [52, 14], [84, 30], [30, 56], [68, 62], [14, 84], [50, 88], [88, 82]]
+  let p = ''
+  for (const [cx, cy] of at) {
+    for (let k = 0; k < 5; k++) {
+      const a = (k / 5) * Math.PI * 2 - Math.PI / 2
+      p += `<circle cx="${(cx + 3.4 * Math.cos(a)).toFixed(1)}" cy="${(cy + 3.4 * Math.sin(a)).toFixed(1)}" r="2.3" fill="rgba(255,255,255,0.9)"/>`
+    }
+    p += `<circle cx="${cx}" cy="${cy}" r="1.8" fill="rgba(255,224,130,0.9)"/>`
+  }
+  return p
+}
+
+const NOTE_DESIGNS = {
+  /* 黄 · 横线便签 + 顶部米色胶带 */
+  '#fff3b0': `<rect width="100" height="100" fill="#fff9d6"/>${noteLines('rgba(214,182,110,0.42)', 18, 11)}${tape(38, 24, -4, '#e9cfa0')}`,
+  /* 粉 · 方格纸 + 右上粉色胶带 */
+  '#ffd9e0': `<rect width="100" height="100" fill="#ffeff2"/>${noteGrid('rgba(235,160,175,0.35)', 10)}${tape(58, 20, 5, '#f5b9c6')}`,
+  /* 蓝 · 虚线框信纸 + 浅横线 */
+  '#d7f0ff': `<rect width="100" height="100" fill="#e9f5ff"/><rect x="5.5" y="5.5" width="89" height="89" rx="4" fill="none" stroke="rgba(130,180,220,0.75)" stroke-width="1.2" stroke-dasharray="4 3"/>${noteLines('rgba(140,185,220,0.35)', 20, 12)}`,
+  /* 绿 · 碎花图案纸 */
+  '#ddf7d3': `<rect width="100" height="100" fill="#eaf8e2"/>${noteFlowers()}${noteLines('rgba(150,190,130,0.28)', 22, 14)}${tape(40, 20, -3, '#bfe0a8')}`,
+  /* 紫 · 双线框 + 顶角胶带 */
+  '#efe1ff': `<rect width="100" height="100" fill="#f5eeff"/><rect x="5" y="5" width="90" height="90" rx="3" fill="none" stroke="rgba(180,150,220,0.65)" stroke-width="1"/><rect x="9" y="9" width="82" height="82" rx="2" fill="none" stroke="rgba(180,150,220,0.4)" stroke-width="0.7" stroke-dasharray="3 2.4"/>${noteLines('rgba(180,150,220,0.3)', 22, 12)}${tape(8, 15, -40, '#cbb2e8')}${tape(77, 15, 40, '#cbb2e8')}`,
+  /* 橙 · 撕边横线纸 + 对角胶带 */
+  '#ffe9c9': `<rect width="100" height="100" fill="#fff3e2"/>${tornTop('#fffdf8')}${noteLines('rgba(210,170,120,0.42)', 16, 11)}${tape(6, 16, -38, '#e2b98c')}${tape(78, 16, 38, '#e2b98c')}`
+}
+
+export function noteBg(color) {
+  return noteData(NOTE_DESIGNS[color] || NOTE_DESIGNS[STICKY_COLORS[0]])
+}
 
 /* ── 内置贴纸分类 ── */
 export const STICKER_CATEGORIES = [
