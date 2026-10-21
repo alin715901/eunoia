@@ -31,7 +31,7 @@
             <button
               v-if="editing"
               class="al-edit"
-              @click.stop="renameWall(w)"
+              @click.stop="openEditWall(w)"
               aria-label="编辑"
             ><AppIcon name="edit" :size="13" color="#fff" /></button>
           </div>
@@ -125,7 +125,7 @@ async function startCreate() {
   router.push(`/album/${w.id}`)
 }
 
-async function renameWall(w) {
+async function openEditWall(w) {
   // 编辑弹窗：可同时改名称与封面（打开时以当前墙数据初始化）
   editWall.value = { ...w }
   editName.value = w.name || ''
