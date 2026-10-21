@@ -37,16 +37,15 @@ onMounted(loadName)
 onActivated(loadName)
 
 /* ── 未保存离开确认 ──
-   装饰中带着未落库的改动离开页面时弹「当前装饰尚未保存，是否退出？」：
+   装饰中（editing=true）离开页面即弹「当前装饰尚未保存，是否退出？」：
    取消 → 留在原页；保存并退出 → 落库后回相册列表。
+   不依赖脏标记——只选中/查看而未拖动同样算未保存，与用户预期一致。
    两条入口分别接管：
    1) 应用内返回键：AppHeader 的 @back，prevent() 后自行确认；
    2) 系统/浏览器返回：onBeforeRouteLeave 驳回导航，确认后再放行。
    退出用 replace 回列表，避免历史栈里残留详情页在下次返回时露头。 */
 function needsConfirm() {
-  if (!editing.value) return false
-  const canvas = canvasRef.value
-  return !!(canvas && canvas.isDirty())
+  return editing.value
 }
 
 async function confirmExit() {

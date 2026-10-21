@@ -8,6 +8,11 @@
         @pointerdown="onStripDown"
       >
         <div class="pwc-strip" :style="stripStyle">
+        <!-- 自定义照片底纸：底层虚化同图铺满边带，上层 contain 完整展示原图（不裁剪） -->
+        <template v-if="isCustomBg">
+          <img class="pwc-bgblur" :src="wall.bg" alt="" draggable="false" />
+          <img class="pwc-bgfull" :src="wall.bg" alt="" draggable="false" />
+        </template>
         <template v-for="(el, i) in elements" :key="el._k">
           <WallElement
             :el="el"
@@ -242,13 +247,14 @@ const elements = ref([])
 const selectedId = ref(null)
 const pageWidth = ref(0)
 const pageHeight = ref(0)
-const dirty = ref(false) // 本次装饰有改动且未显式保存（离开页面前用于弹确认）
 let seq = 1
 
 const contentWidth = computed(() => Math.max(1, (wall.value.page_count || 1) * (pageWidth.value || 360)))
 const pageCount = computed(() => wall.value.page_count || 1)
 
-/* 底纸：内置款是 CSS 背景值；自定义上传的照片是 dataURL / 路径，按封面图铺满整卷 */
+/* 底纸：内置款是 CSS 背景值；自定义上传的照片完整展示（contain 不裁剪），
+   边带由底层虚化同图（.pwc-bgblur）衬托，避免多页长卷下 cover 把照片
+   放大成只剩一屏取景框 */
 const IMG_BG_RE = /^(data:|https?:|\/)/
 const isCustomBg = computed(() => IMG_BG_RE.test(wall.value.bg || ''))
 const customBgThumbStyle = computed(() => (isCustomBg.value
@@ -257,7 +263,7 @@ const customBgThumbStyle = computed(() => (isCustomBg.value
 const stripStyle = computed(() => {
   const bg = wall.value.bg || 'cream'
   const base = { width: contentWidth.value + 'px', height: pageHeight.value + 'px' }
-  if (IMG_BG_RE.test(bg)) return { ...base, background: `url("${bg}") center / cover no-repeat` }
+  if (IMG_BG_RE.test(bg)) return { ...base, background: `url("${bg}") center / contain no-repeat` }
   return { ...base, background: paperBg(bg) }
 })
 
@@ -560,12 +566,10 @@ async function addPage() {
 }
 
 /* ── 实时保存（防抖） ──
-   dirty 表示「本次装饰会话有改动、尚未显式保存」：
-   防抖落库只是崩溃安全网，不清标记；只有显式保存（完成 / 保存并退出）才清除，
-   这样离开页面前的「尚未保存」提示才覆盖整个装饰会话，而不是 400ms 的时间窗。 */
+   落库只是崩溃安全网；「装饰中离开要不要确认」由装饰态本身决定，
+   不依赖脏标记——只选中/查看而未拖动同样算未保存。 */
 let saveTimer = null
 function scheduleSave() {
-  dirty.value = true
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(flushSave, 400)
 }
@@ -599,13 +603,8 @@ async function flushSave() {
   }
 }
 
-/* 显式保存：落库 + 清除未保存标记（完成 / 保存并退出走这里） */
-async function commitSave() {
-  await flushSave()
-  dirty.value = false
-}
-
-defineExpose({ save: commitSave, isDirty: () => dirty.value })
+/* 显式保存：完成 / 保存并退出走这里 */
+defineExpose({ save: flushSave })
 </script>
 
 <style scoped>
@@ -623,6 +622,25 @@ defineExpose({ save: commitSave, isDirty: () => dirty.value })
   position: relative;
   height: 100%;
   transition: background 0.3s ease;
+}
+/* 自定义照片底纸：底层虚化同图铺满边带，上层 contain 完整展示原图 */
+.pwc-bgblur {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: blur(16px);
+  transform: scale(1.2);
+  pointer-events: none;
+}
+.pwc-bgfull {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  pointer-events: none;
 }
 
 /* 选中元素上下文操作栏 */
