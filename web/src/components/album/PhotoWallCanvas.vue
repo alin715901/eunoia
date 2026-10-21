@@ -1,16 +1,13 @@
 <template>
   <div class="pwc">
     <!-- 横向无缝长卷（底纸铺满整卷） -->
-    <div
-      ref="scrollEl"
-      class="pwc-scroll"
-      :class="{ locked: !editable }"
-      @pointerdown="onStripDown"
-    >
       <div
-        class="pwc-strip"
-        :style="{ width: contentWidth + 'px', height: pageHeight + 'px', background: paperBg(wall.bg) }"
+        ref="scrollEl"
+        class="pwc-scroll"
+        :class="{ locked: !editable }"
+        @pointerdown="onStripDown"
       >
+        <div class="pwc-strip" :style="stripStyle">
         <template v-for="(el, i) in elements" :key="el._k">
           <WallElement
             :el="el"
@@ -53,6 +50,9 @@
           <button class="pop-item" :class="{ on: !selEl.frame }" @click="setFrame('')">原图</button>
           <button class="pop-item" :class="{ on: selEl.frame === 'polaroid' }" @click="setFrame('polaroid')">拍立得白边</button>
           <button class="pop-item" :class="{ on: selEl.frame === 'tape' }" @click="setFrame('tape')">电子胶带</button>
+          <button class="pop-item" :class="{ on: isCustomFrame }" @click="pickCustomFrame">
+            <AppIcon name="plus" :size="14" color="var(--text-soft)" />上传相框
+          </button>
         </template>
         <template v-else>
           <button class="pop-item" :class="{ on: !selEl.frame }" @click="setFrame('')">普通文字</button>
@@ -82,8 +82,8 @@
     <div v-if="imageSheet" class="sheet-mask" @click="imageSheet = false">
       <div class="sheet" @click.stop>
         <div class="sheet-title">添加图片</div>
-        <button class="sheet-item" @click="pickLocalImage">从手机上传（默认拍立得）</button>
-        <button class="sheet-item" @click="openCardImages">从字卡库导入（默认拍立得）</button>
+        <button class="sheet-item" @click="pickLocalImage">从手机上传</button>
+        <button class="sheet-item" @click="openCardImages">从字卡库导入</button>
         <button class="sheet-cancel" @click="imageSheet = false">取消</button>
       </div>
     </div>
@@ -181,12 +181,25 @@
             v-for="p in PAPERS"
             :key="p.key"
             class="paper-cell"
-            :class="{ on: (wall.bg || 'cream') === p.key }"
+            :class="{ on: !isCustomBg && (wall.bg || 'cream') === p.key }"
             :style="{ background: p.thumb }"
             @click="setPaper(p.key)"
           >
             <span class="paper-name">{{ p.name }}</span>
-            <AppIcon v-if="(wall.bg || 'cream') === p.key" name="check" :size="15" color="#4a4036" class="paper-check" />
+            <AppIcon v-if="!isCustomBg && (wall.bg || 'cream') === p.key" name="check" :size="15" color="#4a4036" class="paper-check" />
+          </button>
+          <!-- 自定义底纸：上传照片铺满整卷；已上传时显示缩略图与选中态 -->
+          <button
+            class="paper-cell paper-cell-upload"
+            :class="{ on: isCustomBg }"
+            :style="customBgThumbStyle"
+            @click="pickCustomBg"
+          >
+            <template v-if="!isCustomBg">
+              <AppIcon name="plus" :size="20" color="var(--text-soft)" />
+              <span class="paper-name">上传底纸</span>
+            </template>
+            <AppIcon v-else name="check" :size="15" color="#4a4036" class="paper-check" />
           </button>
         </div>
       </div>
@@ -194,6 +207,8 @@
 
     <input ref="imgFileEl" type="file" accept="image/*" hidden @change="onLocalImagePick" />
     <input ref="stFileEl" type="file" accept="image/*" hidden @change="onCustomStickerPick" />
+    <input ref="bgFileEl" type="file" accept="image/*" hidden @change="onCustomBgPick" />
+    <input ref="frFileEl" type="file" accept="image/*" hidden @change="onCustomFramePick" />
   </div>
 </template>
 
@@ -206,7 +221,7 @@ import {
   getPhotoWall, listWallElements, saveWallElements, updatePhotoWall, listCardImages
 } from '@/api/album'
 import { uploadFile } from '@/api/settings'
-import { compressImage } from '@/utils/image'
+import { compressImage, prepareUpload } from '@/utils/image'
 import { promptDialog } from '@/utils/dialog'
 import { useNotificationsStore } from '@/stores/notifications'
 
@@ -219,16 +234,32 @@ const toast = useNotificationsStore()
 const scrollEl = ref(null)
 const imgFileEl = ref(null)
 const stFileEl = ref(null)
+const bgFileEl = ref(null)
+const frFileEl = ref(null)
 
 const wall = ref({ page_count: 1, width: 0, bg: 'cream' })
 const elements = ref([])
 const selectedId = ref(null)
 const pageWidth = ref(0)
 const pageHeight = ref(0)
+const dirty = ref(false) // 本次装饰有改动且未显式保存（离开页面前用于弹确认）
 let seq = 1
 
 const contentWidth = computed(() => Math.max(1, (wall.value.page_count || 1) * (pageWidth.value || 360)))
 const pageCount = computed(() => wall.value.page_count || 1)
+
+/* 底纸：内置款是 CSS 背景值；自定义上传的照片是 dataURL / 路径，按封面图铺满整卷 */
+const IMG_BG_RE = /^(data:|https?:|\/)/
+const isCustomBg = computed(() => IMG_BG_RE.test(wall.value.bg || ''))
+const customBgThumbStyle = computed(() => (isCustomBg.value
+  ? { backgroundImage: `url("${wall.value.bg}")`, backgroundSize: 'cover', backgroundPosition: 'center' }
+  : {}))
+const stripStyle = computed(() => {
+  const bg = wall.value.bg || 'cream'
+  const base = { width: contentWidth.value + 'px', height: pageHeight.value + 'px' }
+  if (IMG_BG_RE.test(bg)) return { ...base, background: `url("${bg}") center / cover no-repeat` }
+  return { ...base, background: paperBg(bg) }
+})
 
 const imageSheet = ref(false)
 const cardSheet = ref(false)
@@ -240,6 +271,8 @@ const ctxPanel = ref(null) // 'font' | 'frame'
 
 /* ── 选中元素 & 上下文操作 ── */
 const selEl = computed(() => elements.value.find((e) => e._k === selectedId.value) || null)
+/* 自定义相框：frame = 'custom:' + 图片（dataURL / 路径） */
+const isCustomFrame = computed(() => (selEl.value && selEl.value.frame || '').startsWith('custom:'))
 const selLabel = computed(() => {
   const t = selEl.value && selEl.value.type
   if (t === 'image') return '图片'
@@ -453,7 +486,8 @@ async function onCustomStickerPick(e) {
   e.target.value = ''
   if (!file) return
   try {
-    const small = await compressImage(file)
+    // PNG 可能带透明底，跳过填白压缩，保留 alpha
+    const small = await prepareUpload(file)
     const res = await uploadFile(small)
     addElement('sticker', res.path)
     // 当前在自定义分类时，把上传的贴纸同时存入该分类，方便复用
@@ -477,6 +511,45 @@ async function setPaper(key) {
   }
 }
 
+/* 自定义底纸：上传照片铺满整卷（图片地址直接存 bg 字段，渲染时按封面图处理） */
+function pickCustomBg() {
+  bgFileEl.value && bgFileEl.value.click()
+}
+async function onCustomBgPick(e) {
+  const file = e.target.files && e.target.files[0]
+  e.target.value = ''
+  if (!file) return
+  try {
+    const small = await compressImage(file)
+    const res = await uploadFile(small)
+    paperSheet.value = false
+    wall.value.bg = res.path
+    await updatePhotoWall(props.wallId, { bg: res.path })
+    toast.pushToast({ type: 'info', title: '底纸已更换' })
+  } catch (err) {
+    toast.pushToast({ type: 'error', title: '底纸上传失败', text: err.message })
+  }
+}
+
+/* 自定义相框：上传图片盖在元素上方（PNG 透明区会透出下面的照片） */
+function pickCustomFrame() {
+  frFileEl.value && frFileEl.value.click()
+}
+async function onCustomFramePick(e) {
+  const file = e.target.files && e.target.files[0]
+  e.target.value = ''
+  if (!file) return
+  try {
+    const small = await prepareUpload(file)
+    const res = await uploadFile(small)
+    if (selEl.value) selEl.value.frame = 'custom:' + res.path
+    ctxPanel.value = null
+    scheduleSave()
+  } catch (err) {
+    toast.pushToast({ type: 'error', title: '相框上传失败', text: err.message })
+  }
+}
+
 /* ── 增加页数：无缝延长长卷 ── */
 async function addPage() {
   wall.value.page_count = (wall.value.page_count || 1) + 1
@@ -486,9 +559,13 @@ async function addPage() {
   await flushSave()
 }
 
-/* ── 实时保存（防抖） ── */
+/* ── 实时保存（防抖） ──
+   dirty 表示「本次装饰会话有改动、尚未显式保存」：
+   防抖落库只是崩溃安全网，不清标记；只有显式保存（完成 / 保存并退出）才清除，
+   这样离开页面前的「尚未保存」提示才覆盖整个装饰会话，而不是 400ms 的时间窗。 */
 let saveTimer = null
 function scheduleSave() {
+  dirty.value = true
   if (saveTimer) clearTimeout(saveTimer)
   saveTimer = setTimeout(flushSave, 400)
 }
@@ -522,7 +599,13 @@ async function flushSave() {
   }
 }
 
-defineExpose({ save: flushSave })
+/* 显式保存：落库 + 清除未保存标记（完成 / 保存并退出走这里） */
+async function commitSave() {
+  await flushSave()
+  dirty.value = false
+}
+
+defineExpose({ save: commitSave, isDirty: () => dirty.value })
 </script>
 
 <style scoped>
@@ -812,4 +895,15 @@ defineExpose({ save: flushSave })
   padding: 2px;
   box-sizing: content-box;
 }
+
+/* 自定义底纸上传格：虚线占位；已上传时背景换成照片缩略图 */
+.paper-cell-upload {
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  border-style: dashed;
+  background: var(--bg-soft);
+}
+.paper-cell-upload.on { border-style: solid; }
 </style>

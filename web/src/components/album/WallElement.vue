@@ -19,6 +19,9 @@
     </template>
     <div v-else class="we-text" :style="textStyle">{{ el.content || '双击编辑文字' }}</div>
 
+    <!-- 自定义相框：覆盖在内容之上，随元素一起缩放旋转 -->
+    <img v-if="customFrameSrc" :src="customFrameSrc" class="we-frame" alt="" draggable="false" />
+
     <!-- 选中态：左上角手柄=旋转，右下角手柄=缩放+旋转（可拖动） -->
     <span v-if="selected && editable" class="we-corner tl" role="slider" aria-label="旋转" @pointerdown.stop="onHandleDown($event, 'tl')"></span>
     <span v-if="selected && editable" class="we-corner br" role="slider" aria-label="缩放旋转" @pointerdown.stop="onHandleDown($event, 'br')"></span>
@@ -43,13 +46,19 @@ const BASE = { image: 150, sticker: 96, text: 0 }
    ''                  → 无相框（图片原图 / 普通文字）
    'polaroid'          → 拍立得白边
    'tape'              → 一键电子胶带（贴在图片上方）
-   'sticky' / 'sticky:#fff3b0' → 便利贴（可带底色） */
+   'sticky' / 'sticky:#fff3b0' → 便利贴（可带底色）
+   'custom:' + 图片地址 → 自定义相框（图片盖在元素上方，透明区透出内容） */
 const frameCls = computed(() => {
   const f = props.el.frame || ''
   if (f === 'polaroid') return 'polaroid'
   if (f === 'tape') return 'tape'
   if (f.startsWith('sticky')) return 'sticky'
+  if (f.startsWith('custom:')) return 'custom-frame'
   return ''
+})
+const customFrameSrc = computed(() => {
+  const f = props.el.frame || ''
+  return f.startsWith('custom:') ? f.slice('custom:'.length) : ''
 })
 const isSticky = computed(() => frameCls.value === 'sticky')
 const stickyColor = computed(() => {
@@ -241,6 +250,16 @@ function onDblClick() {
   pointer-events: none;
 }
 .we.sticker .we-media { border-radius: 0; }
+
+/* ── 自定义相框：拉伸铺满元素框，盖在照片上方（透明区透出照片） ── */
+.we-frame {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: fill;
+  pointer-events: none;
+}
 .we-text {
   white-space: pre-wrap;
   word-break: break-word;

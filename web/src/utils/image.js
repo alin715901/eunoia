@@ -51,6 +51,20 @@ export async function compressImage(file) {
   }
 }
 
+/**
+ * 上传前处理（保留透明度）：PNG / WebP / GIF 等可能带透明通道的格式原样返回，
+ * 避免 compressImage 的「填白底 + 转 JPEG」丢掉 alpha
+ * （自定义相框的镂空、贴纸的透明底会被打成一片白）。
+ * 其余格式仍走 compressImage 控制体积。
+ * @param {File} file
+ * @returns {Promise<File>}
+ */
+export async function prepareUpload(file) {
+  if (!file || !file.type || !file.type.startsWith('image/')) return file
+  if (file.type === 'image/png' || file.type === 'image/webp' || file.type === 'image/gif') return file
+  return compressImage(file)
+}
+
 function loadBitmap(file) {
   if (typeof createImageBitmap === 'function') {
     return createImageBitmap(file)
