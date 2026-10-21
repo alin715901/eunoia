@@ -37,42 +37,16 @@
     <!-- 当前页指示：装饰时左上角标明「第几页 / 共几页」 -->
     <div v-if="editable" class="pwc-pageind">{{ curPage }} / {{ pageCount }}</div>
 
-    <!-- 选中元素的上下文操作栏：图层顺序 / 字体 / 相框 / 删除 -->
+    <!-- 选中元素的上下文操作栏：图层顺序 / 设置（文字）/ 相框（图片）/ 删除 -->
     <div v-if="editable && selEl" class="pwc-ctx">
       <span class="ctx-tag">{{ selLabel }}</span>
       <button class="ctx-btn" @click="zOp('front')">置顶</button>
       <button class="ctx-btn" @click="zOp('up')">上移</button>
       <button class="ctx-btn" @click="zOp('down')">下移</button>
       <button class="ctx-btn" @click="zOp('back')">置底</button>
-      <button v-if="selEl.type === 'text'" class="ctx-btn" @click="togglePanel('font')">字体</button>
-      <button v-if="selEl.type === 'text'" class="ctx-btn" @click="togglePanel('frame')">相框</button>
+      <button v-if="selEl.type === 'text'" class="ctx-btn" @click="openTextSheet(true)">设置</button>
       <button v-else-if="selEl.type === 'image'" class="ctx-btn" @click="frameSheet = true">相框</button>
       <button class="ctx-btn danger" @click="removeSelected">删除</button>
-    </div>
-
-    <!-- 上下文弹出小面板（字体 / 便利贴色 / 相框） -->
-    <div v-if="ctxPanel && selEl" class="pwc-pop" @click.stop>
-      <template v-if="ctxPanel === 'font'">
-        <button
-          v-for="f in FONTS"
-          :key="f.key"
-          class="pop-item"
-          :class="{ on: selEl.font === f.key }"
-          :style="{ fontFamily: f.css }"
-          @click="setFont(f.key)"
-        >{{ f.name }}</button>
-      </template>
-      <template v-else-if="ctxPanel === 'frame'">
-        <!-- 图片的相框走宫格弹窗（frameSheet）；这里只留文字的便利贴底色 -->
-        <button class="pop-item" :class="{ on: !selEl.frame }" @click="setFrame('')">普通文字</button>
-        <button
-          v-for="c in STICKY_COLORS"
-          :key="c"
-          class="pop-item"
-          :class="{ on: selEl.frame === 'sticky:' + c }"
-          @click="setFrame('sticky:' + c)"
-        ><span class="pop-dot" :style="{ background: c }"></span>便利贴</button>
-      </template>
     </div>
 
     <!-- 装饰模式：底部工具栏 -->
@@ -80,7 +54,7 @@
       <div v-if="editable" class="pwc-tools">
         <button class="pt-btn" @click="imageSheet = true"><AppIcon name="image" :size="19" /><span>图片</span></button>
         <button class="pt-btn" @click="stickerSheet = true"><AppIcon name="sticker" :size="19" /><span>贴纸</span></button>
-        <button class="pt-btn" @click="textSheet = true"><AppIcon name="edit" :size="19" /><span>文字</span></button>
+        <button class="pt-btn" @click="openTextSheet(false)"><AppIcon name="edit" :size="19" /><span>文字</span></button>
         <button class="pt-btn" @click="paperSheet = true"><AppIcon name="grid" :size="19" /><span>底纸</span></button>
         <button class="pt-btn" @click="pageSheet = true"><AppIcon name="cards" :size="19" /><span>页数</span></button>
       </div>
@@ -131,7 +105,15 @@
             class="st-cat"
             :class="{ on: curCat === c }"
             @click="curCat = c"
-          >{{ c }}</button>
+          >{{ c }}<span
+              v-if="isCustomCat(c)"
+              class="cat-del"
+              role="button"
+              tabindex="0"
+              aria-label="删除这个分类"
+              @click.stop="removeCat(c)"
+              @keydown.enter.stop="removeCat(c)"
+            >×</span></button>
           <button class="st-cat st-cat-add" aria-label="添加分类" @click="addCat"><AppIcon name="plus" :size="13" /></button>
         </div>
         <div class="sticker-grid st-scroll">
@@ -142,6 +124,16 @@
             @click="addSticker(s.data)"
           >
             <img :src="s.data" alt="" />
+            <!-- 自定义上传的贴纸可删除（内置贴纸不可删） -->
+            <span
+              v-if="s.custom"
+              class="mine-del"
+              role="button"
+              tabindex="0"
+              aria-label="删除这个贴纸"
+              @click.stop="removeSticker(s)"
+              @keydown.enter.stop="removeSticker(s)"
+            >×</span>
           </div>
           <button class="sticker-thumb st-upload" @click="pickCustomSticker">
             <AppIcon name="plus" :size="24" color="var(--text-soft)" />
@@ -214,11 +206,13 @@
       </div>
     </div>
 
-    <!-- 添加文字：字体 / 便签 两个分类的宫格（布局同贴纸；便签可自定义上传，不限量） -->
+    <!-- 添加文字 / 文字设置：字体 / 便签 两个分类的宫格（布局同贴纸；便签可自定义上传，不限量）
+         新增：从底部工具栏进入，点选后输入内容上墙
+         设置：选中文字元素点上下文栏「设置」进入，点选直接应用到当前元素 -->
     <div v-if="textSheet" class="sheet-mask" @click="textSheet = false">
       <div class="sheet sheet-sticker" @click.stop>
         <div class="sh-head">
-          <div class="sheet-title">添加文字</div>
+          <div class="sheet-title">{{ textEditMode ? '文字设置' : '添加文字' }}</div>
           <button class="sh-close" aria-label="关闭" @click="textSheet = false"><AppIcon name="close" :size="18" color="var(--text-soft)" /></button>
         </div>
         <div class="st-cat-row">
@@ -226,32 +220,38 @@
           <button class="st-cat" :class="{ on: textCat === 'note' }" @click="textCat = 'note'">便签</button>
         </div>
         <div class="st-scroll">
-          <!-- 字体：内置字体宫格，点选后输入文字 -->
+          <!-- 字体：内置字体宫格，点选后输入文字（设置模式直接应用） -->
           <div v-if="textCat === 'font'" class="font-grid">
             <button
               v-for="f in FONTS"
               :key="f.key"
               class="font-cell"
               :style="{ fontFamily: f.css }"
-              @click="addTextWith('', f.key)"
+              @click="pickFont(f.key)"
             >{{ f.name }}</button>
           </div>
           <!-- 便签：内置颜色 + 自定义上传便签纸（不限量；上传后自动存预设） -->
           <div v-else class="sticker-grid">
+            <button
+              v-if="textEditMode"
+              class="note-cell note-none"
+              aria-label="无便签"
+              @click="pickNote('')"
+            >无</button>
             <button
               v-for="c in STICKY_COLORS"
               :key="c"
               class="note-cell"
               :style="{ background: c }"
               aria-label="便利贴"
-              @click="addTextWith('sticky:' + c, 'hand')"
+              @click="pickNote('sticky:' + c)"
             ></button>
             <button
               v-for="(p, i) in notePresets"
               :key="p.id"
               class="note-cell note-cell-img"
               :style="{ backgroundImage: 'url(' + p.path + ')' }"
-              @click="addTextWith('note:' + p.path, 'hand')"
+              @click="pickNote('note:' + p.path)"
             >
               <span class="note-num">{{ i + 1 }}</span>
               <span
@@ -470,7 +470,6 @@ watch(paperSheet, (v) => {
   if (v) loadBgPresets()
 })
 const cardImages = ref([])
-const ctxPanel = ref(null) // 'font' | 'frame'
 
 /* ── 选中元素 & 上下文操作 ── */
 const selEl = computed(() => elements.value.find((e) => e._k === selectedId.value) || null)
@@ -482,14 +481,7 @@ const selLabel = computed(() => {
 })
 function selectEl(k) {
   selectedId.value = k
-  ctxPanel.value = null
 }
-watch(selectedId, () => { ctxPanel.value = null })
-
-function togglePanel(p) {
-  ctxPanel.value = ctxPanel.value === p ? null : p
-}
-
 function zOp(op) {
   const list = [...elements.value].sort((a, b) => (a.z || 0) - (b.z || 0))
   const idx = list.findIndex((e) => e._k === selectedId.value)
@@ -513,14 +505,8 @@ function zOp(op) {
   scheduleSave()
 }
 
-function setFont(key) {
-  if (selEl.value) selEl.value.font = key
-  ctxPanel.value = null
-  scheduleSave()
-}
 function setFrame(f) {
   if (selEl.value) selEl.value.frame = f
-  ctxPanel.value = null
   frameSheet.value = false
   scheduleSave()
 }
@@ -528,7 +514,6 @@ function setFrame(f) {
 function removeSelected() {
   elements.value = elements.value.filter((e) => e._k !== selectedId.value)
   selectedId.value = null
-  ctxPanel.value = null
   scheduleSave()
 }
 
@@ -566,7 +551,6 @@ onBeforeUnmount(() => {
 
 function onStripDown() {
   selectedId.value = null
-  ctxPanel.value = null
 }
 
 /* ── 长卷缩放：HUD 按钮 / 双指捏合 / Ctrl+滚轮 ── */
@@ -645,16 +629,36 @@ function addElement(type, content, meta = {}) {
   }
   elements.value.push(el)
   selectedId.value = el._k
-  ctxPanel.value = null
   scheduleSave()
 }
 
-/* ── 文字：先选样式（字体 / 便签）再输入内容 ── */
+/* ── 文字：先选样式（字体 / 便签）再输入内容 ──
+   textEditMode：false = 底部工具栏「文字」新增；true = 选中文字元素点「设置」修改样式 */
 const textCat = ref('font') // 'font' 字体 | 'note' 便签
+const textEditMode = ref(false)
+function openTextSheet(edit) {
+  textEditMode.value = edit
+  textCat.value = 'font'
+  textSheet.value = true
+}
 /* 文字弹窗每次打开重读便签预设：keep-alive 复用实例时不会拿到陈旧列表 */
 watch(textSheet, (v) => {
   if (v) loadNotePresets()
 })
+/* 设置模式下点字体直接应用到选中元素并关闭 */
+function pickFont(key) {
+  if (!textEditMode.value) return addTextWith('', key)
+  if (selEl.value) selEl.value.font = key
+  textSheet.value = false
+  scheduleSave()
+}
+/* 设置模式下点便签直接换底（'' = 去掉便签）并关闭 */
+function pickNote(frame) {
+  if (!textEditMode.value) return addTextWith(frame, 'hand')
+  if (selEl.value) selEl.value.frame = frame
+  textSheet.value = false
+  scheduleSave()
+}
 
 /* ── 自定义便签纸：上传即存（按 path 去重），不限数量 ── */
 const notePresets = ref([])
@@ -768,10 +772,12 @@ watch(stickerSheet, (v) => {
   if (v) loadCustomCats()
 })
 const allCats = computed(() => [...STICKER_CATEGORIES.map((c) => c.name), ...customCats.value.names])
+/* 是否为用户自建的分类（可删除；内置分类不可删） */
+const isCustomCat = (c) => customCats.value.names.includes(c)
 const curCat = ref(STICKER_CATEGORIES[0].name)
 const curStickers = computed(() => {
-  const builtin = STICKERS.filter((s) => s.cat === curCat.value).map((s) => ({ data: s.data }))
-  const custom = customCats.value.stickers[curCat.value] || []
+  const builtin = STICKERS.filter((s) => s.cat === curCat.value).map((s) => ({ data: s.data, custom: false }))
+  const custom = (customCats.value.stickers[curCat.value] || []).map((s) => ({ data: s.data, custom: true }))
   return [...builtin, ...custom]
 })
 
@@ -784,6 +790,35 @@ async function addCat() {
   customCats.value.stickers[n] = customCats.value.stickers[n] || []
   await saveCustomCats()
   curCat.value = n
+}
+
+/* 删除自定义分类：分类连同里面上传的贴纸一并删除（需确认） */
+async function removeCat(c) {
+  const ok = await confirmDialog({
+    title: '删除分类',
+    text: `「${c}」分类及里面上传的贴纸会一并删除，确定删除吗？`,
+    okText: '删除',
+    danger: true
+  })
+  if (!ok) return
+  customCats.value.names = customCats.value.names.filter((n) => n !== c)
+  delete customCats.value.stickers[c]
+  if (curCat.value === c) curCat.value = STICKER_CATEGORIES[0].name
+  await saveCustomCats()
+  toast.pushToast({ type: 'info', title: '已删除这个分类' })
+}
+
+/* 删除自定义上传的贴纸（内置贴纸不会带删除按钮） */
+async function removeSticker(s) {
+  const list = customCats.value.stickers[curCat.value] || []
+  const next = list.filter((x) => x.data !== s.data)
+  customCats.value.stickers[curCat.value] = next
+  try {
+    await saveCustomCats()
+    toast.pushToast({ type: 'info', title: '已删除这个贴纸' })
+  } catch (e) {
+    toast.pushToast({ type: 'error', title: '删除失败', text: e.message })
+  }
 }
 
 function addSticker(data) {
@@ -969,7 +1004,6 @@ async function onCustomFramePick(e) {
     const small = await prepareUpload(file)
     const res = await uploadFile(small)
     if (selEl.value) selEl.value.frame = 'custom:' + res.path
-    ctxPanel.value = null
     scheduleSave()
     // 上传后自动存入相框预设，下次可直接从宫格选用
     await addFramePreset(res.path)
@@ -1179,41 +1213,6 @@ defineExpose({ save: flushSave })
 .ctx-btn:active { background: var(--accent-soft); }
 .ctx-btn.danger { color: #d2554f; }
 
-/* 上下文弹出小面板 */
-.pwc-pop {
-  position: absolute;
-  left: 8px;
-  right: 8px;
-  bottom: calc(106px + env(safe-area-inset-bottom));
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  padding: 10px;
-  background: var(--bg-screen);
-  border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.16);
-  z-index: 31;
-}
-.pop-item {
-  border: 1.5px solid var(--border);
-  background: var(--bg-screen);
-  border-radius: 10px;
-  padding: 7px 12px;
-  font-size: 13px;
-  color: var(--text);
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-.pop-item.on { border-color: var(--accent); color: var(--accent); }
-.pop-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  border: 1px solid rgba(0, 0, 0, 0.12);
-}
-
 /* 底部工具栏 */
 .pwc-tools {
   position: absolute;
@@ -1284,6 +1283,7 @@ defineExpose({ save: flushSave })
   margin-bottom: 10px;
 }
 .card-thumb, .sticker-thumb {
+  position: relative;
   aspect-ratio: 1;
   border-radius: 10px;
   overflow: hidden;
@@ -1334,6 +1334,21 @@ defineExpose({ save: flushSave })
   cursor: pointer;
 }
 .st-cat.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+/* 自定义分类的删除 ×（pill 内右侧小号，误触率低） */
+.cat-del {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  margin-left: 3px;
+  margin-right: -4px;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.14);
+  font-size: 11px;
+  line-height: 1;
+}
+.st-cat.on .cat-del { background: rgba(255, 255, 255, 0.28); }
 .st-cat-add {
   display: inline-flex;
   align-items: center;
@@ -1395,6 +1410,17 @@ defineExpose({ save: flushSave })
   -webkit-tap-highlight-color: transparent;
 }
 .note-cell:active { opacity: 0.85; }
+/* 设置模式的「无便签」格：去掉便签底变回普通文字 */
+.note-none {
+  border: 1.5px dashed var(--border);
+  background: var(--bg-screen);
+  box-shadow: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  color: var(--text-soft);
+}
 /* 自定义便签纸缩略图左上角序号，便于与内置色块区分 */
 .note-num {
   position: absolute;
