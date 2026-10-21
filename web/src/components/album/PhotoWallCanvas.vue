@@ -8,7 +8,7 @@
         @pointerdown="onStripDown"
       >
         <div class="pwc-strip" :style="stripStyle">
-        <!-- 自定义照片底纸：底层虚化同图铺满边带，上层 contain 完整展示原图（不裁剪） -->
+        <!-- 自定义照片底纸：底层虚化同图兜底，上层 bgfull 以 cover 铺满整卷（裁剪窗已按长卷比例取景） -->
         <template v-if="isCustomBg">
           <img class="pwc-bgblur" :src="wall.bg" alt="" draggable="false" />
           <img class="pwc-bgfull" :src="wall.bg" alt="" draggable="false" />
@@ -207,6 +207,7 @@
             <AppIcon v-else name="check" :size="15" color="#4a4036" class="paper-check" />
           </button>
         </div>
+        <p class="paper-hint">上传照片后可按当前长卷比例裁剪，铺满整卷</p>
       </div>
     </div>
 
@@ -214,12 +215,25 @@
     <input ref="stFileEl" type="file" accept="image/*" hidden @change="onCustomStickerPick" />
     <input ref="bgFileEl" type="file" accept="image/*" hidden @change="onCustomBgPick" />
     <input ref="frFileEl" type="file" accept="image/*" hidden @change="onCustomFramePick" />
+
+    <!-- 自定义底纸裁剪：与聊天背景一致，先裁后传；比例跟随当前长卷，裁完即铺满 -->
+    <ImageCropper
+      v-if="bgCropSrc"
+      :src="bgCropSrc"
+      title="裁剪底纸"
+      :ratio="bgCropRatio"
+      :out-width="bgOutWidth"
+      @cancel="bgCropSrc = ''"
+      @done="onBgCropped"
+      @error="onBgCropError"
+    />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import AppIcon from '@/components/common/AppIcon.vue'
+import ImageCropper from '@/components/common/ImageCropper.vue'
 import WallElement from './WallElement.vue'
 import { FONTS, PAPERS, STICKERS, STICKER_CATEGORIES, STICKY_COLORS, paperBg } from './presets'
 import {
@@ -252,9 +266,9 @@ let seq = 1
 const contentWidth = computed(() => Math.max(1, (wall.value.page_count || 1) * (pageWidth.value || 360)))
 const pageCount = computed(() => wall.value.page_count || 1)
 
-/* 底纸：内置款是 CSS 背景值；自定义上传的照片完整展示（contain 不裁剪），
-   边带由底层虚化同图（.pwc-bgblur）衬托，避免多页长卷下 cover 把照片
-   放大成只剩一屏取景框 */
+/* 底纸：内置款是 CSS 背景值；自定义照片经裁剪窗按当前长卷比例输出，
+   用 cover 铺满整卷——比例一致时 1:1 映射无二次取景，不会出现
+   「照片被放大到只剩一屏取景框」的旧观感（那种情况是未裁剪直接 cover） */
 const IMG_BG_RE = /^(data:|https?:|\/)/
 const isCustomBg = computed(() => IMG_BG_RE.test(wall.value.bg || ''))
 const customBgThumbStyle = computed(() => (isCustomBg.value
@@ -263,7 +277,7 @@ const customBgThumbStyle = computed(() => (isCustomBg.value
 const stripStyle = computed(() => {
   const bg = wall.value.bg || 'cream'
   const base = { width: contentWidth.value + 'px', height: pageHeight.value + 'px' }
-  if (IMG_BG_RE.test(bg)) return { ...base, background: `url("${bg}") center / contain no-repeat` }
+  if (IMG_BG_RE.test(bg)) return { ...base, background: `url("${bg}") center / cover no-repeat` }
   return { ...base, background: paperBg(bg) }
 })
 
@@ -517,17 +531,42 @@ async function setPaper(key) {
   }
 }
 
-/* 自定义底纸：上传照片铺满整卷（图片地址直接存 bg 字段，渲染时按封面图处理） */
+/* 自定义底纸：选图后先弹裁剪窗（与聊天背景一致），裁成当前长卷比例再上传铺满 */
 function pickCustomBg() {
   bgFileEl.value && bgFileEl.value.click()
 }
-async function onCustomBgPick(e) {
+const bgCropSrc = ref('')
+/* 裁剪比例 = 当前长卷（页数 × 屏宽 : 屏高），裁完 cover 铺满即 1:1 无二次取景 */
+const bgCropRatio = computed(() => {
+  const w = contentWidth.value || 390
+  const h = pageHeight.value || 844
+  return w / h
+})
+/* 输出宽度跟随卷宽（≥640 保证清晰，封顶 1600 避免体积失控） */
+const bgOutWidth = computed(() => Math.round(Math.min(1600, Math.max(640, contentWidth.value || 390))))
+
+function onCustomBgPick(e) {
   const file = e.target.files && e.target.files[0]
   e.target.value = ''
   if (!file) return
+  if (!file.type || !file.type.startsWith('image/')) {
+    toast.pushToast({ type: 'error', title: '请选择图片文件' })
+    return
+  }
+  bgCropSrc.value = URL.createObjectURL(file)
+}
+
+async function onBgCropped(blob) {
+  bgCropSrc.value = ''
+  if (!blob) {
+    toast.pushToast({ type: 'error', title: '裁剪失败', text: '请重试' })
+    return
+  }
   try {
+    const file = new File([blob], `wallbg-${Date.now()}.jpg`, { type: 'image/jpeg' })
     const small = await compressImage(file)
     const res = await uploadFile(small)
+    if (!res || !res.path) throw new Error('上传返回为空')
     paperSheet.value = false
     wall.value.bg = res.path
     await updatePhotoWall(props.wallId, { bg: res.path })
@@ -535,6 +574,11 @@ async function onCustomBgPick(e) {
   } catch (err) {
     toast.pushToast({ type: 'error', title: '底纸上传失败', text: err.message })
   }
+}
+
+function onBgCropError(msg) {
+  bgCropSrc.value = ''
+  toast.pushToast({ type: 'error', title: '底纸上传失败', text: msg || '图片无法读取，请换一张 JPG / PNG 图片' })
 }
 
 /* 自定义相框：上传图片盖在元素上方（PNG 透明区会透出下面的照片） */
@@ -623,7 +667,8 @@ defineExpose({ save: flushSave })
   height: 100%;
   transition: background 0.3s ease;
 }
-/* 自定义照片底纸：底层虚化同图铺满边带，上层 contain 完整展示原图 */
+/* 自定义照片底纸：底层虚化同图兜底（图片加载失败/比例偏差时不露白），
+   上层 bgfull 以 cover 铺满整卷 */
 .pwc-bgblur {
   position: absolute;
   inset: 0;
@@ -639,8 +684,16 @@ defineExpose({ save: flushSave })
   inset: 0;
   width: 100%;
   height: 100%;
-  object-fit: contain;
+  object-fit: cover;
   pointer-events: none;
+}
+/* 底纸弹窗提示 */
+.paper-hint {
+  font-size: 11px;
+  color: var(--text-soft);
+  text-align: center;
+  margin: 10px 0 0;
+  line-height: 1.5;
 }
 
 /* 选中元素上下文操作栏 */
