@@ -1570,6 +1570,24 @@ export async function deleteAnniversary(id) {
 
 /* ─────────── 相册：照片墙 ─────────── */
 
+/* 自定义底纸预设：上传后自动存入，最多 4 张（global_settings KV，dataURL 随墙各自落库） */
+const WALL_BG_PRESETS_KEY = 'wall_bg_presets'
+const WALL_BG_PRESETS_MAX = 4
+
+export async function getWallBgPresets() {
+  const v = settingsRepo.getGlobal(WALL_BG_PRESETS_KEY)
+  if (!Array.isArray(v)) return []
+  return v.filter((p) => p && typeof p.path === 'string' && p.path)
+}
+
+export async function saveWallBgPresets(list) {
+  const clean = (Array.isArray(list) ? list : [])
+    .filter((p) => p && typeof p.path === 'string' && p.path)
+    .slice(0, WALL_BG_PRESETS_MAX)
+  settingsRepo.setGlobal(WALL_BG_PRESETS_KEY, clean)
+  return clean
+}
+
 export async function listPhotoWalls() {
   return db.prepare('SELECT * FROM photo_walls ORDER BY created_at DESC, id DESC').all()
 }

@@ -1,29 +1,36 @@
 <template>
   <div class="pwc">
-    <!-- 横向无缝长卷（底纸铺满整卷） -->
+    <!-- 横向无缝长卷（底纸按「一页=一屏」逐页平铺；双指可缩放整个长卷） -->
       <div
         ref="scrollEl"
         class="pwc-scroll"
-        :class="{ locked: !editable }"
+        :class="{ locked: !editable, zoomed: viewZoom !== 1 }"
         @pointerdown="onStripDown"
+        @touchstart="onScrollTouchStart"
+        @touchmove="onScrollTouchMove"
+        @touchend="onScrollTouchEnd"
+        @wheel="onScrollWheel"
       >
         <div class="pwc-strip" :style="stripStyle">
-        <!-- 自定义照片底纸：底层虚化同图兜底，上层 bgfull 以 cover 铺满整卷（裁剪窗已按长卷比例取景） -->
-        <template v-if="isCustomBg">
-          <img class="pwc-bgblur" :src="wall.bg" alt="" draggable="false" />
-          <img class="pwc-bgfull" :src="wall.bg" alt="" draggable="false" />
-        </template>
         <template v-for="(el, i) in elements" :key="el._k">
           <WallElement
             :el="el"
             :editable="editable"
             :selected="selectedId === el._k"
+            :zoom="viewZoom"
             @select="selectEl(el._k)"
             @change="scheduleSave"
             @edit-text="editText"
           />
         </template>
       </div>
+    </div>
+
+    <!-- 缩放 HUD：装饰时缩小可看全被弹窗挡住的墙底，放大可精细摆放；点百分比复位 -->
+    <div v-if="editable" class="pwc-zoomhud">
+      <button class="zh-btn" type="button" aria-label="缩小" @click="zoomBy(1 / 1.25)">－</button>
+      <button class="zh-val" type="button" @click="resetZoom">{{ Math.round(viewZoom * 100) }}%</button>
+      <button class="zh-btn" type="button" aria-label="放大" @click="zoomBy(1.25)">＋</button>
     </div>
 
     <!-- 选中元素的上下文操作栏：图层顺序 / 字体 / 相框 / 删除 -->
@@ -193,21 +200,49 @@
             <span class="paper-name">{{ p.name }}</span>
             <AppIcon v-if="!isCustomBg && (wall.bg || 'cream') === p.key" name="check" :size="15" color="#4a4036" class="paper-check" />
           </button>
-          <!-- 自定义底纸：上传照片铺满整卷；已上传时显示缩略图与选中态 -->
-          <button
-            class="paper-cell paper-cell-upload"
-            :class="{ on: isCustomBg }"
-            :style="customBgThumbStyle"
-            @click="pickCustomBg"
-          >
-            <template v-if="!isCustomBg">
-              <AppIcon name="plus" :size="20" color="var(--text-soft)" />
-              <span class="paper-name">上传底纸</span>
-            </template>
-            <AppIcon v-else name="check" :size="15" color="#4a4036" class="paper-check" />
-          </button>
         </div>
-        <p class="paper-hint">上传照片后可按当前长卷比例裁剪，铺满整卷</p>
+
+        <!-- 我的底纸：上传后自动存为预设（最多 4 张）；点缩略图应用，点右上角 × 删除 -->
+        <div class="paper-mine">
+          <div class="paper-mine-head">
+            <span class="paper-mine-title">我的底纸</span>
+            <span class="paper-mine-count">{{ bgPresets.length }}/4</span>
+          </div>
+          <div class="paper-grid">
+            <button
+              v-for="p in bgPresets"
+              :key="p.id"
+              class="paper-cell paper-cell-mine"
+              :class="{ on: (wall.bg || '') === p.path }"
+              :style="presetThumbStyle(p)"
+              @click="applyBgPreset(p)"
+            >
+              <span
+                class="mine-del"
+                role="button"
+                tabindex="0"
+                aria-label="删除这张底纸"
+                @click.stop="removeBgPreset(p)"
+                @keydown.enter.stop="removeBgPreset(p)"
+              >×</span>
+            </button>
+            <!-- 自定义底纸：上传照片；当前墙用的是预设外的旧自定义底纸时，这里显示缩略图与选中态 -->
+            <button
+              class="paper-cell paper-cell-upload"
+              :class="{ on: showCustomBgOnUpload }"
+              :style="customBgThumbStyle"
+              @click="pickCustomBg"
+            >
+              <template v-if="!showCustomBgOnUpload">
+                <AppIcon name="plus" :size="20" color="var(--text-soft)" />
+                <span class="paper-name">上传底纸</span>
+              </template>
+              <AppIcon v-else name="check" :size="15" color="#4a4036" class="paper-check" />
+            </button>
+          </div>
+        </div>
+
+        <p class="paper-hint">上传后可按屏幕比例裁剪，自动存入「我的底纸」（最多 4 张）；装饰时双指或右上角 －＋ 可缩放长卷</p>
       </div>
     </div>
 
@@ -239,7 +274,7 @@ import { FONTS, PAPERS, STICKERS, STICKER_CATEGORIES, STICKY_COLORS, paperBg } f
 import {
   getPhotoWall, listWallElements, saveWallElements, updatePhotoWall, listCardImages
 } from '@/api/album'
-import { uploadFile } from '@/api/settings'
+import { uploadFile, getWallBgPresets, saveWallBgPresets } from '@/api/settings'
 import { compressImage, prepareUpload } from '@/utils/image'
 import { promptDialog } from '@/utils/dialog'
 import { useNotificationsStore } from '@/stores/notifications'
@@ -261,24 +296,53 @@ const elements = ref([])
 const selectedId = ref(null)
 const pageWidth = ref(0)
 const pageHeight = ref(0)
+/* 长卷缩放：装饰时双指 / HUD 按钮 / Ctrl+滚轮 缩放，缩小时居中摆放，
+   避免弹窗（贴纸/底纸面板）遮住墙底时无从下手 */
+const viewZoom = ref(1)
+const ZOOM_MIN = 0.5
+const ZOOM_MAX = 2
 let seq = 1
 
 const contentWidth = computed(() => Math.max(1, (wall.value.page_count || 1) * (pageWidth.value || 360)))
 const pageCount = computed(() => wall.value.page_count || 1)
 
-/* 底纸：内置款是 CSS 背景值；自定义照片经裁剪窗按当前长卷比例输出，
-   用 cover 铺满整卷——比例一致时 1:1 映射无二次取景，不会出现
-   「照片被放大到只剩一屏取景框」的旧观感（那种情况是未裁剪直接 cover） */
+/* 底纸：内置款是 CSS 背景值；自定义照片经裁剪窗按「一页=一屏」输出，
+   以页为单位向左平铺（repeat-x）——每页都是完整的一张，不拉伸、不裁碎，
+   也不会出现未裁剪直接 cover 时「照片被放大到只剩一屏取景框」的旧观感 */
 const IMG_BG_RE = /^(data:|https?:|\/)/
 const isCustomBg = computed(() => IMG_BG_RE.test(wall.value.bg || ''))
 const customBgThumbStyle = computed(() => (isCustomBg.value
   ? { backgroundImage: `url("${wall.value.bg}")`, backgroundSize: 'cover', backgroundPosition: 'center' }
   : {}))
+/* 自定义底纸预设（最多 4 张，上传即存） */
+const bgPresets = ref([])
+const customBgInPresets = computed(() => isCustomBg.value && bgPresets.value.some((p) => p.path === wall.value.bg))
+/* 当前墙的自定义底纸不在预设里（旧数据/被淘汰）时，仍在上传格上显示缩略图与选中态 */
+const showCustomBgOnUpload = computed(() => isCustomBg.value && !customBgInPresets.value)
+const presetThumbStyle = (p) => ({ backgroundImage: `url("${p.path}")`, backgroundSize: 'cover', backgroundPosition: 'center' })
+
 const stripStyle = computed(() => {
   const bg = wall.value.bg || 'cream'
   const base = { width: contentWidth.value + 'px', height: pageHeight.value + 'px' }
-  if (IMG_BG_RE.test(bg)) return { ...base, background: `url("${bg}") center / cover no-repeat` }
-  return { ...base, background: paperBg(bg) }
+  if (IMG_BG_RE.test(bg)) {
+    // 一页一屏：瓦片尺寸 = 屏宽 × 屏高，逐页平铺
+    const pw = pageWidth.value || 390
+    const ph = pageHeight.value || 844
+    base.background = `url("${bg}") left top / ${pw}px ${ph}px repeat-x`
+  } else {
+    base.background = paperBg(bg)
+  }
+  /* 缩放：zoom 参与布局，滚动范围自动正确；自身 margin 会被 zoom 放大，
+     故按「视觉偏移 / zoom」回填，把缩小后的长卷摆回视口正中 */
+  const z = viewZoom.value
+  if (z !== 1) {
+    base.zoom = z
+    const mt = Math.max(0, (pageHeight.value - pageHeight.value * z) / 2)
+    const ml = Math.max(0, (pageWidth.value - contentWidth.value * z) / 2)
+    if (mt > 0) base.marginTop = Math.round(mt / z) + 'px'
+    if (ml > 0) base.marginLeft = Math.round(ml / z) + 'px'
+  }
+  return base
 })
 
 const imageSheet = ref(false)
@@ -286,6 +350,10 @@ const cardSheet = ref(false)
 const stickerSheet = ref(false)
 const textSheet = ref(false)
 const paperSheet = ref(false)
+/* 底纸弹窗每次打开都重读预设：keep-alive 复用实例时列表不会陈旧（别的墙新传的底纸也能看到） */
+watch(paperSheet, (v) => {
+  if (v) loadBgPresets()
+})
 const cardImages = ref([])
 const ctxPanel = ref(null) // 'font' | 'frame'
 
@@ -360,6 +428,7 @@ async function load() {
     frame: r.frame || '',
     _k: seq++
   }))
+  await loadBgPresets()
 }
 
 /* 测量视口尺寸，驱动长卷宽度 */
@@ -386,12 +455,60 @@ function onStripDown() {
   ctxPanel.value = null
 }
 
-/* ── 新增元素（落在当前可视区中央） ── */
+/* ── 长卷缩放：HUD 按钮 / 双指捏合 / Ctrl+滚轮 ── */
+function clamp(v, lo, hi) {
+  return Math.max(lo, Math.min(hi, v))
+}
+function setZoom(z) {
+  viewZoom.value = clamp(Math.round(z * 100) / 100, ZOOM_MIN, ZOOM_MAX)
+}
+function zoomBy(f) {
+  setZoom(viewZoom.value * f)
+}
+function resetZoom() {
+  viewZoom.value = 1
+}
+/* 退出装饰态时复位缩放，避免下次进来停留在缩小态 */
+watch(() => props.editable, (v) => {
+  if (!v) resetZoom()
+})
+/* 双指都在同一个元素上时让位给元素自身的缩放手势 */
+let wallPinch = null
+function onScrollTouchStart(e) {
+  if (e.touches.length !== 2) return
+  const ts = [...e.touches]
+  if (ts.every((t) => t.target.closest && t.target.closest('.we'))) return
+  wallPinch = {
+    d: Math.hypot(ts[0].clientX - ts[1].clientX, ts[0].clientY - ts[1].clientY) || 1,
+    z: viewZoom.value
+  }
+}
+function onScrollTouchMove(e) {
+  if (!wallPinch || e.touches.length !== 2) return
+  e.preventDefault()
+  const ts = [...e.touches]
+  const d = Math.hypot(ts[0].clientX - ts[1].clientX, ts[0].clientY - ts[1].clientY)
+  setZoom((wallPinch.z * d) / wallPinch.d)
+}
+function onScrollTouchEnd(e) {
+  if (e.touches.length < 2) wallPinch = null
+}
+function onScrollWheel(e) {
+  if (!e.ctrlKey) return
+  e.preventDefault()
+  zoomBy(e.deltaY < 0 ? 1.1 : 1 / 1.1)
+}
+
+/* ── 新增元素（落在当前可视区中央；缩放时除以 zoom 换算回长卷坐标） ── */
 function viewCenter() {
   const sl = scrollEl.value ? scrollEl.value.scrollLeft : 0
+  const z = viewZoom.value || 1
+  // 缩小时长卷居中摆放的视觉边距，换算时要先减掉
+  const mt = z < 1 ? Math.max(0, (pageHeight.value * (1 - z)) / 2) : 0
+  const ml = z < 1 ? Math.max(0, (pageWidth.value - contentWidth.value * z) / 2) : 0
   return {
-    x: sl + (pageWidth.value || 360) / 2,
-    y: (pageHeight.value || 600) / 2
+    x: (sl + (pageWidth.value || 360) / 2 - ml) / z,
+    y: ((pageHeight.value || 600) / 2 - mt) / z
   }
 }
 function addElement(type, content, meta = {}) {
@@ -531,19 +648,19 @@ async function setPaper(key) {
   }
 }
 
-/* 自定义底纸：选图后先弹裁剪窗（与聊天背景一致），裁成当前长卷比例再上传铺满 */
+/* 自定义底纸：选图后先弹裁剪窗（与聊天背景一致），按「一页=一屏」裁好再上传 */
 function pickCustomBg() {
   bgFileEl.value && bgFileEl.value.click()
 }
 const bgCropSrc = ref('')
-/* 裁剪比例 = 当前长卷（页数 × 屏宽 : 屏高），裁完 cover 铺满即 1:1 无二次取景 */
+/* 裁剪比例 = 单页屏幕比（照片墙一页就是以屏幕大小为准），裁出来每页平铺一张 */
 const bgCropRatio = computed(() => {
-  const w = contentWidth.value || 390
+  const w = pageWidth.value || 390
   const h = pageHeight.value || 844
   return w / h
 })
-/* 输出宽度跟随卷宽（≥640 保证清晰，封顶 1600 避免体积失控） */
-const bgOutWidth = computed(() => Math.round(Math.min(1600, Math.max(640, contentWidth.value || 390))))
+/* 输出宽度跟随屏宽（≥640 保证清晰，封顶 1080 避免体积失控） */
+const bgOutWidth = computed(() => Math.round(Math.min(1080, Math.max(640, pageWidth.value || 390))))
 
 function onCustomBgPick(e) {
   const file = e.target.files && e.target.files[0]
@@ -570,7 +687,8 @@ async function onBgCropped(blob) {
     paperSheet.value = false
     wall.value.bg = res.path
     await updatePhotoWall(props.wallId, { bg: res.path })
-    toast.pushToast({ type: 'info', title: '底纸已更换' })
+    await addBgPreset(res.path)
+    toast.pushToast({ type: 'info', title: '底纸已更换', text: evictedOldest.value ? '已存入我的底纸（替换最旧一张）' : '已存入我的底纸' })
   } catch (err) {
     toast.pushToast({ type: 'error', title: '底纸上传失败', text: err.message })
   }
@@ -579,6 +697,48 @@ async function onBgCropped(blob) {
 function onBgCropError(msg) {
   bgCropSrc.value = ''
   toast.pushToast({ type: 'error', title: '底纸上传失败', text: msg || '图片无法读取，请换一张 JPG / PNG 图片' })
+}
+
+/* ── 底纸预设：上传即存（去重置顶），最多 4 张，超出淘汰最旧 ── */
+const evictedOldest = ref(false)
+async function loadBgPresets() {
+  try {
+    bgPresets.value = await getWallBgPresets()
+  } catch (e) {
+    console.error('[album] 底纸预设读取失败', e)
+  }
+}
+async function addBgPreset(path) {
+  if (!path) return
+  const list = bgPresets.value.filter((p) => p.path !== path)
+  evictedOldest.value = list.length >= 4
+  list.unshift({ id: 'bgp' + Date.now(), path })
+  const next = list.slice(0, 4)
+  bgPresets.value = next
+  try {
+    await saveWallBgPresets(next)
+  } catch (e) {
+    console.error('[album] 底纸预设保存失败', e)
+  }
+}
+async function removeBgPreset(p) {
+  const next = bgPresets.value.filter((x) => x.id !== p.id)
+  bgPresets.value = next
+  try {
+    await saveWallBgPresets(next)
+    toast.pushToast({ type: 'info', title: '已删除这张底纸' })
+  } catch (e) {
+    toast.pushToast({ type: 'error', title: '删除失败', text: e.message })
+  }
+}
+async function applyBgPreset(p) {
+  paperSheet.value = false
+  wall.value.bg = p.path
+  try {
+    await updatePhotoWall(props.wallId, { bg: p.path })
+  } catch (e) {
+    console.error('[album] 底纸保存失败', e)
+  }
 }
 
 /* 自定义相框：上传图片盖在元素上方（PNG 透明区会透出下面的照片） */
@@ -662,30 +822,54 @@ defineExpose({ save: flushSave })
   background: var(--bg-body);
 }
 .pwc-scroll.locked { touch-action: pan-x; }
+/* 缩放后可纵向滚动（放大时长卷比屏幕高）；未缩放时无纵向溢出，行为与原来一致 */
+.pwc-scroll.zoomed { overflow-y: auto; touch-action: auto; }
 .pwc-strip {
   position: relative;
   height: 100%;
   transition: background 0.3s ease;
 }
-/* 自定义照片底纸：底层虚化同图兜底（图片加载失败/比例偏差时不露白），
-   上层 bgfull 以 cover 铺满整卷 */
-.pwc-bgblur {
+/* 缩放 HUD：装饰态显示，－ / 百分比（点击复位） / ＋ */
+.pwc-zoomhud {
   position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  filter: blur(16px);
-  transform: scale(1.2);
-  pointer-events: none;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  background: rgba(255, 255, 255, 0.9);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14);
+  z-index: 900;
 }
-.pwc-bgfull {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  pointer-events: none;
+.zh-btn {
+  width: 30px;
+  height: 30px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  font-size: 15px;
+  line-height: 1;
+  color: var(--text);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.zh-btn:active { background: var(--bg-soft); }
+.zh-val {
+  min-width: 46px;
+  padding: 5px 2px;
+  border: none;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  font-family: var(--font-serif);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 /* 底纸弹窗提示 */
 .paper-hint {
@@ -977,4 +1161,38 @@ defineExpose({ save: flushSave })
   background: var(--bg-soft);
 }
 .paper-cell-upload.on { border-style: solid; }
+
+/* 我的底纸：上传即存的预设（最多 4 张） */
+.paper-mine { margin-top: 14px; }
+.paper-mine-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.paper-mine-title { font-size: 13px; font-weight: 700; }
+.paper-mine-count {
+  font-size: 11px;
+  color: var(--text-soft);
+  font-family: var(--font-serif);
+}
+.mine-del {
+  position: absolute;
+  top: 5px;
+  right: 5px;
+  width: 22px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  z-index: 2;
+  -webkit-tap-highlight-color: transparent;
+}
+.mine-del:active { background: rgba(0, 0, 0, 0.78); }
 </style>

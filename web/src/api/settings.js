@@ -6,6 +6,8 @@ export {
   getStorageStats,
   resetDb,
   uploadFile,
+  getWallBgPresets,
+  saveWallBgPresets,
   getBackupOverview,
   buildBackup,
   importBackup,

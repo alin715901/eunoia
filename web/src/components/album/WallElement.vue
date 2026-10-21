@@ -35,9 +35,11 @@ import { fontCss, STICKY_COLORS } from './presets'
 const props = defineProps({
   el: { type: Object, required: true },
   editable: { type: Boolean, default: false },
-  selected: { type: Boolean, default: false }
+  selected: { type: Boolean, default: false },
+  zoom: { type: Number, default: 1 } // 墙级缩放：屏幕位移换算成长卷坐标时要除以它
 })
 const emit = defineEmits(['select', 'change', 'edit-text'])
+const zf = () => props.zoom || 1
 
 // 基尺寸（未缩放），缩放/旋转由 transform 承担
 const BASE = { image: 150, sticker: 96, text: 0 }
@@ -172,7 +174,7 @@ function applyHandle(e) {
     const tangent = dpx * handle.vx + dpy * handle.vy // 切向位移 → 旋转
     const ratio = 1 + radial / Math.max(40, handle.startDist * 1.2)
     el.scale = clamp(handle.startScale * ratio, 0.2, 6)
-    el.rotation = handle.startRot + tangent * 0.6
+    el.rotation = handle.startRot + (tangent * 0.6) / zf()
   }
 }
 
@@ -186,18 +188,20 @@ function onMove(e) {
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
 
   if (pointers.size === 1 && dragStart) {
-    props.el.x = dragStart.elX + (e.clientX - dragStart.x)
-    props.el.y = dragStart.elY + (e.clientY - dragStart.y)
+    const z = zf()
+    props.el.x = dragStart.elX + (e.clientX - dragStart.x) / z
+    props.el.y = dragStart.elY + (e.clientY - dragStart.y) / z
   } else if (pointers.size === 2 && pinch) {
     const pts = [...pointers.values()]
     const d = dist(pts[0], pts[1])
     const a = angle(pts[0], pts[1])
     const midX = (pts[0].x + pts[1].x) / 2
     const midY = (pts[0].y + pts[1].y) / 2
+    const z = zf()
     props.el.scale = clamp((pinch.scale * d) / pinch.dist, 0.2, 6)
     props.el.rotation = pinch.rot + (a - pinch.angle)
-    props.el.x = pinch.elX + (midX - pinch.midX)
-    props.el.y = pinch.elY + (midY - pinch.midY)
+    props.el.x = pinch.elX + (midX - pinch.midX) / z
+    props.el.y = pinch.elY + (midY - pinch.midY) / z
   }
 }
 
