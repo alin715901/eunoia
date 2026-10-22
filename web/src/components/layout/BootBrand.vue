@@ -1,35 +1,23 @@
 <template>
   <div class="boot-brand">
     <span class="boot-brand-text">Eunoia</span>
-    <!-- 兔耳朵：从「a」后面探出来，细长微八字，粉白渐变 + 轻微摇摆 -->
-    <svg class="boot-ears" viewBox="0 0 22 38" aria-hidden="true">
+    <!-- 兔耳朵：改为极细的金色勾边 + 内部极淡的粉色晕染，姿态更修长独立 -->
+    <svg class="boot-ears" viewBox="0 0 24 44" aria-hidden="true">
       <defs>
         <linearGradient :id="gid" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0" stop-color="#ffffff" />
-          <stop offset="0.5" stop-color="#fff5f9" />
-          <stop offset="1" stop-color="#ffd9e8" />
+          <stop offset="0" stop-color="#ffffff" stop-opacity="0.9" />
+          <stop offset="0.5" stop-color="#fff0f5" stop-opacity="0.6" />
+          <stop offset="1" stop-color="#ffe4ef" stop-opacity="0" />
         </linearGradient>
       </defs>
-      <g class="boot-ears-g">
-        <!-- 左耳（微向左倾） -->
-        <ellipse
-          cx="8.5" cy="22" rx="3.2" ry="14"
-          :fill="`url(#${gid})`"
-          stroke="rgba(206,120,152,0.4)"
-          stroke-width="1"
-          transform="rotate(-10 8.5 22)"
-        />
-        <!-- 右耳（微向右倾） -->
-        <ellipse
-          cx="14.5" cy="22" rx="3.2" ry="14.5"
-          :fill="`url(#${gid})`"
-          stroke="rgba(206,120,152,0.4)"
-          stroke-width="1"
-          transform="rotate(8 14.5 22)"
-        />
-        <!-- 内耳（粉） -->
-        <ellipse cx="8.5" cy="24" rx="1.5" ry="8.5" fill="#ffb3d1" opacity="0.55" transform="rotate(-10 8.5 24)" />
-        <ellipse cx="14.5" cy="24" rx="1.5" ry="8.5" fill="#ffb3d1" opacity="0.55" transform="rotate(8 14.5 24)" />
+      <g class="boot-ears-g" fill="none" stroke="#d4af37" stroke-width="0.8" stroke-linecap="round">
+        <!-- 左耳（细长微向左倾） -->
+        <path :fill="`url(#${gid})`" d="M 9 42 C 5 25, 6 10, 9 3 C 11 6, 12 15, 11 30 L 9 42 Z" />
+        <path d="M 9 42 C 5 25, 6 10, 9 3" />
+
+        <!-- 右耳（细长微向右倾） -->
+        <path :fill="`url(#${gid})`" d="M 15 42 C 19 25, 18 10, 15 3 C 13 6, 12 15, 13 30 L 15 42 Z" />
+        <path d="M 15 42 C 19 25, 18 10, 15 3" />
       </g>
     </svg>
   </div>
@@ -50,22 +38,29 @@ const gid = 'bootEarGrad-' + Math.random().toString(36).slice(2, 8)
   color: var(--accent);
   line-height: 1;
 }
-.boot-brand-text { position: relative; z-index: 1; }
+
+.boot-brand-text {
+  position: relative;
+  z-index: 1;
+}
+
 .boot-ears {
   position: absolute;
-  left: 81%;
-  bottom: 6px;
-  width: 22px;
-  height: 38px;
+  left: 82%; /* 向右偏移，避免和字母a粘连 */
+  bottom: 8px; /* 调整高度，让底部刚好在字母顶部探出 */
+  width: 24px;
+  height: 44px;
   overflow: visible;
-  animation: earSway 3.4s ease-in-out infinite;
+  animation: earSway 4s ease-in-out infinite; /* 摇摆更轻柔、缓慢 */
   transform-origin: 50% 95%;
   pointer-events: none;
 }
+
 @keyframes earSway {
-  0%, 100% { transform: rotate(-2.6deg); }
-  50% { transform: rotate(2.6deg); }
+  0%, 100% { transform: rotate(-1.5deg); }
+  50% { transform: rotate(1.5deg); }
 }
+
 @media (prefers-reduced-motion: reduce) {
   .boot-ears { animation: none; }
 }
