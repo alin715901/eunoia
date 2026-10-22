@@ -89,7 +89,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onActivated, onUnmounted } from 'vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 
@@ -187,16 +187,9 @@ const dotPositions = computed(() => {
 const coreR = computed(() => 5 + visual.value.intensity * 5 + Math.sin(tick.value * Math.PI * 2) * (1 + visual.value.turbulence * 2))
 
 /* ── 感知结果持久化 ──
-   返回再进入 / keep-alive 失效 / 自动更新整页 reload / 冷启动后，
-   都显示上一次感知到的结果；只有主动点「再感知一次」才更新 */
+   仅作为「再感知一次」过程的中间存档；每次进入感知页（冷启动 /
+   keep-alive 返回再进入 / reload）都会重新感知，不再恢复旧结果 */
 const LAST_KEY = 'diary_perception_last'
-function loadLast() {
-  try {
-    const p = JSON.parse(localStorage.getItem(LAST_KEY) || 'null')
-    if (p && p.space && p.presence && p.emotion) return p
-  } catch (e) { /* 忽略 */ }
-  return null
-}
 function saveLast(p) {
   try { localStorage.setItem(LAST_KEY, JSON.stringify(p)) } catch (e) { /* 忽略 */ }
 }
@@ -224,11 +217,12 @@ function loop(now) {
 }
 onMounted(() => {
   raf = requestAnimationFrame(loop)
-  /* 有上次的结果直接恢复，不重新感知；仅首次（无记录）才 roll */
-  const saved = loadLast()
-  if (saved) result.value = saved
-  else roll()
+  /* 每次进入都重新感知（含 keep-alive 返回再进入，见 onActivated） */
+  roll()
 })
+/* keep-alive 全局缓存：返回桌面再进入只会触发激活，不会重新挂载。
+   用户要求每次返回再进入都刷新，这里激活即重新感知 */
+onActivated(() => { roll() })
 onUnmounted(() => { if (raf) cancelAnimationFrame(raf); clearTimeout(rollTimer) })
 </script>
 

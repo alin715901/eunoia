@@ -54,12 +54,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, onMounted, onActivated } from 'vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import { useContactSettingsPage } from '@/composables/useContactSettingsPage'
 
 const props = defineProps({ id: { type: [String, Number], required: true } })
-const { contact, settings, load, patch } = useContactSettingsPage(props.id)
+const { contact, settings, load, patch, refreshContact } = useContactSettingsPage(props.id)
 
 const shape = ref('circle')
 const radius = ref(12)
@@ -67,7 +67,8 @@ const size = ref(36)
 const pos = ref('bottom')
 
 const themName = computed(() => contact.value?.name || settings.value?.name || '对方')
-const themAvatar = computed(() => contact.value?.avatar || settings.value?.avatar || '')
+/* 预览用合并后的最终头像（人物卡同步头像优先），与聊天里实际显示一致 */
+const themAvatar = computed(() => contact.value?.chat_avatar || contact.value?.avatar || settings.value?.avatar || '')
 const myName = computed(() => settings.value?.my_name || '我')
 const myAvatar = computed(() => settings.value?.my_avatar || '')
 
@@ -81,7 +82,8 @@ function mockAvaStyle(name, avatar) {
     borderRadius: shape.value === 'circle' ? '50%' : radius.value + 'px'
   }
   if (avatar) {
-    s.backgroundImage = `url(${avatar})`
+    // 必须加引号：未加引号的 url() 遇到含空格/特殊字符的地址（如百分比编码的 SVG data URL）会被 CSS 直接丢弃
+    s.backgroundImage = `url("${String(avatar).replace(/"/g, '%22')}")`
     s.backgroundSize = 'cover'
     s.backgroundPosition = 'center'
   } else {
@@ -121,6 +123,9 @@ onMounted(async () => {
   size.value = s.avatar_size ?? 36
   pos.value = s.avatar_pos || 'bottom'
 })
+
+/* keep-alive 复用：从设置页返回时重新拉联系人，保证预览头像是刚换过的最新图 */
+onActivated(() => { refreshContact() })
 </script>
 
 <style scoped>

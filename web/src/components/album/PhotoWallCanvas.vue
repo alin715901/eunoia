@@ -46,9 +46,7 @@
       <button class="ctx-btn" @click="zOp('back')">置底</button>
       <button v-if="selEl.type === 'text'" class="ctx-btn" @click="openTextSheet(true)">设置</button>
       <button v-else-if="selEl.type === 'image'" class="ctx-btn" @click="openFrameSheet">相框</button>
-      <button class="ctx-btn" :class="{ on: selEl.locked }" @click="toggleLock">
-        <AppIcon :name="selEl.locked ? 'lock' : 'unlock'" :size="12" />{{ selEl.locked ? '解锁' : '锁定' }}
-      </button>
+      <button class="ctx-btn" :class="{ on: selEl.locked }" @click="toggleLock">{{ selEl.locked ? '解锁' : '锁定' }}</button>
       <button class="ctx-btn danger" @click="removeSelected">删除</button>
     </div>
 

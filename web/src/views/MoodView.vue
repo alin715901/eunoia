@@ -5,7 +5,7 @@
       <template #right>
         <div class="mo-select mo-select-head">
           <button class="mo-select-btn mo-select-btn-head" type="button" aria-label="切换联系人" @click="contactOpen = !contactOpen">
-            <AppAvatar v-if="curContact" :name="curContact.name" :avatar="curContact.avatar" :size="24" />
+            <AppAvatar v-if="curContact" :name="curContact.name" :avatar="curContact.chat_avatar || curContact.avatar" :size="24" />
             <AppIcon v-else name="user" :size="18" color="var(--text-soft)" />
             <AppIcon name="chevron-down" :size="11" color="var(--text-soft)" />
           </button>
@@ -143,7 +143,7 @@
         <!-- TA 的记录：独立自主记录，只读展示 -->
         <div v-if="hisItem" class="mo-card him">
           <div class="mo-card-head">
-            <AppAvatar :name="himName" :avatar="curContact && curContact.avatar" :size="30" />
+            <AppAvatar :name="himName" :avatar="curContact && (curContact.chat_avatar || curContact.avatar)" :size="30" />
             <span class="mo-card-name">{{ himName }}</span>
           </div>
           <div class="mo-card-mood">
@@ -157,7 +157,7 @@
         </div>
         <div v-else-if="myItem" class="mo-card him empty">
           <div class="mo-card-head">
-            <AppAvatar :name="himName" :avatar="curContact && curContact.avatar" :size="30" />
+            <AppAvatar :name="himName" :avatar="curContact && (curContact.chat_avatar || curContact.avatar)" :size="30" />
             <span class="mo-card-name">{{ himName }}</span>
           </div>
           <p class="mo-card-empty">还没记录</p>

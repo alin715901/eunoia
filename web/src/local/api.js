@@ -281,7 +281,7 @@ export async function getContact(id) {
 
 export async function updateContact(id, payload = {}) {
   const c = contactsRepo.updateContact(Number(id), payload)
-  if (payload.name !== undefined) {
+  if (payload.name !== undefined || payload.avatar !== undefined) {
     notification.broadcast('contact_updated', { contactId: Number(id) })
   }
   return c
@@ -336,7 +336,8 @@ export async function getDesktop(id) {
 
 export async function updateDesktop(id, payload = {}) {
   const d = desktopRepo.updateDesktop(Number(id), payload)
-  if (payload.my_name !== undefined || payload.partner_name !== undefined) {
+  // 名字/头像（含同步开关）变更 → 广播，让 store 里的合并头像（chat_avatar）即时刷新
+  if (['my_name', 'partner_name', 'partner_avatar', 'sync_chat_avatar'].some((k) => payload[k] !== undefined)) {
     notification.broadcast('contact_updated', { contactId: Number(id) })
   }
   return d

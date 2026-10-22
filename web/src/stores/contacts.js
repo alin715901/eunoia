@@ -32,7 +32,9 @@ export const useContactsStore = defineStore('contacts', {
     async refreshOne(id) {
       const contact = await api.getContact(id)
       const idx = this.list.findIndex((c) => String(c.id) === String(id))
-      if (idx !== -1) this.list[idx] = contact
+      // 合并而非整体替换：保留 listContacts 才有的 unread 等聚合字段，
+      // 同时用最新的 chat_avatar（人物卡同步头像）覆盖旧值
+      if (idx !== -1) this.list[idx] = { ...this.list[idx], ...contact }
       else this.list.push(contact)
     },
     setUnread(id, value) {

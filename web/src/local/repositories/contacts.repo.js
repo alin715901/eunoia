@@ -5,7 +5,17 @@ function now() {
 }
 
 function getContact(id) {
-  return db.prepare('SELECT * FROM contacts WHERE id=?').get(id);
+  return db
+    .prepare(
+      `SELECT c.*,
+         -- 聊天里实际显示的头像：开启人物卡同步时用人物卡头像，否则用联系人本体头像
+         CASE WHEN d.sync_chat_avatar = 1 AND IFNULL(d.partner_avatar, '') != ''
+              THEN d.partner_avatar ELSE c.avatar END AS chat_avatar
+       FROM contacts c
+       LEFT JOIN contact_desktop d ON d.contact_id = c.id
+       WHERE c.id = ?`
+    )
+    .get(id);
 }
 
 function listContacts() {

@@ -37,10 +37,8 @@
         <div :id="'m-' + m.id" :class="{ 'msg-hl': m.id === hlId }">
           <!-- 撤回：居中系统提示（参考微信；按撤回方区分文案） -->
           <div v-if="m.recalled" class="recalled-note">{{ m.sender === 'me' ? '我撤回了一条消息' : (name + '撤回了一条消息') }}</div>
-          <!-- 拍一拍：居中系统提示（格式：发送方 + 拍一拍文本）。我拍对方显示「我」，对方拍我显示对方昵称。
-               左侧图标仅对方拍我时出现；我拍对方时不显示图标，更干净 -->
+          <!-- 拍一拍：居中系统提示（格式：发送方 + 拍一拍文本）。我拍对方显示「我」，对方拍我显示对方昵称。 -->
           <div v-else-if="m.content_type === 'poke'" class="recalled-note poke-note">
-            <AppIcon v-if="m.sender !== 'me'" name="poke" :size="13" />
             <span>{{ m.sender === 'me' ? (myName || '我') : name }} {{ m.text }}</span>
           </div>
           <MessageBubble
@@ -179,7 +177,6 @@ import CardEditor from '@/components/cards/CardEditor.vue'
 import { useChatStore } from '@/stores/chat'
 import { favoriteMessage, recallMessage, deleteMessage, sendImage, sendRedPacket, sendQuestion, continueTalk, searchMessages, claimRedPacket, returnRedPacket } from '@/api/chat'
 import { getCards, listMyPokes, createMyPokes } from '@/api/cards'
-import AppIcon from '@/components/common/AppIcon.vue'
 import { uploadFile } from '@/api/settings'
 import { useSettingsStore } from '@/stores/settings'
 import { compressImage } from '@/utils/image'

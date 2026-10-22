@@ -62,6 +62,14 @@ export function useContactSettingsPage(id) {
     return c ? { ...c, avatar: c.chat_avatar || c.avatar || '' } : c
   }
 
+  /* 重新拉取联系人（头像可能在别的页面被换过）：keep-alive 页面返回时刷新预览用 */
+  async function refreshContact() {
+    try {
+      const c = await getContact(id)
+      if (c) contact.value = withAvatarFallback(c)
+    } catch (e) { /* ignore */ }
+  }
+
   async function patch(fields) {
     saving.value = true
     try {
@@ -82,5 +90,5 @@ export function useContactSettingsPage(id) {
 
   onMounted(load)
 
-  return { contact, settings, load, patch, queueSave, saving }
+  return { contact, settings, load, patch, queueSave, saving, refreshContact }
 }
