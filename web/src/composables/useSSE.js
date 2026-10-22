@@ -284,10 +284,13 @@ export function connect() {
         window.dispatchEvent(new CustomEvent('moments:refresh'))
         return
       }
+      /* 按互动类型区分文案：发动态 / 评论 / 回复评论 / 点赞 */
+      const ACT = { comment: '评论了我的朋友圈', reply: '回复了我的评论', like: '赞了我的朋友圈' }
+      const act = ACT[data.kind]
       useNotificationsStore().pushToast({
-        title: `${data.name || '对方'}发了一条朋友圈`,
-        /* 纯图动态没有正文，提示里显示「[图片]」 */
-        text: data.moment?.text || (data.moment?.images?.length ? '[图片]' : ''),
+        title: act ? `${data.name || '对方'}${act}` : `${data.name || '对方'}发了一条朋友圈`,
+        /* 纯图动态没有正文，提示里显示「[图片]」；评论 / 回复显示评论内容 */
+        text: act ? data.content || '' : data.moment?.text || (data.moment?.images?.length ? '[图片]' : ''),
         avatar: data.avatar || '',
         type: 'message',
         duration: 4000,

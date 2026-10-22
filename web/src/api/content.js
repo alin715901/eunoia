@@ -3,6 +3,7 @@ import { uploadFile } from '../local/api'
 
 export {
   getMoments,
+  markMomentsSeen,
   deleteMoment,
   createMoment,
   likeMoment,

@@ -2,6 +2,7 @@
 import db from '../db'
 import { drawCards } from './cardDraw.service'
 import * as notification from './notification.service'
+import * as settingsRepo from '../repositories/settings.repo'
 import { contactAvatar } from './contactAvatar'
 import { pctToProb } from '@/utils/prob'
 
@@ -60,6 +61,8 @@ function postContactMoment(contactId) {
     name: c.name,
     avatar: contactAvatar(db, contactId)
   });
+  /* 首页朋友圈图标角标 +1 */
+  notification.broadcast('badge_update', settingsRepo.getBadges());
   return payload;
 }
 
@@ -171,7 +174,9 @@ function insertComment(momentId, contactId, body, type = 'reply', replyTo = null
     momentId,
     contactId,
     name: c?.name || 'TA',
-    avatar: contactAvatar(db, contactId)
+    avatar: contactAvatar(db, contactId),
+    kind: type, /* 'comment' | 'reply'：前端据此显示「评论了我的朋友圈 / 回复了我的评论」 */
+    content: body.content || ''
   });
   return info.lastInsertRowid;
 }
@@ -220,23 +225,27 @@ function flushPendingMoments() {
             db.prepare(
               "INSERT INTO moment_interactions(moment_id, contact_id, type, created_at) VALUES(?,?,'like',?)"
             ).run(r.moment_id, r.contact_id, Date.now());
+            const ct = db.prepare('SELECT id, name, avatar FROM contacts WHERE id=?').get(r.contact_id);
+            notification.broadcast('moment_new', {
+              momentId: r.moment_id,
+              contactId: r.contact_id,
+              name: ct?.name || 'TA',
+              avatar: contactAvatar(db, r.contact_id),
+              kind: 'like'
+            });
           }
         } else {
-          /* reply 语义：回复的是「我」的评论 → reply_to=0 显示成「TA 回复 我」 */
+          /* reply 语义：回复的是「我」的评论 → reply_to=0 显示成「TA 回复 我」。
+             moment_new 广播由 insertComment 内部发出（带 kind，前端区分文案） */
           insertComment(r.moment_id, r.contact_id, { content: r.content, images }, r.kind, r.kind === 'reply' ? 0 : null);
         }
-        const ct = db.prepare('SELECT id, name, avatar FROM contacts WHERE id=?').get(r.contact_id);
-        notification.broadcast('moment_new', {
-          momentId: r.moment_id,
-          contactId: r.contact_id,
-          name: ct?.name || 'TA',
-          avatar: contactAvatar(db, r.contact_id)
-        });
       } catch (err) {
         /* ignore */
       }
       db.prepare('DELETE FROM moment_pending WHERE id=?').run(r.id);
     }
+    /* 本轮有发货则刷新首页角标 */
+    notification.broadcast('badge_update', settingsRepo.getBadges());
   } catch (e) {
     console.error('[flushPendingMoments]', e.message);
   }

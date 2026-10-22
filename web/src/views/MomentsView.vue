@@ -225,7 +225,7 @@ import { useContactsStore } from '@/stores/contacts'
 import { useNotificationsStore } from '@/stores/notifications'
 import { useSettingsStore } from '@/stores/settings'
 import { useDeskCacheStore } from '@/stores/deskCache'
-import { getMoments, likeMoment, favoriteMoment, commentMoment, deleteMoment, deleteMomentComment, uploadImage } from '@/api/content'
+import { getMoments, markMomentsSeen, likeMoment, favoriteMoment, commentMoment, deleteMoment, deleteMomentComment, uploadImage } from '@/api/content'
 import { getCards } from '@/api/cards'
 import { compressImage } from '@/utils/image'
 import { confirmDialog } from '@/utils/dialog'
@@ -590,6 +590,7 @@ onMounted(async () => {
   await contactsStore.load().catch(() => {})
   await settingsStore.load().catch(() => {})
   await load()
+  markMomentsSeen().catch(() => {}) // 记录已读时间戳，之后的新动态 / 新互动才计入角标
   window.addEventListener('moments:refresh', onMomentsRefresh)
 })
 onBeforeUnmount(() => {
@@ -599,6 +600,7 @@ onBeforeUnmount(() => {
 onActivated(async () => {
   await settingsStore.load().catch(() => {})
   await load()
+  markMomentsSeen().catch(() => {})
 })
 </script>
 

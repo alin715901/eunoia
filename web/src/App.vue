@@ -355,7 +355,11 @@ html, body { overscroll-behavior-x: none; touch-action: pan-y; }
   align-items: center;
   justify-content: center;
   gap: 16px;
-  background: var(--bg-screen);
+  /* 与 index.html 静态骨架同色，避免两段开屏切换时背景跳变 */
+  background: #f7f3ee;
+}
+html[data-theme='dark'] .boot-screen {
+  background: #141416;
 }
 /* 确定性进度条：宽度与 bootProgress 绑定，满格时即数据就绪 */
 .boot-progress {

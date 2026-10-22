@@ -67,6 +67,12 @@
       .boot-progress-bar {
         display: block; width: 8%; height: 100%; border-radius: 999px;
         background: linear-gradient(90deg, rgba(197, 164, 126, 0.72), #c5a47e);
+        /* JS 下载期静态进度：缓慢往返推进，避免看起来卡死；Vue 挂载后换真实进度 */
+        animation: bootBarPulse 2.2s ease-in-out infinite alternate;
+      }
+      @keyframes bootBarPulse {
+        0% { width: 8%; }
+        100% { width: 52%; }
       }
       .boot-text { font-size: 13px; color: #8e8e93; letter-spacing: 0.06em; }
       [data-theme="dark"] .boot-text { color: #9b9ba3; }

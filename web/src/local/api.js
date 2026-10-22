@@ -508,6 +508,14 @@ export async function drawPreview({ contactId, count } = {}) {
 
 /* ─────────── 朋友圈 / 动态 ─────────── */
 
+// 进入朋友圈页即视为「看过」：记录时间戳，之后 TA 新动态 / 新互动才计入角标
+export async function markMomentsSeen() {
+  settingsRepo.setGlobal('moments_seen_at', Date.now())
+  notification.broadcast('badge_update', settingsRepo.getBadges())
+  return null
+}
+
+
 export async function getMoments(contactId = null, viewer = 0, scope = 'contact', authorId = null) {
   const cid = contactId ? Number(contactId) : null
   const v = viewer === undefined || viewer === '' ? 0 : Number(viewer)

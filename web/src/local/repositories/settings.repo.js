@@ -30,7 +30,19 @@ function getBadges() {
   const letters = db
     .prepare("SELECT COUNT(*) c FROM letters WHERE sender = 'contact' AND is_read = 0")
     .get().c;
-  return { chat, moments: 0, letters };
+  // 朋友圈：上次进入朋友圈页（moments_seen_at）之后——
+  // ① TA 新发的动态条数；② TA 在我的朋友圈下的点赞 / 评论 / 回复条数
+  const seenAt = Number(getGlobal('moments_seen_at') || 0);
+  const newMoments = db
+    .prepare("SELECT COUNT(*) c FROM moments WHERE author = 'contact' AND created_at > ?")
+    .get(seenAt).c;
+  const newInteractions = db
+    .prepare(
+      "SELECT COUNT(*) c FROM moment_interactions mi JOIN moments m ON m.id = mi.moment_id " +
+        "WHERE m.author = 'me' AND mi.contact_id > 0 AND mi.created_at > ?"
+    )
+    .get(seenAt).c;
+  return { chat, moments: newMoments + newInteractions, letters };
 }
 
 export {
