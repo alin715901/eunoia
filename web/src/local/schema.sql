@@ -66,6 +66,19 @@ CREATE TABLE IF NOT EXISTS contact_settings (
   moment_reply_prob INTEGER DEFAULT 80
 );
 
+/* 朋友圈互动待办队列：TA 的回复 / 评论 / 点赞到点才出现。
+   持久化到 DB —— 刷新、关页都不丢；到点由 ticks.js 的 flushPendingMoments 补发。 */
+CREATE TABLE IF NOT EXISTS moment_pending (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  moment_id INTEGER NOT NULL,
+  contact_id INTEGER NOT NULL,
+  kind TEXT NOT NULL,            /* 'reply' | 'comment' | 'like' */
+  content TEXT DEFAULT '',
+  images TEXT DEFAULT '[]',
+  due_at INTEGER NOT NULL,
+  created_at INTEGER
+);
+
 CREATE TABLE IF NOT EXISTS card_groups (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   category TEXT,

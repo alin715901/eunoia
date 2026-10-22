@@ -11,7 +11,7 @@ import db from './db'
 import * as notification from './services/notification.service'
 import { proactiveTick, redpacketTick } from './services/chat.service'
 import { periodCareTick } from './services/period.service'
-import { momentTick } from './services/moment.service'
+import { momentTick, flushPendingMoments } from './services/moment.service'
 import { letterTick, replyTick } from './services/letter.service'
 import { contactInviteTick as companionInviteTick } from './services/companion.service'
 import { contactInviteTick as listenInviteTick } from './services/listen.service'
@@ -40,6 +40,11 @@ function runMinuteTicks() {
   }
   try {
     momentTick()
+  } catch (e) {
+    /* ignore */
+  }
+  try {
+    flushPendingMoments()
   } catch (e) {
     /* ignore */
   }

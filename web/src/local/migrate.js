@@ -336,4 +336,15 @@ export function migrate() {
   addCol('contact_settings', 'cinema_invite_prob', 'INTEGER DEFAULT 21')
   // 朋友圈「回复概率」：我评论对方动态 / 回复他评论时，TA 回复我的概率（%）
   addCol('contact_settings', 'moment_reply_prob', 'INTEGER DEFAULT 80')
+  // 朋友圈互动待办队列（持久化：刷新/关页不丢，到点由 tick 补发）
+  db.exec(`CREATE TABLE IF NOT EXISTS moment_pending (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    moment_id INTEGER NOT NULL,
+    contact_id INTEGER NOT NULL,
+    kind TEXT NOT NULL,
+    content TEXT DEFAULT '',
+    images TEXT DEFAULT '[]',
+    due_at INTEGER NOT NULL,
+    created_at INTEGER
+  )`)
 }

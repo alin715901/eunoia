@@ -649,10 +649,16 @@ export async function commentMoment(id, payload = {}) {
     ? (db.prepare('SELECT name FROM contacts WHERE id=?').get(viewer)?.name || 'TA')
     : '我'
   const replyToName = replyTo === 0 ? '我' : replyTo ? (db.prepare('SELECT name FROM contacts WHERE id=?').get(replyTo)?.name || '') : ''
-  // 我评论了对方的动态 → 对方按「朋友圈设置」回评论
+  // 我评论了对方的动态 → 对方按「朋友圈设置」回评论；
+  // 我在自己朋友圈下回复了 TA 的评论 → TA 也可能按概率回我
   const m = db.prepare('SELECT author, author_contact_id FROM moments WHERE id=?').get(mid)
-  if (m && m.author === 'contact' && m.author_contact_id && !viewer) {
-    momentService.scheduleMomentReplies(mid, m.author_contact_id)
+  if (m && !viewer) {
+    if (m.author === 'contact' && m.author_contact_id) {
+      momentService.scheduleMomentReplies(mid, m.author_contact_id)
+    } else if (replyTo) {
+      const rc = db.prepare('SELECT id FROM contacts WHERE id=?').get(replyTo)
+      if (rc) momentService.scheduleMomentReplies(mid, replyTo)
+    }
   }
   return { ...row, images, replyToName, authorName }
 }
