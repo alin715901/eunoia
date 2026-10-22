@@ -764,14 +764,17 @@ html[data-theme='dark'] .cover::before { background: rgba(0, 0, 0, 0.4); }
 /* ··· 弹出的小菜单：赞 / 评论 */
 .p-menu {
   margin-top: 6px;
-  display: inline-flex;
+  /* 块级 flex + fit-content + auto 左距：内容收缩为紧凑胶囊并整体靠右。
+     原先用 float:right 会让后续行内内容（点赞名单的名字）绕浮动盒排布，
+     表现为「点赞后点 … 名字被挤压」，故弃用浮动 */
+  display: flex;
+  width: fit-content;
+  margin-left: auto;
   align-items: center;
   gap: 4px;
   background: #4c4c52;
   border-radius: 8px;
   padding: 6px 10px;
-  margin-left: auto;
-  float: right;
 }
 .pm-item {
   display: inline-flex;

@@ -258,12 +258,11 @@ function contactInviteTick() {
       if (st && st.blocked) continue;
       if (Math.random() < hourlyToPerMinute(st ? st.cinema_invite_prob : 21)) contactInvite(c.id);
     }
-    /* 过期清理：TA 邀我 10 分钟没处理 / 我邀 TA 2 分钟没响应（定时器丢失时兜底） */
+    /* 过期清理：超过 5 分钟没做回应，不分发起方向（我邀 TA / TA 邀我）一律过期 */
     const stale = db.prepare("SELECT * FROM cinema_together WHERE status = 'pending'").all();
     for (const inv of stale) {
       const age = now - Number(inv.created_at || 0);
-      if (inv.from_side === 'contact' && age > 600) updateStatus(db, inv, 'expired');
-      else if (inv.from_side === 'me' && age > 120) updateStatus(db, inv, 'expired');
+      if (age > 300) updateStatus(db, inv, 'expired');
     }
     /* 进行中的一起观影超过 2 小时自动结束（避免遗留会话一直显示计时条） */
     const active = db.prepare("SELECT * FROM cinema_together WHERE status = 'accepted'").all();

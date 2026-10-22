@@ -137,12 +137,12 @@
                   <div class="lpc-song">《{{ ciMeta.filmTitle || '影片' }}》</div>
                 </div>
               </div>
-              <div v-if="!ciFromMe && ciMeta.status === 'pending'" class="lpc-ops">
+              <div v-if="!ciFromMe && ciMeta.status === 'pending' && !ciExpired" class="lpc-ops">
                 <button class="lpc-btn ghost" @click.stop="onCiRespond(false)">拒绝</button>
                 <button class="lpc-btn primary" @click.stop="onCiRespond(true)">一起看</button>
               </div>
-              <div v-else-if="ciMeta.status === 'accepted' || ciMeta.status === 'rejected' || ciMeta.status === 'cancelled' || ciMeta.status === 'ended'" class="lpc-result" :class="ciMeta.status">
-                {{ ciStatusText }}
+              <div v-else-if="ciExpired || ciMeta.status === 'accepted' || ciMeta.status === 'rejected' || ciMeta.status === 'cancelled' || ciMeta.status === 'ended' || ciMeta.status === 'expired'" class="lpc-result" :class="ciExpired ? 'expired' : ciMeta.status">
+                {{ ciExpired ? '已过期' : ciStatusText }}
               </div>
               <div v-else class="lpc-status">等待对方接受…</div>
             </div>
@@ -157,12 +157,12 @@
                   <div class="lpc-song">来一局 {{ giMeta.gameName || '小游戏' }} 吧</div>
                 </div>
               </div>
-              <div v-if="!giFromMe && giMeta.status === 'pending'" class="lpc-ops">
+              <div v-if="!giFromMe && giMeta.status === 'pending' && !giExpired" class="lpc-ops">
                 <button class="lpc-btn ghost" @click.stop="onGiRespond(false)">拒绝</button>
                 <button class="lpc-btn primary" @click.stop="onGiRespond(true)">来一局</button>
               </div>
-              <div v-else-if="giMeta.status === 'accepted' || giMeta.status === 'rejected' || giMeta.status === 'cancelled' || giMeta.status === 'ended'" class="lpc-result" :class="giMeta.status">
-                {{ giStatusText }}
+              <div v-else-if="giExpired || giMeta.status === 'accepted' || giMeta.status === 'rejected' || giMeta.status === 'cancelled' || giMeta.status === 'ended' || giMeta.status === 'expired'" class="lpc-result" :class="giExpired ? 'expired' : giMeta.status">
+                {{ giExpired ? '已过期' : giStatusText }}
               </div>
               <div v-else class="lpc-status">等待对方接受…</div>
             </div>
@@ -224,7 +224,7 @@
 </template>
 
 <script setup>
-import { computed, ref, onBeforeUnmount } from 'vue'
+import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
 import AppAvatar from '@/components/common/AppAvatar.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import { cssTextToStyle } from '@/utils/bubbleStyle'
@@ -426,6 +426,33 @@ function qLetter(i) {
   return ['A', 'B', 'C', 'D', 'E', 'F'][i] || i + 1
 }
 
+/* ── 邀请 5 分钟未响应即过期（前端派生展示，不改动消息数据）──
+   游戏/观影邀请的服务端没有过期推送，且「对方发来、我未处理」与「我发来、对方未处理」
+   两个方向都需要在超时后显示「已过期」。共享一个 30s 级 now tick（引用计数管理），
+   让停留在聊天页的用户也能看到状态实时翻转为已过期。 */
+const INVITE_STALE_MS = 5 * 60 * 1000
+const INVITE_TERMINAL = ['accepted', 'rejected', 'cancelled', 'ended', 'expired']
+const staleNow = ref(Date.now())
+let staleTimer = null
+let staleUsers = 0
+onMounted(() => {
+  staleUsers++
+  if (!staleTimer) staleTimer = setInterval(() => { staleNow.value = Date.now() }, 30000)
+})
+onBeforeUnmount(() => {
+  staleUsers--
+  if (staleUsers <= 0 && staleTimer) { clearInterval(staleTimer); staleTimer = null; staleUsers = 0 }
+})
+function staleExpired(m) {
+  if (INVITE_TERMINAL.includes(m?.status)) return false
+  const ts = Number(props.message?.created_at) || 0
+  if (ts <= 0) return false
+  /* chat_messages.created_at 为秒级时间戳（建消息时 Math.floor(Date.now()/1000)）；
+     兼容毫秒级以防数据源差异 */
+  const ms = ts > 1e12 ? ts : ts * 1000
+  return staleNow.value - ms > INVITE_STALE_MS
+}
+
 /* ── 陪伴邀请卡片 ── */
 const CP_ICONS = { eat: 'meal', sleep: 'sleep', work: 'work', study: 'study', train: 'train', fish: 'fish' }
 const cpMeta = computed(() => {
@@ -474,12 +501,14 @@ const ciMeta = computed(() => {
   try { return JSON.parse(props.message.text || '{}') } catch (e) { return {} }
 })
 const ciFromMe = computed(() => side.value === 'me')
+const ciExpired = computed(() => staleExpired(ciMeta.value))
 const ciStatusText = computed(() => {
   const s = ciMeta.value.status
   if (s === 'accepted') return '已一起看'
   if (s === 'rejected') return '已拒绝'
   if (s === 'cancelled') return '已取消'
   if (s === 'ended') return '已结束'
+  if (s === 'expired') return '已过期'
   return ''
 })
 async function onCiRespond(accept) {
@@ -500,12 +529,14 @@ const giMeta = computed(() => {
   try { return JSON.parse(props.message.text || '{}') } catch (e) { return {} }
 })
 const giFromMe = computed(() => side.value === 'me')
+const giExpired = computed(() => staleExpired(giMeta.value))
 const giStatusText = computed(() => {
   const s = giMeta.value.status
   if (s === 'accepted') return '已开桌'
   if (s === 'rejected') return '已拒绝'
   if (s === 'cancelled') return '已取消'
   if (s === 'ended') return '已结束'
+  if (s === 'expired') return '已过期'
   return ''
 })
 async function onGiRespond(accept) {
