@@ -2,6 +2,7 @@
 import db from '../db'
 import { drawCards } from './cardDraw.service'
 import * as notification from './notification.service'
+import { contactAvatar } from './contactAvatar'
 
 /* 内容来源：抽 n 张字卡「拼」成一条动态（拼字卡式，1~7 张随机）：
    文字卡的 content 拼成正文，图片/表情包卡的图收进 images；
@@ -56,7 +57,7 @@ function postContactMoment(contactId) {
     moment: payload,
     contactId,
     name: c.name,
-    avatar: c.avatar || ''
+    avatar: contactAvatar(db, contactId)
   });
   return payload;
 }
@@ -157,7 +158,7 @@ function insertComment(momentId, contactId, body, type = 'reply', replyTo = null
     momentId,
     contactId,
     name: c?.name || 'TA',
-    avatar: c?.avatar || ''
+    avatar: contactAvatar(db, contactId)
   });
   return info.lastInsertRowid;
 }
@@ -217,7 +218,7 @@ function reactToMyMoments(momentId) {
               momentId,
               contactId: cid,
               name: ct?.name || 'TA',
-              avatar: ct?.avatar || ''
+              avatar: contactAvatar(db, cid)
             });
           } catch (err) {
             /* ignore */

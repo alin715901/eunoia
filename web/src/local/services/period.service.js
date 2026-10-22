@@ -7,6 +7,7 @@
  */
 import db from '../db'
 import * as notification from './notification.service'
+import { contactAvatar } from './contactAvatar'
 import { sendContactText } from './chat.service'
 import { cyclesFromItems, careTrigger, fmtDate } from '../../utils/period'
 import { careTexts } from '../../utils/careTexts'
@@ -51,7 +52,7 @@ export function periodCareTick() {
       notification.broadcast('new_messages', {
         contactId: cid,
         messages: [m],
-        avatar: (info && info.avatar) || '',
+        avatar: contactAvatar(db, cid),
         name: (info && info.name) || '对方'
       })
       notification.broadcast('badge_update', {})

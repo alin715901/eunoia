@@ -85,7 +85,8 @@ const personContacts = computed(() => (contactsStore.list || []).filter((c) => c
 const pickedId = ref(0)
 const picked = computed(() => personContacts.value.find((c) => c.id === pickedId.value) || null)
 const pickedName = computed(() => picked.value?.name || '对方')
-const pickedAvatar = computed(() => picked.value?.avatar || '')
+/* 头像以联系人设置为准：chat_avatar 已在服务端合并（应用到聊天开启时=人物卡头像） */
+const pickedAvatar = computed(() => picked.value?.chat_avatar || picked.value?.avatar || '')
 
 /* 流程阶段：pick 选人 → waiting 等待 → accepted 已同意（可开始）→ rejected 被拒 */
 const phase = ref('pick')

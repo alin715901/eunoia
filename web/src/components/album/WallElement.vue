@@ -17,7 +17,7 @@
         <div class="we-text" :style="textStyle">{{ el.content || '双击编辑文字' }}</div>
       </div>
     </template>
-    <div v-else class="we-text" :style="textStyle">{{ el.content || '双击编辑文字' }}</div>
+    <div v-else ref="textRef" class="we-text" :style="textStyle">{{ el.content || '双击编辑文字' }}</div>
 
     <!-- 自定义相框：覆盖在内容之上，随元素一起缩放旋转 -->
     <img v-if="customFrameSrc" :src="customFrameSrc" class="we-frame" alt="" draggable="false" />
@@ -37,7 +37,7 @@
 </template>
 
 <script setup>
-import { computed } from 'vue'
+import { computed, ref, watch, onMounted, nextTick } from 'vue'
 import { fontCss, STICKY_COLORS, noteBg } from './presets'
 
 const props = defineProps({
@@ -97,16 +97,64 @@ const textStyle = computed(() => ({
   color: '#4a4036'
 }))
 
+/* 纯文字元素（非便签纸）：拉伸 = 改文字框尺寸而非缩放字形。
+   拉宽/拉窄只影响框宽 → 文字按框宽自动换行（两行变一行 / 一行变两行），字体大小不变 */
+const isPlain = computed(() => props.el.type === 'text' && !frameCls.value)
+
+/* 文字自然尺寸（max-content 状态），作为拉伸系数的基准：
+   框宽 = 自然宽 × sx；sy 拉伸只增加占位高度（min-height），同样不缩放字形 */
+const textRef = ref(null)
+const nat = ref(null)
+function measureText() {
+  if (!isPlain.value) return
+  const node = textRef.value
+  if (!node || !node.parentNode) return
+  const clone = node.cloneNode(true)
+  clone.style.transform = 'none'
+  clone.style.width = 'max-content'
+  clone.style.minHeight = '0'
+  clone.style.position = 'absolute'
+  clone.style.left = '-9999px'
+  clone.style.visibility = 'hidden'
+  node.parentNode.appendChild(clone)
+  nat.value = { w: clone.offsetWidth || 0, h: clone.offsetHeight || 0 }
+  clone.remove()
+}
+onMounted(() => {
+  nextTick(measureText)
+  /* 自定义字体异步加载完成后自然宽会变，字库就绪后重测一次 */
+  if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(() => measureText()).catch(() => {})
+  }
+})
+watch(
+  () => [props.el.content, props.el.font],
+  () => { nextTick(measureText) }
+)
+
 const styleObj = computed(() => {
   const t = props.el.type
-  // 四边拉伸：sx/sy 为横/纵拉伸系数（默认 1），与整体 scale 相乘后分别作用于两轴
-  const sx = (props.el.scale || 1) * (props.el.sx || 1)
-  const sy = (props.el.scale || 1) * (props.el.sy || 1)
   const o = {
-    transform: `translate(${props.el.x}px, ${props.el.y}px) rotate(${props.el.rotation || 0}deg) scale(${sx}, ${sy})`,
+    transform: '',
     transformOrigin: 'center center',
     zIndex: props.el.z || 1
   }
+  if (isPlain.value) {
+    // 文字：拉伸改框不改字 —— 宽度驱动换行，高度只做占位，字形不再被拉扁/拉宽
+    if (nat.value && nat.value.w) {
+      o.width = Math.max(24, nat.value.w * (props.el.sx || 1)) + 'px'
+      o.minHeight = Math.max(20, nat.value.h * (props.el.sy || 1)) + 'px'
+    } else {
+      o.width = 'max-content'
+    }
+    o.transform = `translate(${props.el.x}px, ${props.el.y}px) rotate(${props.el.rotation || 0}deg) scale(${props.el.scale || 1})`
+    o.fontSize = '18px'
+    return o
+  }
+  // 图片/贴纸/便签：四边拉伸 = 横/纵缩放系数（sx/sy），与整体 scale 相乘后分别作用于两轴
+  const sx = (props.el.scale || 1) * (props.el.sx || 1)
+  const sy = (props.el.scale || 1) * (props.el.sy || 1)
+  o.transform = `translate(${props.el.x}px, ${props.el.y}px) rotate(${props.el.rotation || 0}deg) scale(${sx}, ${sy})`
   if (t === 'image') o.width = BASE.image + 'px'
   else if (t === 'sticker') o.width = BASE.sticker + 'px'
   else o.fontSize = '18px'
@@ -203,22 +251,30 @@ function applyHandle(e) {
   }
 }
 
-/* ── 四边拉伸手柄：拖动边中点箭头单独改宽/高（sx/sy），对边保持不动 ── */
+/* ── 四边拉伸手柄：拖动边中点箭头单独改宽/高，对边保持不动 ──
+   图片/贴纸/便签：改 sx/sy 缩放系数（字形/纸面随框变形）
+   纯文字：改文字框宽高（宽度驱动自动换行，字体大小不变） */
 let edge = null
 function onEdgeDown(e, which) {
   if (!props.editable) return
   try { e.target.setPointerCapture(e.pointerId) } catch (_) {}
   emit('select')
   const box = e.currentTarget.closest('.we')
-  // offsetWidth/Height 是未变换的布局尺寸；屏幕位移 ÷ zoom 换算回墙坐标，再 ÷ (布局尺寸×scale) 得到拉伸系数增量
+  const text = isPlain.value
+  // offsetWidth/Height 是未变换的布局尺寸；屏幕位移 ÷ zoom 换算回墙坐标
   edge = {
     pid: e.pointerId,
     which,
+    text,
     x0: e.clientX,
     y0: e.clientY,
     sx0: props.el.sx || 1,
     sy0: props.el.sy || 1,
-    ux: Math.max(30, box.offsetWidth * (props.el.scale || 1)), // sx 每加 1 对应的墙坐标宽度
+    // 文字元素：拉伸以自然尺寸为基准（框宽 = 自然宽 × sx）
+    natW: Math.max(24, (nat.value && nat.value.w) || box.offsetWidth / (props.el.sx || 1)),
+    natH: Math.max(20, (nat.value && nat.value.h) || box.offsetHeight / (props.el.sy || 1)),
+    // 缩放类元素：sx 每加 1 对应的墙坐标宽度
+    ux: Math.max(30, box.offsetWidth * (props.el.scale || 1)),
     uy: Math.max(30, box.offsetHeight * (props.el.scale || 1)),
     ex0: props.el.x,
     ey0: props.el.y
@@ -232,6 +288,27 @@ function applyEdge(e) {
   const r = ((el.rotation || 0) * Math.PI) / 180
   const cos = Math.cos(r)
   const sin = Math.sin(r)
+  if (edge.text) {
+    /* 文字：拉伸改文字框。布局尺寸变化时盒子按 left/top 原点增长——
+       拖右边/下边时对边天然钉住；拖左边/上边时把中心沿本地轴平移，
+       让手上的那条边跟手、对边保持不动 */
+    if (edge.which === 'l' || edge.which === 'r') {
+      const dw = edge.which === 'r' ? dx : -dx // 本侧边引起的宽度变化（墙坐标）
+      el.sx = clamp((edge.natW * edge.sx0 + dw) / edge.natW, 0.3, 6)
+      if (edge.which === 'l') {
+        el.x = edge.ex0 - dw * cos
+        el.y = edge.ey0 - dw * sin
+      }
+    } else {
+      const dh = edge.which === 'b' ? dy : -dy
+      el.sy = clamp((edge.natH * edge.sy0 + dh) / edge.natH, 0.3, 6)
+      if (edge.which === 't') {
+        el.x = edge.ex0 + dh * sin
+        el.y = edge.ey0 - dh * cos
+      }
+    }
+    return
+  }
   if (edge.which === 'l' || edge.which === 'r') {
     const dw = edge.which === 'r' ? dx : -dx // 本侧边引起的宽度变化（墙坐标）
     el.sx = clamp(edge.sx0 + dw / edge.ux, 0.3, 6)

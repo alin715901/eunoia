@@ -124,7 +124,7 @@ async function loadOpponent() {
     target = (contactsStore.list || []).find((c) => c.kind !== 'group') || null
   }
   if (target) {
-    opponent.value = { id: target.id, name: target.name || '对方', avatar: target.avatar || '' }
+    opponent.value = { id: target.id, name: target.name || '对方', avatar: target.chat_avatar || target.avatar || '' }
     /* 我的头像：与一起听歌/看电影保持同一套有效头像逻辑——
        开启「同步人物卡头像到聊天」时优先桌面 my_avatar，
        否则用联系人设置里的 my_avatar，最后桌面 my_avatar 兜底。

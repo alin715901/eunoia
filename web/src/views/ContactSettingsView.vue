@@ -371,7 +371,9 @@ const avatarBoxStyle = computed(() => ({
 /* ═══ 头像显示：同步开启时显示人物卡头像（与聊天一致），否则显示本地头像 ═══ */
 const displayThemAvatar = computed(() => {
   if (desk.value?.sync_chat_avatar && desk.value?.partner_avatar) return desk.value.partner_avatar
-  return contact.value?.avatar || desk.value?.partner_avatar || ''
+  /* 未开启「应用到聊天」：以联系人设置里的头像为唯一权威，不再回退人物卡旧头像
+     （否则先开同步换过头像再关闭同步时，这里会一直显示人物卡遗留的旧图） */
+  return contact.value?.avatar || ''
 })
 const displayMyAvatar = computed(() => {
   if (desk.value?.sync_chat_avatar && desk.value?.my_avatar) return desk.value.my_avatar
