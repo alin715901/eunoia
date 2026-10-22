@@ -103,11 +103,13 @@ const uiStore = useUiStore()
 const dbOk = ref(false)
 const dbErr = ref(false)
 
-/* 开屏进度条：db 初始化各阶段 0-100，就绪后满格并稍停片刻再进入应用 */
-const bootProgress = ref(0)
+/* 开屏进度条：db 初始化各阶段 0-100，就绪后满格并稍停片刻再进入应用。
+   起步值 52 = index.html 静态骨架动画的终点：挂载瞬间无缝衔接静态条，
+   之后单调向右（Math.max 兜底），杜绝「跑到一半缩回去重跑」 */
+const bootProgress = ref(52)
 let offDbProgress = null
 onMounted(() => {
-  offDbProgress = onDbProgress((p) => { bootProgress.value = p })
+  offDbProgress = onDbProgress((p) => { bootProgress.value = Math.max(52, p) })
 })
 onUnmounted(() => { if (offDbProgress) { offDbProgress(); offDbProgress = null } })
 

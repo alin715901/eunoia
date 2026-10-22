@@ -67,8 +67,9 @@
       .boot-progress-bar {
         display: block; width: 8%; height: 100%; border-radius: 999px;
         background: linear-gradient(90deg, rgba(197, 164, 126, 0.72), #c5a47e);
-        /* JS 下载期静态进度：缓慢往返推进，避免看起来卡死；Vue 挂载后换真实进度 */
-        animation: bootBarPulse 2.2s ease-in-out infinite alternate;
+        /* JS 下载期静态进度：单向缓推到 52% 后停住（forwards），
+           Vue 挂载后真实进度从 52% 起步继续涨 —— 全程不回缩、不重跑 */
+        animation: bootBarPulse 2.2s ease-out forwards;
       }
       @keyframes bootBarPulse {
         0% { width: 8%; }

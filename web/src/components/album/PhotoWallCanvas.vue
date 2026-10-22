@@ -221,29 +221,39 @@
           <button class="st-cat" :class="{ on: textCat === 'size' }" @click="textCat = 'size'">字号</button>
         </div>
         <div class="st-scroll">
-          <!-- 字体：内置字体宫格，点选后输入文字（设置模式直接应用） -->
-          <div v-if="textCat === 'font'" class="font-grid">
-            <button
-              v-for="f in FONTS"
-              :key="f.key"
-              class="font-cell"
-              :style="{ fontFamily: f.css }"
-              @click="pickFont(f.key)"
-            >{{ f.name }}</button>
-          </div>
-          <!-- 字号：字号大小 / 粗细 / 颜色 / 倾斜（设置模式实时应用到选中元素；新增模式暂存，随文字一起上墙） -->
-          <div v-else-if="textCat === 'size'" class="text-style-panel">
-            <div class="ts-label">字号</div>
-            <div class="ts-sizes">
+          <!-- 字体：中文 / 英文 / 日韩 三类宫格，点选后输入文字（设置模式直接应用） -->
+          <template v-if="textCat === 'font'">
+            <div class="st-cat-row">
               <button
-                v-for="s in FONT_SIZES"
-                :key="s"
-                class="ts-size"
-                :class="{ on: curFontSize === s }"
-                :style="{ fontSize: Math.min(26, s * 0.7) + 'px' }"
-                @click="applyTextStyle({ font_size: s })"
-              >{{ s }}</button>
+                v-for="c in FONT_CATS"
+                :key="c.key"
+                class="st-cat"
+                :class="{ on: fontCat === c.key }"
+                @click="fontCat = c.key"
+              >{{ c.name }}</button>
             </div>
+            <div class="font-grid">
+              <button
+                v-for="f in curFonts"
+                :key="f.key"
+                class="font-cell"
+                :style="{ fontFamily: f.css }"
+                @click="pickFont(f.key)"
+              >{{ f.name }}</button>
+            </div>
+          </template>
+          <!-- 字号：拉条 + 粗细 / 颜色 / 倾斜（设置模式实时应用到选中元素；新增模式暂存，随文字一起上墙） -->
+          <div v-else-if="textCat === 'size'" class="text-style-panel">
+            <div class="ts-label">字号 <span class="ts-curval">{{ curFontSize }}px</span></div>
+            <input
+              class="ts-range"
+              type="range"
+              min="12"
+              max="72"
+              step="1"
+              :value="curFontSize"
+              @input="onSizeInput($event)"
+            />
             <div class="ts-label">粗细</div>
             <div class="ts-row">
               <button class="ts-opt" :class="{ on: curFontWeight === 400 }" @click="applyTextStyle({ font_weight: 400 })">常规</button>
@@ -265,6 +275,10 @@
                 :aria-label="'颜色 ' + c"
                 @click="applyTextStyle({ color: c })"
               ></button>
+              <!-- 自定义取色：色板之外任意颜色 -->
+              <label class="ts-color ts-custom" :class="{ on: isCustomColor }" title="自定义颜色">
+                <input type="color" :value="customColor" @input="onCustomColor($event)" />
+              </label>
             </div>
           </div>
           <!-- 便签：内置颜色 + 自定义上传便签纸（不限量；上传后自动存预设） -->
@@ -407,7 +421,7 @@ import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import ImageCropper from '@/components/common/ImageCropper.vue'
 import WallElement from './WallElement.vue'
-import { FONTS, PAPERS, STICKERS, STICKER_CATEGORIES, STICKY_COLORS, NOTE_PRESETS, noteBg, paperBg } from './presets'
+import { FONT_CATS, fontsOf, ensureGoogleFonts, PAPERS, STICKERS, STICKER_CATEGORIES, STICKY_COLORS, NOTE_PRESETS, noteBg, paperBg } from './presets'
 
 /* 便签宫格 16 款手账纸面缩略图样式（url 带引号，data URL 里的括号才不会被浏览器丢弃） */
 const noteCellStyles = NOTE_PRESETS.map((p) => ({
@@ -716,16 +730,29 @@ function addElement(type, content, meta = {}) {
    textEditMode：false = 底部工具栏「文字」新增；true = 选中文字元素点「设置」修改样式 */
 const textCat = ref('font') // 'font' 字体 | 'note' 便签 | 'size' 字号
 const textEditMode = ref(false)
+/* 字体分类：中文 / 英文 / 日韩 */
+const fontCat = ref('zh')
+const curFonts = computed(() => fontsOf(fontCat.value))
 /* 新增模式下「字号」分类的暂存选择（点字体/便签即上墙，字号等样式随文字一起带上） */
 const addStyle = ref({ font_size: 18, font_weight: 400, color: '', italic: false })
-const FONT_SIZES = [14, 18, 24, 32, 40]
 const TEXT_COLORS = ['#4a4036', '#333333', '#e05656', '#e8833a', '#4a7dbd', '#58a05c', '#9b6dc6', '#e87a9c']
 /* 面板高亮：设置模式取选中元素当前值，新增模式取暂存值 */
 const curFontSize = computed(() => (textEditMode.value ? selEl.value?.font_size : addStyle.value.font_size) || 18)
 const curFontWeight = computed(() => Number(textEditMode.value ? selEl.value?.font_weight : addStyle.value.font_weight) || 400)
 const curItalic = computed(() => (textEditMode.value ? selEl.value?.italic : addStyle.value.italic) || false)
 const curColor = computed(() => (textEditMode.value ? selEl.value?.color : addStyle.value.color) || '')
+/* 自定义颜色：当前色不在色板里时高亮取色块；取色器值取当前色（无则默认墨色） */
+const isCustomColor = computed(() => !!curColor.value && !TEXT_COLORS.includes(curColor.value))
+const customColor = computed(() => curColor.value || '#4a4036')
+/* 字号拉条：设置模式实时应用（弹窗不关可连续拉）；新增模式暂存 */
+function onSizeInput(e) {
+  applyTextStyle({ font_size: Number(e.target.value) || 18 })
+}
+function onCustomColor(e) {
+  applyTextStyle({ color: e.target.value })
+}
 function openTextSheet(edit) {
+  ensureGoogleFonts() /* 首次打开文字面板按需注入 webfont（中文/英文/日韩三类） */
   if (edit && selEl.value && selEl.value.locked) {
     toast.pushToast({ type: 'info', title: '元素已锁定', text: '先点「解锁」才能修改' })
     return
@@ -1522,22 +1549,10 @@ defineExpose({ save: flushSave })
 
 /* ── 文字设置 → 字号：字号大小 / 粗细 / 倾斜 / 颜色 ── */
 .text-style-panel { display: flex; flex-direction: column; gap: 8px; align-content: start; }
-.ts-label { font-size: 12px; color: var(--text-soft); margin-top: 2px; }
-.ts-sizes {
-  display: grid;
-  grid-template-columns: repeat(5, 1fr);
-  gap: 8px;
-}
-.ts-size {
-  aspect-ratio: 1;
-  border: 1.5px solid var(--border);
-  background: var(--bg-screen);
-  border-radius: 10px;
-  color: var(--text);
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-}
-.ts-size.on { border-color: var(--accent); color: var(--accent); background: rgba(0, 0, 0, 0.04); }
+.ts-label { font-size: 12px; color: var(--text-soft); margin-top: 2px; display: flex; align-items: center; gap: 8px; }
+/* 字号拉条 + 当前值 */
+.ts-curval { font-size: 13px; font-weight: 700; color: var(--accent); font-variant-numeric: tabular-nums; }
+.ts-range { width: 100%; margin: 10px 0 4px; accent-color: var(--accent); }
 .ts-row { display: flex; gap: 8px; }
 .ts-opt {
   flex: 1;
@@ -1566,6 +1581,9 @@ defineExpose({ save: flushSave })
   -webkit-tap-highlight-color: transparent;
 }
 .ts-color.on { border-color: var(--accent); }
+/* 自定义取色块：内嵌透明 color input（覆盖整块），点按即弹系统取色器 */
+.ts-custom { position: relative; overflow: hidden; background: conic-gradient(#ff6b6b, #ffd93d, #6bcb77, #4d96ff, #b96bff, #ff6b6b); }
+.ts-custom input { position: absolute; inset: -6px; opacity: 0; cursor: pointer; }
 .note-cell {
   position: relative;
   aspect-ratio: 1;
