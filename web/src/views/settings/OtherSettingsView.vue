@@ -2,10 +2,6 @@
   <div class="os-view">
     <AppHeader title="其他设置" back />
     <div class="os-body">
-      <div class="panel sec">
-        <div class="sec-title">其他设置</div>
-        <p class="hint">TA 与你的一些互动概率。</p>
-      </div>
       <div class="panel nav-panel">
         <div class="prob-row" v-for="p in probs" :key="p.key">
           <div class="prob-head">

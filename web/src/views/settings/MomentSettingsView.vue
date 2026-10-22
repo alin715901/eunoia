@@ -31,11 +31,10 @@
         <ToggleSwitch v-model="replyEnabled" @update:modelValue="queueSave" />
       </div>
 
-      <!-- 回复概率常驻显示：关着也能先调好，不用先开开关才看得见 -->
-      <div class="panel sec">
+      <!-- 回复概率 / 评论速度：仅在「对方会回复评论」开启时显示 -->
+      <div v-if="replyEnabled" class="panel sec">
         <div class="sec-title">回复概率</div>
         <div class="prob-head">
-          <span class="prob-desc">我评论 TA 的朋友圈或回复 TA 的评论时，TA 回复我的概率</span>
           <span class="prob-val">{{ replyProb }}%</span>
         </div>
         <input
@@ -49,7 +48,7 @@
         />
       </div>
 
-      <div class="panel sec">
+      <div v-if="replyEnabled" class="panel sec">
         <div class="sec-title">评论速度</div>
         <div class="seg">
           <button class="seg-i" :class="{ on: commentSpeed === 'slow' }" @click="setSpeed('slow')">慢</button>
@@ -60,8 +59,8 @@
       </div>
 
       <p class="hint standalone">
-        开启后：你评论 TA 的动态（或回复 TA 的评论）时，TA 按「回复概率」从字卡里随机抽 1~3 张拼成一条回复你；有小概率不回复。<br />
-        TA 也会按「评论速度」延迟、选择性地在你的朋友圈下点赞或评论（可点也可不点）。回复入队后刷新、重开都不丢，到点自动出现。
+        开启后：你评论 TA 的动态（或回复 TA 的评论）时，TA 按「回复概率」从字卡里随机抽 1~3 张拼成一条回复你。<br />
+        TA 也会按「评论速度」延迟、选择性地在你的朋友圈下点赞或评论。
       </p>
     </div>
   </div>
@@ -144,8 +143,7 @@ onMounted(async () => {
 .row-between { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .row-main { flex: 1 1 auto; min-width: 0; }
 .row-title { font-size: 14px; font-weight: 600; }
-.prob-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
-.prob-desc { font-size: 12px; color: var(--text-soft); line-height: 1.5; }
+.prob-head { display: flex; align-items: center; justify-content: flex-end; margin-bottom: 6px; }
 .prob-val { font-size: 13px; color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; flex: none; }
 .prob-range { width: 100%; accent-color: var(--accent); }
 .hint { font-size: 11px; color: var(--text-soft); line-height: 1.6; margin: 8px 0 0; }

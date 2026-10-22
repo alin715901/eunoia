@@ -30,37 +30,46 @@
   <body>
     <div id="app">
       <!-- 静态启动画面：JS 下载/解析期间显示（Vue 挂载后被骨架屏无缝替换）。
+           版式与 App.vue 的 BootBrand 开屏完全一致（兔耳 PNG + 进度条 + 恢复数据文案），
+           避免旧版「爱心 + 正在打开…」骨架先闪一帧再切换的割裂感。
            样式内联且跟随 index.html 已有的深浅色预上色逻辑，避免深色模式闪白 -->
       <div class="boot-static">
-        <div class="boot-brand">Eunoia</div>
-        <div class="boot-heart">
-          <svg viewBox="0 0 32 29" width="34" height="30" aria-hidden="true">
-            <path d="M16 28.5S1.5 19.6 1.5 9.9C1.5 4.9 5.5 1.5 9.6 1.5c2.7 0 5.2 1.3 6.4 3.4 1.2-2.1 3.7-3.4 6.4-3.4 4.1 0 8.1 3.4 8.1 8.4 0 9.7-14.5 18.6-14.5 18.6z"/>
-          </svg>
+        <div class="boot-brand">
+          Eunoia
+          <img class="boot-ears" src="./boot-ears.png" alt="" aria-hidden="true" />
         </div>
-        <div class="boot-text">正在打开…</div>
+        <div class="boot-progress"><span class="boot-progress-bar"></span></div>
+        <div class="boot-text">正在恢复数据…</div>
       </div>
     </div>
     <style>
       .boot-static {
         position: fixed; inset: 0; z-index: 10;
-        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;
+        display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
         background: #f7f3ee;
         font-family: -apple-system, "PingFang SC", "Noto Sans SC", sans-serif;
       }
       [data-theme="dark"] .boot-static { background: #141416; }
-      .boot-brand { font-size: 30px; font-weight: 700; letter-spacing: 0.12em; color: #c5a47e; }
-      .boot-heart svg path { fill: #c5a47e; animation: bootBeat 1.2s ease-in-out infinite; transform-origin: center 60%; }
+      .boot-brand {
+        position: relative;
+        font-family: 'Songti SC', 'STSong', 'Noto Serif CJK SC', 'Noto Serif SC', 'SimSun', serif;
+        font-size: 30px; font-weight: 700; letter-spacing: 0.12em; color: #c5a47e; line-height: 1;
+      }
+      /* 兔耳：透明底 PNG 切图，绝对定位于字母 a 上方探出（与 BootBrand.vue 相同参数） */
+      .boot-ears {
+        position: absolute; right: -5px; top: -20px; width: 28px; height: auto;
+        pointer-events: none;
+      }
+      .boot-progress {
+        width: 176px; height: 6px; border-radius: 999px;
+        background: rgba(197, 164, 126, 0.15); overflow: hidden;
+      }
+      .boot-progress-bar {
+        display: block; width: 8%; height: 100%; border-radius: 999px;
+        background: linear-gradient(90deg, rgba(197, 164, 126, 0.72), #c5a47e);
+      }
       .boot-text { font-size: 13px; color: #8e8e93; letter-spacing: 0.06em; }
       [data-theme="dark"] .boot-text { color: #9b9ba3; }
-      @keyframes bootBeat {
-        0%, 100% { transform: scale(1); opacity: 0.85; }
-        14% { transform: scale(1.18); opacity: 1; }
-        28% { transform: scale(1); opacity: 0.85; }
-        42% { transform: scale(1.12); opacity: 1; }
-        70% { transform: scale(1); opacity: 0.85; }
-      }
-      @media (prefers-reduced-motion: reduce) { .boot-heart svg path { animation: none; } }
     </style>
     <script type="module" src="/src/main.js"></script>
   </body>
