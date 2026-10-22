@@ -4,6 +4,7 @@
 // 我发出的邀请：TA 会在几秒后接受（较大概率）或婉拒；
 // TA 邀我：我在聊天卡片接受/拒绝，接受后进入对局。
 import db from '../db'
+import { hourlyToPerMinute } from '@/utils/prob'
 import * as notification from './notification.service'
 import * as settingsRepo from '../repositories/settings.repo'
 
@@ -283,9 +284,9 @@ function contactInviteTick() {
     const rows = db.prepare("SELECT id FROM contacts WHERE kind != 'group'").all();
     const now = Math.floor(Date.now() / 1000);
     for (const c of rows) {
-      const st = db.prepare('SELECT blocked FROM contact_settings WHERE contact_id = ?').get(c.id);
+      const st = db.prepare('SELECT blocked, game_invite_prob FROM contact_settings WHERE contact_id = ?').get(c.id);
       if (st && st.blocked) continue;
-      if (Math.random() < 0.004) contactInvite(c.id);
+      if (Math.random() < hourlyToPerMinute(st ? st.game_invite_prob : 21)) contactInvite(c.id);
     }
     /* 过期清理：TA 邀我 10 分钟没处理 / 我邀 TA 2 分钟没响应（定时器丢失时兜底） */
     const stale = db.prepare("SELECT * FROM game_invites WHERE status = 'pending'").all();

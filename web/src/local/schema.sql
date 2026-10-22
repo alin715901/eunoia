@@ -56,7 +56,12 @@ CREATE TABLE IF NOT EXISTS contact_settings (
   avatar_shape TEXT DEFAULT 'circle',
   avatar_radius INTEGER DEFAULT 12,
   chat_bg TEXT,
-  bubble_style TEXT
+  bubble_style TEXT,
+  -- 「其他设置」概率（%）：每小时邀请 / 每次播放收藏
+  music_invite_prob INTEGER DEFAULT 21,
+  music_fav_prob INTEGER DEFAULT 1,
+  game_invite_prob INTEGER DEFAULT 21,
+  cinema_invite_prob INTEGER DEFAULT 21
 );
 
 CREATE TABLE IF NOT EXISTS card_groups (

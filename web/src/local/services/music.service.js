@@ -1,6 +1,7 @@
 /* 音乐导入解析服务：网易云歌曲/歌单、酷狗歌曲、通用音频直链 */
 import * as crypto from '../shims/crypto.js'
 import db from '../db'
+import { pctToProb } from '@/utils/prob'
 import * as notification from './notification.service'
 
 const UA =
@@ -619,7 +620,8 @@ function contactFavTick() {
     const rows = db.prepare("SELECT id FROM contacts WHERE kind != 'group'").all();
     const now = Math.floor(Date.now() / 1000);
     for (const c of rows) {
-      if (Math.random() > 0.012) continue;
+      const st = db.prepare('SELECT music_fav_prob FROM contact_settings WHERE contact_id = ?').get(c.id);
+      if (Math.random() > pctToProb(st ? st.music_fav_prob : 1)) continue;
       const row = db
         .prepare(
           `SELECT id, title, artist, cover FROM songs

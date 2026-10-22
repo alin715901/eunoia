@@ -197,6 +197,7 @@ function updateSettings(id, fields = {}) {
     'chat_bg', 'chat_bg_blur', 'chat_font', 'chat_font_css', 'bubble_style',
     'blocked', 'show_read_receipt', 'read_receipt_style', 'read_no_reply', 'show_names',
     'call_enabled', 'call_incoming_prob', 'call_answer_prob', 'call_reject_prob', 'call_hangup_prob',
+    'music_invite_prob', 'music_fav_prob', 'game_invite_prob', 'cinema_invite_prob',
     'contact_recall_enabled',
     'period_care_enabled', 'period_care_last_date',
   ];

@@ -4,6 +4,7 @@
 // 我发出的邀请：TA 会在几秒后接受（较大概率）或婉拒；
 // TA 邀我：由 cron 每分钟小概率触发，我在聊天卡片或歌词页接受/拒绝。
 import db from '../db'
+import { hourlyToPerMinute } from '@/utils/prob'
 import * as notification from './notification.service'
 import * as settingsRepo from '../repositories/settings.repo'
 
@@ -224,9 +225,9 @@ function contactInviteTick() {
     const rows = db.prepare("SELECT id FROM contacts WHERE kind != 'group'").all();
     const now = Math.floor(Date.now() / 1000);
     for (const c of rows) {
-      const st = db.prepare('SELECT blocked FROM contact_settings WHERE contact_id = ?').get(c.id);
+      const st = db.prepare('SELECT blocked, music_invite_prob FROM contact_settings WHERE contact_id = ?').get(c.id);
       if (st && st.blocked) continue;
-      if (Math.random() < 0.004) contactInvite(c.id);
+      if (Math.random() < hourlyToPerMinute(st ? st.music_invite_prob : 21)) contactInvite(c.id);
     }
     const stale = db.prepare("SELECT * FROM listen_together WHERE status = 'pending'").all();
     for (const inv of stale) {

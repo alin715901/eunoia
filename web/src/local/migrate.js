@@ -329,4 +329,9 @@ export function migrate() {
   // 相册列表编辑弹窗可手动换封面：cover_manual=1 时钉住用户选的封面，
   // 装饰保存不再用「最靠左图片」自动覆盖（移除封面后恢复自动）
   addCol('photo_walls', 'cover_manual', 'INTEGER DEFAULT 0')
+  // 「其他设置」概率：听歌邀请 / 听歌收藏 / 游戏邀请 / 观影邀请（每小时或每次，%）
+  addCol('contact_settings', 'music_invite_prob', 'INTEGER DEFAULT 21')
+  addCol('contact_settings', 'music_fav_prob', 'INTEGER DEFAULT 1')
+  addCol('contact_settings', 'game_invite_prob', 'INTEGER DEFAULT 21')
+  addCol('contact_settings', 'cinema_invite_prob', 'INTEGER DEFAULT 21')
 }
