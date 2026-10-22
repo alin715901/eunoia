@@ -1,5 +1,6 @@
 <template>
   <div
+    ref="rootRef"
     class="we"
     :class="[el.type, frameCls, { editable, selected: selected && editable }]"
     :style="styleObj"
@@ -88,7 +89,7 @@ const noteSrc = computed(() => {
 })
 /* 内置便签：整张手账纸面（横线/方格/胶带/碎花…，共 16 款），随元素任意拉伸铺满 */
 const stickyBg = computed(() => (noteSrc.value
-  ? `url("${noteSrc.value}") center / cover no-repeat`
+  ? `url("${noteSrc.value}") center / 100% 100% no-repeat`
   : `url("${noteBg(stickyKey.value)}") center / 100% 100% no-repeat`))
 
 const textStyle = computed(() => ({
@@ -101,11 +102,31 @@ const textStyle = computed(() => ({
    拉宽/拉窄只影响框宽 → 文字按框宽自动换行（两行变一行 / 一行变两行），字体大小不变 */
 const isPlain = computed(() => props.el.type === 'text' && !frameCls.value)
 
+/* 便签纸文字（内置手账纸面 / 自定义上传纸）：拉伸 = 纸面跟框拉伸（背景 100% 铺满），
+   字体大小固定不变，文字按纸面框宽自动换行（拉宽时下一行文字补上来，字形不变形） */
+const isStickyText = computed(() => props.el.type === 'text' && isSticky.value)
+const rootRef = ref(null)
+/* 便签纸文字的自然尺寸（未拉伸基准）：内层纸面（内容 + 内边距）。
+   测量前先清掉内联宽高（避免已有 sx≠1 的元素按拉伸后尺寸反推出错） */
+function measureSticky() {
+  const node = rootRef.value
+  const inner = node && node.querySelector('.we-sticky')
+  if (!inner) return
+  const w0 = node.style.width
+  const h0 = node.style.height
+  node.style.width = ''
+  node.style.height = ''
+  nat.value = { w: inner.offsetWidth || 0, h: inner.offsetHeight || 0 }
+  node.style.width = w0
+  node.style.height = h0
+}
+
 /* 文字自然尺寸（max-content 状态），作为拉伸系数的基准：
    框宽 = 自然宽 × sx；sy 拉伸只增加占位高度（min-height），同样不缩放字形 */
 const textRef = ref(null)
 const nat = ref(null)
 function measureText() {
+  if (isStickyText.value) return measureSticky()
   if (!isPlain.value) return
   const node = textRef.value
   if (!node || !node.parentNode) return
@@ -122,13 +143,26 @@ function measureText() {
 }
 onMounted(() => {
   nextTick(measureText)
-  /* 自定义字体异步加载完成后自然宽会变，字库就绪后重测一次 */
+  /* 自定义字体异步加载完成后自然宽会变：显式触发字库加载（带正文文本），
+     就绪后重测；fonts.ready 兜底再测一次 */
+  if (typeof document !== 'undefined' && document.fonts && document.fonts.load) {
+    const spec = '18px ' + fontCss(props.el.font)
+    document.fonts.load(spec, props.el.content || '').then(() => measureText()).catch(() => {})
+  }
   if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
     document.fonts.ready.then(() => measureText()).catch(() => {})
   }
+  /* 入场过渡期间布局未稳定，挂载瞬间的自然尺寸可能偏小：
+     布局稳定后分几次重测收敛 */
+  ;[300, 800, 1800].forEach((t) => setTimeout(measureText, t))
 })
 watch(
   () => [props.el.content, props.el.font],
+  () => { nextTick(measureText) }
+)
+/* 相框切换（如纯文字 ↔ 便签纸）后自然尺寸基准不同，需重测 */
+watch(
+  () => frameCls.value,
   () => { nextTick(measureText) }
 )
 
@@ -151,7 +185,18 @@ const styleObj = computed(() => {
     o.fontSize = '18px'
     return o
   }
-  // 图片/贴纸/便签：四边拉伸 = 横/纵缩放系数（sx/sy），与整体 scale 相乘后分别作用于两轴
+  if (isStickyText.value) {
+    // 便签纸文字：纸面跟框拉伸（宽=自然宽×sx），字体固定、文字按框宽换行；
+    // 高度 = 内容自适应，minHeight=自然高×sy 保底（拉宽换行减少时纸面不无端缩短）
+    if (nat.value && nat.value.w) {
+      o.width = Math.max(72, nat.value.w * (props.el.sx || 1)) + 'px'
+      o.minHeight = Math.max(72, nat.value.h * (props.el.sy || 1)) + 'px'
+    }
+    o.transform = `translate(${props.el.x}px, ${props.el.y}px) rotate(${props.el.rotation || 0}deg) scale(${props.el.scale || 1})`
+    o.fontSize = '18px'
+    return o
+  }
+  // 图片/贴纸：四边拉伸 = 横/纵缩放系数（sx/sy），与整体 scale 相乘后分别作用于两轴
   const sx = (props.el.scale || 1) * (props.el.sx || 1)
   const sy = (props.el.scale || 1) * (props.el.sy || 1)
   o.transform = `translate(${props.el.x}px, ${props.el.y}px) rotate(${props.el.rotation || 0}deg) scale(${sx}, ${sy})`
@@ -260,7 +305,22 @@ function onEdgeDown(e, which) {
   try { e.target.setPointerCapture(e.pointerId) } catch (_) {}
   emit('select')
   const box = e.currentTarget.closest('.we')
-  const text = isPlain.value
+  const text = isPlain.value || isStickyText.value
+  const curW = box.offsetWidth
+  const curH = box.offsetHeight
+  let natW = curW
+  let natH = curH
+  if (text) {
+    /* 拖起始重测自然尺寸并校准 sx/sy：入场过渡/字体时序可能让挂载时的测量
+       偏小（自然宽被钳制），以当前实际尺寸为锚重新标定基准，
+       保证拖动前后宽度连续、跨会话（刷新后）不漂移 */
+    if (isStickyText.value) measureSticky()
+    else measureText()
+    natW = Math.max(24, (nat.value && nat.value.w) || curW)
+    natH = Math.max(20, (nat.value && nat.value.h) || curH)
+    props.el.sx = clamp(curW / natW, 0.3, 6)
+    props.el.sy = clamp(curH / natH, 0.3, 6)
+  }
   // offsetWidth/Height 是未变换的布局尺寸；屏幕位移 ÷ zoom 换算回墙坐标
   edge = {
     pid: e.pointerId,
@@ -270,12 +330,22 @@ function onEdgeDown(e, which) {
     y0: e.clientY,
     sx0: props.el.sx || 1,
     sy0: props.el.sy || 1,
-    // 文字元素：拉伸以自然尺寸为基准（框宽 = 自然宽 × sx）
-    natW: Math.max(24, (nat.value && nat.value.w) || box.offsetWidth / (props.el.sx || 1)),
-    natH: Math.max(20, (nat.value && nat.value.h) || box.offsetHeight / (props.el.sy || 1)),
+    natW,
+    natH,
+    // 当前实际布局尺寸（换行后内容可能高于 minHeight，以此为拉伸基准避免死区）
+    curW,
+    curH,
+    // 左右拉伸前 minHeight 超出内容的部分（用户上下拉伸显式加高的余量），收尾贴合时保留
+    extraH: (() => {
+      const w0 = box.style.minHeight
+      box.style.minHeight = '0'
+      const contentH = box.offsetHeight
+      box.style.minHeight = w0
+      return Math.max(0, curH - contentH)
+    })(),
     // 缩放类元素：sx 每加 1 对应的墙坐标宽度
-    ux: Math.max(30, box.offsetWidth * (props.el.scale || 1)),
-    uy: Math.max(30, box.offsetHeight * (props.el.scale || 1)),
+    ux: Math.max(30, curW * (props.el.scale || 1)),
+    uy: Math.max(30, curH * (props.el.scale || 1)),
     ex0: props.el.x,
     ey0: props.el.y
   }
@@ -294,14 +364,14 @@ function applyEdge(e) {
        让手上的那条边跟手、对边保持不动 */
     if (edge.which === 'l' || edge.which === 'r') {
       const dw = edge.which === 'r' ? dx : -dx // 本侧边引起的宽度变化（墙坐标）
-      el.sx = clamp((edge.natW * edge.sx0 + dw) / edge.natW, 0.3, 6)
+      el.sx = clamp((edge.curW + dw) / edge.natW, 0.3, 6)
       if (edge.which === 'l') {
         el.x = edge.ex0 - dw * cos
         el.y = edge.ey0 - dw * sin
       }
     } else {
       const dh = edge.which === 'b' ? dy : -dy
-      el.sy = clamp((edge.natH * edge.sy0 + dh) / edge.natH, 0.3, 6)
+      el.sy = clamp((edge.curH + dh) / edge.natH, 0.3, 6)
       if (edge.which === 't') {
         el.x = edge.ex0 + dh * sin
         el.y = edge.ey0 - dh * cos
@@ -369,6 +439,9 @@ function onUp(e) {
   }
   if (edge && edge.pid === e.pointerId) {
     try { e.target.releasePointerCapture(e.pointerId) } catch (_) {}
+    /* 左右拉伸只改宽度：结束后纸面/文字框高度贴合内容
+       （拉宽换行减少时高度回落），保留用户上下拉伸显式加高的余量 */
+    if (edge.text && (edge.which === 'l' || edge.which === 'r')) fitTextHeight(edge)
     edge = null
     emit('change')
     return
@@ -393,6 +466,18 @@ function onDblClick() {
   // 只有文字元素可双击编辑；图片/贴纸双击容易误触改写内容
   if (props.el.type !== 'text') return
   emit('edit-text', props.el)
+}
+
+/* 左右拉伸收尾：高度贴合当前内容（清 minHeight 测内容高，再回填） */
+function fitTextHeight(edge) {
+  const el = props.el
+  const box = rootRef.value
+  if (!box || !edge.natH) return
+  const w0 = box.style.minHeight
+  box.style.minHeight = '0'
+  const contentH = box.offsetHeight
+  box.style.minHeight = w0
+  el.sy = clamp((contentH + edge.extraH) / edge.natH, 0.3, 6)
 }
 </script>
 
@@ -476,6 +561,15 @@ function onDblClick() {
   max-width: 230px;
   box-shadow: 0 5px 14px rgba(0, 0, 0, 0.14);
   position: relative;
+}
+/* 便签纸文字：纸面铺满元素框（拉伸改变框尺寸时纸随框变形，文字在框内重新换行） */
+.we.text.sticky .we-sticky {
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  max-width: none;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 .we.sticky .we-sticky::after {
   /* 右下角折角 */
