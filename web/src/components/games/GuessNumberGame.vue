@@ -407,7 +407,7 @@ restart()
   padding: 10px 14px; font-size: 15px; color: var(--text); outline: none;
 }
 .gn-input input:focus { border-color: var(--accent); }
-.gn-history { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; max-height: 168px; overflow: auto; }
+.gn-history { margin-top: 14px; display: flex; flex-direction: column; gap: 6px; max-height: 298px; overflow: auto; }
 .gn-history.ai .gn-num::before { content: '对方 '; font-size: 10px; color: var(--text-soft); font-weight: 400; }
 .gn-row { display: flex; align-items: center; gap: 10px; font-size: 13px; padding: 7px 12px; border-radius: 10px; background: var(--bg-soft); }
 .gn-row.up { color: #4caf50; }

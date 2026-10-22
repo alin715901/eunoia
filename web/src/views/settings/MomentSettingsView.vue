@@ -32,9 +32,9 @@
       </div>
 
       <!-- 回复概率 / 评论速度：仅在「对方会回复评论」开启时显示 -->
-      <div v-if="replyEnabled" class="panel sec">
-        <div class="sec-title">回复概率</div>
-        <div class="prob-head">
+      <div v-if="replyEnabled" class="panel sec prob-sec">
+        <div class="prob-top">
+          <span class="sec-title">回复概率</span>
           <span class="prob-val">{{ replyProb }}%</span>
         </div>
         <input
@@ -143,7 +143,9 @@ onMounted(async () => {
 .row-between { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .row-main { flex: 1 1 auto; min-width: 0; }
 .row-title { font-size: 14px; font-weight: 600; }
-.prob-head { display: flex; align-items: center; justify-content: flex-end; margin-bottom: 6px; }
+.prob-sec { padding: 11px 14px 12px; }
+.prob-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }
+.prob-top .sec-title { margin-bottom: 0; }
 .prob-val { font-size: 13px; color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; flex: none; }
 .prob-range { width: 100%; accent-color: var(--accent); }
 .hint { font-size: 11px; color: var(--text-soft); line-height: 1.6; margin: 8px 0 0; }

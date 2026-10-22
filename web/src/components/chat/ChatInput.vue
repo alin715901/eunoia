@@ -18,7 +18,6 @@
       v-model="text"
       class="ci-field"
       rows="1"
-      placeholder="说点什么…"
       @keydown.enter.exact.prevent="submit"
       @input="autoGrow"
     ></textarea>
