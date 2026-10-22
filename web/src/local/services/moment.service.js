@@ -3,6 +3,7 @@ import db from '../db'
 import { drawCards } from './cardDraw.service'
 import * as notification from './notification.service'
 import { contactAvatar } from './contactAvatar'
+import { pctToProb } from '@/utils/prob'
 
 /* 内容来源：抽 n 张字卡「拼」成一条动态（拼字卡式，1~7 张随机）：
    文字卡的 content 拼成正文，图片/表情包卡的图收进 images；
@@ -171,8 +172,8 @@ function scheduleMomentReplies(momentId, contactId) {
     const st = db.prepare('SELECT * FROM contact_settings WHERE contact_id = ?').get(contactId);
     if (!st || !Number(st.moment_reply_enabled)) return;
     if (Number(st.blocked)) return;
-    /* 小概率不回复（约 20%） */
-    if (Math.random() < 0.2) return;
+    /* 按「回复概率」决定是否回复：默认 80% 回复、20% 不回复 */
+    if (Math.random() > pctToProb(st.moment_reply_prob ?? 80)) return;
     const d = speedDelays(st.moment_comment_speed || 'normal');
     setTimeout(() => {
       try {

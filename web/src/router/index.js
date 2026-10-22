@@ -31,6 +31,7 @@ import ChatBgView from '@/views/settings/ChatBgView.vue'
 import ChatFontView from '@/views/settings/ChatFontView.vue'
 import BubbleStyleView from '@/views/settings/BubbleStyleView.vue'
 import CallSettingsView from '@/views/settings/CallSettingsView.vue'
+import OtherSettingsView from '@/views/settings/OtherSettingsView.vue'
 import StatsView from '@/views/StatsView.vue'
 
 const routes = [
@@ -46,6 +47,7 @@ const routes = [
   { path: '/contacts/:id/settings/font', name: 'contact-chat-font', component: ChatFontView, props: true },
   { path: '/contacts/:id/settings/bubble', name: 'contact-bubble-style', component: BubbleStyleView, props: true },
   { path: '/contacts/:id/settings/call', name: 'contact-call-settings', component: CallSettingsView, props: true },
+  { path: '/contacts/:id/settings/other', name: 'contact-other-settings', component: OtherSettingsView, props: true },
   { path: '/contacts/:id/settings/avatar', name: 'contact-avatar-settings', component: () => import('@/views/settings/AvatarSettingsView.vue'), props: true },
   { path: '/contacts/:id/space', name: 'contact-space', component: ContactSpaceView, props: true },
   { path: '/cards', name: 'cards', component: CardsView, props: { contactId: null } },

@@ -334,4 +334,6 @@ export function migrate() {
   addCol('contact_settings', 'music_fav_prob', 'INTEGER DEFAULT 1')
   addCol('contact_settings', 'game_invite_prob', 'INTEGER DEFAULT 21')
   addCol('contact_settings', 'cinema_invite_prob', 'INTEGER DEFAULT 21')
+  // 朋友圈「回复概率」：我评论对方动态 / 回复他评论时，TA 回复我的概率（%）
+  addCol('contact_settings', 'moment_reply_prob', 'INTEGER DEFAULT 80')
 }

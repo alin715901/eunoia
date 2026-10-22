@@ -190,7 +190,7 @@ function updateSettings(id, fields = {}) {
     'proactive_count_min', 'proactive_count_max',
     'proactive_interval_min', 'proactive_interval_max',
     'moment_enabled', 'moment_freq', 'moment_count_min', 'moment_count_max',
-    'moment_reply_enabled', 'moment_reply_min', 'moment_reply_max', 'moment_comment_speed',
+    'moment_reply_enabled', 'moment_reply_min', 'moment_reply_max', 'moment_comment_speed', 'moment_reply_prob',
     'letter_enabled', 'letter_freq', 'letter_week_min', 'letter_week_max',
     'letter_sentences_min', 'letter_sentences_max', 'letter_opening', 'letter_closing',
     'my_name', 'my_avatar', 'avatar_shape', 'avatar_radius', 'avatar_size', 'avatar_pos',

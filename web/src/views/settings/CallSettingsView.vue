@@ -35,31 +35,6 @@
       <p class="tip">
         提示：接听概率与拒听概率合计 100%（调一个另一个自动补齐）；挂断概率是正在通话时对方挂断的概率；主动来电概率是<b>每小时</b>对方主动来电的概率。
       </p>
-
-      <!-- 其他设置：各类互动概率 -->
-      <div class="panel sec">
-        <div class="sec-title">其他设置</div>
-      </div>
-      <div class="panel nav-panel">
-        <div class="prob-row" v-for="p in otherProbs" :key="p.key">
-          <div class="prob-head">
-            <span class="prob-label">{{ p.label }}</span>
-            <span class="prob-val">{{ other[p.key] }}%</span>
-          </div>
-          <input
-            class="prob-range"
-            type="range"
-            min="0"
-            max="100"
-            step="1"
-            v-model.number="other[p.key]"
-            @change="onOtherProbChange(p.key)"
-          />
-        </div>
-      </div>
-      <p class="tip">
-        提示：听歌邀请、游戏邀请、观影邀请为<b>每小时</b>的概率；收藏歌曲概率为对方<b>每次听歌时</b>收藏一首歌的概率。均为 0 时不会触发。
-      </p>
     </div>
   </div>
 </template>
@@ -90,20 +65,6 @@ const probs = [
   { key: 'call_hangup_prob', label: '挂断电话概率' }
 ]
 
-/* 其他设置：互动类概率（与通话概率同库存储，即时保存） */
-const other = reactive({
-  music_invite_prob: 21,
-  music_fav_prob: 1,
-  game_invite_prob: 21,
-  cinema_invite_prob: 21
-})
-const otherProbs = [
-  { key: 'music_invite_prob', label: '听歌邀请的概率（每小时）' },
-  { key: 'music_fav_prob', label: '听歌时收藏歌曲的概率' },
-  { key: 'game_invite_prob', label: '邀请玩游戏的概率（每小时）' },
-  { key: 'cinema_invite_prob', label: '邀请观影的概率（每小时）' }
-]
-
 async function load() {
   try {
     const s = await getContactSettings(id)
@@ -112,10 +73,6 @@ async function load() {
     if (s.call_answer_prob != null) model.call_answer_prob = Number(s.call_answer_prob)
     if (s.call_reject_prob != null) model.call_reject_prob = Number(s.call_reject_prob)
     if (s.call_hangup_prob != null) model.call_hangup_prob = Number(s.call_hangup_prob)
-    if (s.music_invite_prob != null) other.music_invite_prob = Number(s.music_invite_prob)
-    if (s.music_fav_prob != null) other.music_fav_prob = Number(s.music_fav_prob)
-    if (s.game_invite_prob != null) other.game_invite_prob = Number(s.game_invite_prob)
-    if (s.cinema_invite_prob != null) other.cinema_invite_prob = Number(s.cinema_invite_prob)
   } catch (e) { /* ignore */ }
 }
 
@@ -139,13 +96,6 @@ async function save(key) {
     if (key === 'call_answer_prob') payload.call_reject_prob = Number(model.call_reject_prob)
     if (key === 'call_reject_prob') payload.call_answer_prob = Number(model.call_answer_prob)
     await updateContactSettings(id, payload)
-  } catch (e) { notify('保存失败：' + e.message) }
-}
-
-/* 其他设置概率：滑杆改动即时保存 */
-async function onOtherProbChange(key) {
-  try {
-    await updateContactSettings(id, { [key]: Number(other[key]) })
   } catch (e) { notify('保存失败：' + e.message) }
 }
 

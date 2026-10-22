@@ -31,6 +31,24 @@
         <ToggleSwitch v-model="replyEnabled" @update:modelValue="queueSave" />
       </div>
 
+      <!-- 回复概率常驻显示：关着也能先调好，不用先开开关才看得见 -->
+      <div class="panel sec">
+        <div class="sec-title">回复概率</div>
+        <div class="prob-head">
+          <span class="prob-desc">我评论 TA 的朋友圈或回复 TA 的评论时，TA 回复我的概率</span>
+          <span class="prob-val">{{ replyProb }}%</span>
+        </div>
+        <input
+          class="prob-range"
+          type="range"
+          min="0"
+          max="100"
+          step="1"
+          v-model.number="replyProb"
+          @change="queueSave"
+        />
+      </div>
+
       <div class="panel sec">
         <div class="sec-title">评论速度</div>
         <div class="seg">
@@ -64,6 +82,7 @@ const postEnabled = ref(false)
 const postLo = ref(0)
 const postHi = ref(2)
 const replyEnabled = ref(true)
+const replyProb = ref(80)
 const commentSpeed = ref('normal')
 
 function setSpeed(v) {
@@ -78,6 +97,7 @@ async function doSave() {
       moment_count_min: postLo.value,
       moment_count_max: postHi.value,
       moment_reply_enabled: replyEnabled.value ? 1 : 0,
+      moment_reply_prob: replyProb.value,
       moment_comment_speed: commentSpeed.value
     })
   } catch (e) {
@@ -96,6 +116,7 @@ onMounted(async () => {
   postLo.value = Number(s.moment_count_min ?? 0)
   postHi.value = Number(s.moment_count_max ?? 2)
   replyEnabled.value = Number(s.moment_reply_enabled ?? 1) !== 0
+  replyProb.value = Number(s.moment_reply_prob ?? 80)
   commentSpeed.value = s.moment_comment_speed || 'normal'
 })
 </script>
@@ -123,6 +144,10 @@ onMounted(async () => {
 .row-between { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .row-main { flex: 1 1 auto; min-width: 0; }
 .row-title { font-size: 14px; font-weight: 600; }
+.prob-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 6px; }
+.prob-desc { font-size: 12px; color: var(--text-soft); line-height: 1.5; }
+.prob-val { font-size: 13px; color: var(--accent); font-weight: 700; font-variant-numeric: tabular-nums; flex: none; }
+.prob-range { width: 100%; accent-color: var(--accent); }
 .hint { font-size: 11px; color: var(--text-soft); line-height: 1.6; margin: 8px 0 0; }
 .hint.standalone {
   background: var(--bg-screen);

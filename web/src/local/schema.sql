@@ -61,7 +61,9 @@ CREATE TABLE IF NOT EXISTS contact_settings (
   music_invite_prob INTEGER DEFAULT 21,
   music_fav_prob INTEGER DEFAULT 1,
   game_invite_prob INTEGER DEFAULT 21,
-  cinema_invite_prob INTEGER DEFAULT 21
+  cinema_invite_prob INTEGER DEFAULT 21,
+  -- 朋友圈「回复概率」：我评论 TA 或回复 TA 评论时，TA 回复我的概率（%）
+  moment_reply_prob INTEGER DEFAULT 80
 );
 
 CREATE TABLE IF NOT EXISTS card_groups (

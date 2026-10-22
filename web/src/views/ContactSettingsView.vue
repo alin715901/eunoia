@@ -175,6 +175,10 @@
           <span class="nav-val">{{ callSummary }}</span>
           <span class="chev">›</span>
         </button>
+        <button v-if="!isGroup" class="nav-row" @click="go('/contacts/' + id + '/settings/other')">
+          <span class="nav-label">其他设置</span>
+          <span class="chev">›</span>
+        </button>
         <button v-if="!isGroup" class="nav-row" @click="go('/contacts/' + id + '/cards')">
           <span class="nav-label">专属字卡库</span>
           <span class="chev">›</span>
