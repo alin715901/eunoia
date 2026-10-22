@@ -228,9 +228,28 @@ async function loadSqlJs() {
   return SQL
 }
 
+/* ── 初始化进度（供 App.vue 开屏进度条使用）──
+   initDb 各阶段上报 0-100；dbReady 在 module 加载时即开始执行，
+   App.vue 挂载后订阅会立即收到当前进度，后续更新通过订阅推送 */
+let dbProgress = 0
+const dbProgressSubs = new Set()
+export function onDbProgress(fn) {
+  dbProgressSubs.add(fn)
+  fn(dbProgress)
+  return () => dbProgressSubs.delete(fn)
+}
+function setDbProgress(p) {
+  if (p <= dbProgress) return
+  dbProgress = p
+  dbProgressSubs.forEach((f) => f(p))
+}
+
 export async function initDb() {
+  setDbProgress(8)
   const SQL = await loadSqlJs()
+  setDbProgress(45)
   const saved = await idbGet(IDB_KEY)
+  setDbProgress(65)
   const fresh = !saved || !saved.byteLength
   state.raw = fresh ? new SQL.Database() : new SQL.Database(new Uint8Array(saved))
   state.raw.exec('PRAGMA foreign_keys = ON')
@@ -238,6 +257,7 @@ export async function initDb() {
     // 首次打开：建表
     state.raw.exec(schemaSql)
   }
+  setDbProgress(82)
   // 与服务器一致：每次启动都跑 migrate（幂等，补齐新表新列）
   migrate()
   if (fresh) {
@@ -249,6 +269,7 @@ export async function initDb() {
   } else {
     console.log('[db] 已从 IndexedDB 恢复本地数据')
   }
+  setDbProgress(100)
   return db
 }
 

@@ -4,9 +4,16 @@
     <div v-if="!dbOk && !dbErr" class="phone-frame boot-frame">
       <div class="phone-screen boot-screen">
         <BootBrand />
-        <!-- 进度条（开屏耗时较长，用不定态滑动条表示加载中） -->
-        <div class="boot-progress" role="progressbar" aria-label="加载进度">
-          <span class="boot-progress-bar"></span>
+        <!-- 进度条：与真实加载进度绑定，满格即数据就绪进入应用 -->
+        <div
+          class="boot-progress"
+          role="progressbar"
+          aria-label="加载进度"
+          :aria-valuenow="bootProgress"
+          aria-valuemin="0"
+          aria-valuemax="100"
+        >
+          <span class="boot-progress-bar" :style="{ width: bootProgress + '%' }"></span>
         </div>
         <!-- 提示语轮播：首次开屏时间较长，几条实用提示轮流显示 -->
         <Transition name="boot-fade" mode="out-in">
@@ -73,7 +80,7 @@ import MusicLyrics from '@/components/music/MusicLyrics.vue'
 import { connect, disconnect } from '@/composables/useSSE'
 import { useAutoUpdate } from '@/composables/useAutoUpdate'
 import { requestNotificationPermission } from '@/composables/useNotification'
-import { dbReady } from '@/local/db'
+import { dbReady, onDbProgress } from '@/local/db'
 import { useSettingsStore } from '@/stores/settings'
 import { useContactsStore } from '@/stores/contacts'
 import { useCompanionStore } from '@/stores/companion'
@@ -91,6 +98,14 @@ const uiStore = useUiStore()
 /* 数据库就绪状态：就绪前显示骨架屏，失败显示错误页 */
 const dbOk = ref(false)
 const dbErr = ref(false)
+
+/* 开屏进度条：db 初始化各阶段 0-100，就绪后满格并稍停片刻再进入应用 */
+const bootProgress = ref(0)
+let offDbProgress = null
+onMounted(() => {
+  offDbProgress = onDbProgress((p) => { bootProgress.value = p })
+})
+onUnmounted(() => { if (offDbProgress) { offDbProgress(); offDbProgress = null } })
 
 /* 开屏提示语轮播：骨架屏期间循环显示，db 就绪/失败即停 */
 const bootMsgs = [
@@ -117,8 +132,12 @@ onUnmounted(stopBootMsgs)
 
 dbReady
   .then(() => {
-    dbOk.value = true
-    boot()
+    /* 先让进度条平滑涨到 100%，满格瞬间即加载完成、进入应用 */
+    bootProgress.value = 100
+    setTimeout(() => {
+      dbOk.value = true
+      boot()
+    }, 420)
   })
   .catch((e) => {
     console.error('[app] 数据库初始化失败', e)
@@ -322,7 +341,7 @@ html, body { overscroll-behavior-x: none; touch-action: pan-y; }
   gap: 16px;
   background: var(--bg-screen);
 }
-/* 不定态进度条：首屏耗时较长，用滑动高光表示「加载中」 */
+/* 确定性进度条：宽度与 bootProgress 绑定，满格时即数据就绪 */
 .boot-progress {
   width: 176px;
   height: 6px;
@@ -332,18 +351,11 @@ html, body { overscroll-behavior-x: none; touch-action: pan-y; }
 }
 .boot-progress-bar {
   display: block;
-  width: 42%;
+  width: 0;
   height: 100%;
   border-radius: 999px;
-  background: linear-gradient(90deg, transparent, var(--accent) 55%, transparent);
-  animation: bootSlide 1.25s ease-in-out infinite;
-}
-@keyframes bootSlide {
-  0% { transform: translateX(-110%); }
-  100% { transform: translateX(240%); }
-}
-@media (prefers-reduced-motion: reduce) {
-  .boot-progress-bar { animation: none; width: 100%; opacity: 0.55; }
+  background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 72%, transparent), var(--accent));
+  transition: width 0.45s ease;
 }
 /* 提示语轮播的淡入淡出 */
 .boot-fade-enter-active,
