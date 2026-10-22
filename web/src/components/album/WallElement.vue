@@ -23,12 +23,15 @@
     <!-- 自定义相框：覆盖在内容之上，随元素一起缩放旋转 -->
     <img v-if="customFrameSrc" :src="customFrameSrc" class="we-frame" alt="" draggable="false" />
 
-    <!-- 选中态：左上角手柄=旋转，右下角手柄=缩放+旋转（可拖动） -->
-    <span v-if="selected && editable" class="we-corner tl" role="slider" aria-label="旋转" @pointerdown.stop="onHandleDown($event, 'tl')"></span>
-    <span v-if="selected && editable" class="we-corner br" role="slider" aria-label="缩放旋转" @pointerdown.stop="onHandleDown($event, 'br')"></span>
+    <!-- 锁定角标：元素锁定时常驻显示 -->
+    <span v-if="el.locked" class="we-lock" aria-label="已锁定"><AppIcon name="lock" :size="12" color="#fff" /></span>
+
+    <!-- 选中态：左上角手柄=旋转，右下角手柄=缩放+旋转（可拖动）；锁定后不显示手柄 -->
+    <span v-if="selected && editable && !el.locked" class="we-corner tl" role="slider" aria-label="旋转" @pointerdown.stop="onHandleDown($event, 'tl')"></span>
+    <span v-if="selected && editable && !el.locked" class="we-corner br" role="slider" aria-label="缩放旋转" @pointerdown.stop="onHandleDown($event, 'br')"></span>
 
     <!-- 选中态：四边中点拉伸箭头，拖动单独调整宽 / 高（对边保持不动） -->
-    <template v-if="selected && editable">
+    <template v-if="selected && editable && !el.locked">
       <span class="we-edge t" role="slider" aria-label="上下拉伸" @pointerdown.stop="onEdgeDown($event, 't')"><i>↕</i></span>
       <span class="we-edge b" role="slider" aria-label="上下拉伸" @pointerdown.stop="onEdgeDown($event, 'b')"><i>↕</i></span>
       <span class="we-edge l" role="slider" aria-label="左右拉伸" @pointerdown.stop="onEdgeDown($event, 'l')"><i>↔</i></span>
@@ -39,6 +42,7 @@
 
 <script setup>
 import { computed, ref, watch, onMounted, nextTick } from 'vue'
+import AppIcon from '@/components/common/AppIcon.vue'
 import { fontCss, STICKY_COLORS, noteBg } from './presets'
 
 const props = defineProps({
@@ -244,6 +248,8 @@ function onDown(e) {
   try { e.target.setPointerCapture(e.pointerId) } catch (_) {}
   pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
   emit('select')
+  // 锁定：仅允许选中（便于解锁），禁止拖动 / 双指变换
+  if (props.el.locked) { dragStart = null; pinch = null; return }
   if (pointers.size === 1) {
     dragStart = { x: e.clientX, y: e.clientY, elX: props.el.x, elY: props.el.y }
     pinch = null
@@ -268,6 +274,7 @@ function onDown(e) {
    br：二合一——沿径向拖动缩放，沿切向拖动旋转 */
 function onHandleDown(e, which) {
   if (!props.editable) return
+  if (props.el.locked) return
   try { e.target.setPointerCapture(e.pointerId) } catch (_) {}
   emit('select')
   const box = e.currentTarget.closest('.we')
@@ -318,6 +325,7 @@ function applyHandle(e) {
 let edge = null
 function onEdgeDown(e, which) {
   if (!props.editable) return
+  if (props.el.locked) return
   props.el._fresh = false
   try { e.target.setPointerCapture(e.pointerId) } catch (_) {}
   emit('select')
@@ -484,6 +492,7 @@ function onUp(e) {
 
 function onDblClick() {
   if (!props.editable) return
+  if (props.el.locked) return
   // 只有文字元素可双击编辑；图片/贴纸双击容易误触改写内容
   if (props.el.type !== 'text') return
   emit('edit-text', props.el)
@@ -592,6 +601,23 @@ function fitTextHeight(edge) {
   box-sizing: border-box;
   overflow: hidden;
 }
+/* 锁定角标：左上角小锁头，锁定即显示 */
+.we-lock {
+  position: absolute;
+  left: -8px;
+  top: -8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(90, 80, 70, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 6;
+  pointer-events: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+}
+
 .we-corner {
   position: absolute;
   width: 32px;

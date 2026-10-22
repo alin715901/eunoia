@@ -86,6 +86,8 @@ const ICONS = {
   block: '<circle cx="12" cy="12" r="8.5"/><path d="M6 6l12 12"/>',
   // 删除：垃圾桶
   trash: '<path d="M4 7h16"/><path d="M9.5 7V4.5h5V7"/><path d="M6.5 7l1 13h9l1-13"/>',
+  lock: '<rect x="4.8" y="10.4" width="14.4" height="9.6" rx="2.6"/><path d="M8.2 10.4V7.8a3.8 3.8 0 0 1 7.6 0v2.6"/><circle cx="12" cy="15.2" r="1.5"/>',
+  unlock: '<rect x="4.8" y="10.4" width="14.4" height="9.6" rx="2.6"/><path d="M8.2 10.4V7.8a3.8 3.8 0 0 1 3.8-3.8 3.8 3.8 0 0 1 3.8 3.8"/><circle cx="12" cy="15.2" r="1.5"/>',
   // 状态栏：信号 + 电池
   signal: '<path d="M5 17v-2.5M9.5 17v-5M14 17v-7.5M18.5 17V6"/>',
   battery: '<rect x="3" y="8" width="15" height="8" rx="2.5"/><path d="M20.5 11v2"/><rect x="5" y="10" width="8" height="4" rx="1" fill="currentColor" stroke="none"/>',

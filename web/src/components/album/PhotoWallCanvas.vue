@@ -45,7 +45,10 @@
       <button class="ctx-btn" @click="zOp('down')">下移</button>
       <button class="ctx-btn" @click="zOp('back')">置底</button>
       <button v-if="selEl.type === 'text'" class="ctx-btn" @click="openTextSheet(true)">设置</button>
-      <button v-else-if="selEl.type === 'image'" class="ctx-btn" @click="frameSheet = true">相框</button>
+      <button v-else-if="selEl.type === 'image'" class="ctx-btn" @click="openFrameSheet">相框</button>
+      <button class="ctx-btn" :class="{ on: selEl.locked }" @click="toggleLock">
+        <AppIcon :name="selEl.locked ? 'lock' : 'unlock'" :size="12" />{{ selEl.locked ? '解锁' : '锁定' }}
+      </button>
       <button class="ctx-btn danger" @click="removeSelected">删除</button>
     </div>
 
@@ -551,13 +554,33 @@ function zOp(op) {
   scheduleSave()
 }
 
+function openFrameSheet() {
+  if (selEl.value && selEl.value.locked) {
+    toast.pushToast({ type: 'info', title: '元素已锁定', text: '先点「解锁」才能修改' })
+    return
+  }
+  frameSheet.value = true
+}
+
 function setFrame(f) {
   if (selEl.value) selEl.value.frame = f
   frameSheet.value = false
   scheduleSave()
 }
 
+/* 锁定 / 解锁：锁定的元素不可拖动、拉伸、旋转、编辑、删除（仅可选中后解锁） */
+function toggleLock() {
+  if (!selEl.value) return
+  selEl.value.locked = selEl.value.locked ? 0 : 1
+  scheduleSave()
+  toast.pushToast({ type: 'info', title: selEl.value.locked ? '已锁定' : '已解锁', text: selEl.value.locked ? '元素不可操作，点「解锁」恢复' : '' })
+}
+
 function removeSelected() {
+  if (selEl.value && selEl.value.locked) {
+    toast.pushToast({ type: 'info', title: '元素已锁定', text: '先点「解锁」才能删除' })
+    return
+  }
   elements.value = elements.value.filter((e) => e._k !== selectedId.value)
   selectedId.value = null
   scheduleSave()
@@ -573,6 +596,7 @@ async function load() {
     frame: r.frame || '',
     sx: Number(r.stretch_x) || 1,
     sy: Number(r.stretch_y) || 1,
+    locked: r.locked ? 1 : 0,
     _k: seq++
   }))
   await loadBgPresets()
@@ -680,6 +704,7 @@ function addElement(type, content, meta = {}) {
     font_weight: Number(meta.font_weight) || 400,
     color: meta.color || '',
     italic: meta.italic ? 1 : 0,
+    locked: 0,
     _fresh: !!meta.fresh
   }
   /* 长句文字：初始按最小宽度呈现（预估 sx，挂载后 WallElement 会以实测自然宽校准） */
@@ -703,6 +728,10 @@ const curFontWeight = computed(() => Number(textEditMode.value ? selEl.value?.fo
 const curItalic = computed(() => (textEditMode.value ? selEl.value?.italic : addStyle.value.italic) || false)
 const curColor = computed(() => (textEditMode.value ? selEl.value?.color : addStyle.value.color) || '')
 function openTextSheet(edit) {
+  if (edit && selEl.value && selEl.value.locked) {
+    toast.pushToast({ type: 'info', title: '元素已锁定', text: '先点「解锁」才能修改' })
+    return
+  }
   textEditMode.value = edit
   textCat.value = 'font'
   if (!edit) addStyle.value = { font_size: 18, font_weight: 400, color: '', italic: false }
@@ -1167,7 +1196,8 @@ async function flushSave() {
     font_size: Number(e.font_size) || 18,
     font_weight: Number(e.font_weight) || 400,
     color: e.color || '',
-    italic: e.italic ? 1 : 0
+    italic: e.italic ? 1 : 0,
+    locked: e.locked ? 1 : 0
   }))
   try {
     await saveWallElements(props.wallId, payload)
@@ -1304,6 +1334,7 @@ defineExpose({ save: flushSave })
 }
 .ctx-btn:active { background: var(--accent-soft); }
 .ctx-btn.danger { color: #d2554f; }
+.ctx-btn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 
 /* 底部工具栏 */
 .pwc-tools {

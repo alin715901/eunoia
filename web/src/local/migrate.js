@@ -324,6 +324,8 @@ export function migrate() {
   addCol('photo_wall_elements', 'font_weight', 'INTEGER DEFAULT 400')
   addCol('photo_wall_elements', 'color', "TEXT DEFAULT ''")
   addCol('photo_wall_elements', 'italic', 'INTEGER DEFAULT 0')
+  // 元素锁定：锁定后不可拖动/拉伸/旋转/编辑/删除（只能选中后解锁）
+  addCol('photo_wall_elements', 'locked', 'INTEGER DEFAULT 0')
   // 相册列表编辑弹窗可手动换封面：cover_manual=1 时钉住用户选的封面，
   // 装饰保存不再用「最靠左图片」自动覆盖（移除封面后恢复自动）
   addCol('photo_walls', 'cover_manual', 'INTEGER DEFAULT 0')

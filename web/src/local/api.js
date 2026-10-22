@@ -1703,11 +1703,11 @@ export async function saveWallElements(wallId, elements = []) {
   const wid = Number(wallId)
   const tx = db.transaction(() => {
     db.prepare('DELETE FROM photo_wall_elements WHERE wall_id=?').run(wid)
-    const ins = db.prepare(`INSERT INTO photo_wall_elements(wall_id, type, x, y, scale, rotation, z, content, font, frame, stretch_x, stretch_y, font_size, font_weight, color, italic, created_at)
-      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
+    const ins = db.prepare(`INSERT INTO photo_wall_elements(wall_id, type, x, y, scale, rotation, z, content, font, frame, stretch_x, stretch_y, font_size, font_weight, color, italic, locked, created_at)
+      VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`)
     const now = Math.floor(Date.now() / 1000)
     for (const e of elements) {
-      ins.run(wid, e.type, Number(e.x) || 0, Number(e.y) || 0, Number(e.scale) || 1, Number(e.rotation) || 0, Number(e.z) || 0, e.content || '', e.font || '', e.frame || '', Number(e.stretch_x) || 1, Number(e.stretch_y) || 1, Number(e.font_size) || 18, Number(e.font_weight) || 400, e.color || '', e.italic ? 1 : 0, now)
+      ins.run(wid, e.type, Number(e.x) || 0, Number(e.y) || 0, Number(e.scale) || 1, Number(e.rotation) || 0, Number(e.z) || 0, e.content || '', e.font || '', e.frame || '', Number(e.stretch_x) || 1, Number(e.stretch_y) || 1, Number(e.font_size) || 18, Number(e.font_weight) || 400, e.color || '', e.italic ? 1 : 0, e.locked ? 1 : 0, now)
     }
   })
   tx()
