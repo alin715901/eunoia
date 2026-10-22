@@ -3,19 +3,21 @@
     <!-- 数据库就绪前：骨架屏（JS 下载完即显示，wasm/init 在后台跑） -->
     <div v-if="!dbOk && !dbErr" class="phone-frame boot-frame">
       <div class="phone-screen boot-screen">
-        <div class="boot-brand">Eunoia</div>
-        <div class="boot-heart">
-          <svg viewBox="0 0 32 29" width="34" height="30" aria-hidden="true">
-            <path d="M16 28.5S1.5 19.6 1.5 9.9C1.5 4.9 5.5 1.5 9.6 1.5c2.7 0 5.2 1.3 6.4 3.4 1.2-2.1 3.7-3.4 6.4-3.4 4.1 0 8.1 3.4 8.1 8.4 0 9.7-14.5 18.6-14.5 18.6z"/>
-          </svg>
+        <BootBrand />
+        <!-- 进度条（开屏耗时较长，用不定态滑动条表示加载中） -->
+        <div class="boot-progress" role="progressbar" aria-label="加载进度">
+          <span class="boot-progress-bar"></span>
         </div>
-        <div class="boot-text">正在恢复数据…</div>
+        <!-- 提示语轮播：首次开屏时间较长，几条实用提示轮流显示 -->
+        <Transition name="boot-fade" mode="out-in">
+          <div class="boot-text" :key="bootMsgIdx">{{ bootMsgs[bootMsgIdx] }}</div>
+        </Transition>
       </div>
     </div>
     <!-- 数据库初始化失败：错误页 + 重试 -->
     <div v-else-if="dbErr" class="phone-frame boot-frame">
       <div class="phone-screen boot-screen">
-        <div class="boot-brand">Eunoia</div>
+        <BootBrand />
         <div class="boot-text boot-err-text">数据初始化失败</div>
         <div class="boot-tip">可能是网络不佳导致组件加载失败，请重试</div>
         <button class="boot-retry" @click="reload">重新加载</button>
@@ -62,6 +64,7 @@
 import { onMounted, onUnmounted, computed, watch, ref } from 'vue'
 import { useRoute } from 'vue-router'
 import BottomTabBar from '@/components/layout/BottomTabBar.vue'
+import BootBrand from '@/components/layout/BootBrand.vue'
 import Toast from '@/components/common/Toast.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import CallOverlay from '@/components/chat/CallOverlay.vue'
@@ -88,6 +91,30 @@ const uiStore = useUiStore()
 /* 数据库就绪状态：就绪前显示骨架屏，失败显示错误页 */
 const dbOk = ref(false)
 const dbErr = ref(false)
+
+/* 开屏提示语轮播：骨架屏期间循环显示，db 就绪/失败即停 */
+const bootMsgs = [
+  '正在恢复数据…',
+  '本网站不收取任何费用',
+  '建议定期导出数据 以免数据丢失',
+  '心迹为独立网站 请单独导出或导入数据'
+]
+const bootMsgIdx = ref(0)
+let bootMsgTimer = null
+function startBootMsgs() {
+  stopBootMsgs()
+  bootMsgTimer = setInterval(() => {
+    bootMsgIdx.value = (bootMsgIdx.value + 1) % bootMsgs.length
+  }, 2600)
+}
+function stopBootMsgs() {
+  if (bootMsgTimer) { clearInterval(bootMsgTimer); bootMsgTimer = null }
+}
+watch(dbOk, (v) => { if (v) stopBootMsgs() })
+watch(dbErr, (v) => { if (v) stopBootMsgs() })
+onMounted(startBootMsgs)
+onUnmounted(stopBootMsgs)
+
 dbReady
   .then(() => {
     dbOk.value = true
@@ -292,32 +319,44 @@ html, body { overscroll-behavior-x: none; touch-action: pan-y; }
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 14px;
+  gap: 16px;
   background: var(--bg-screen);
 }
-.boot-brand {
-  font-family: var(--font-serif);
-  font-size: 30px;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  color: var(--accent);
+/* 不定态进度条：首屏耗时较长，用滑动高光表示「加载中」 */
+.boot-progress {
+  width: 176px;
+  height: 6px;
+  border-radius: 999px;
+  background: color-mix(in oklab, var(--accent) 15%, transparent);
+  overflow: hidden;
 }
-.boot-heart svg path {
-  fill: var(--accent);
-  animation: bootBeat 1.2s ease-in-out infinite;
-  transform-origin: center 60%;
+.boot-progress-bar {
+  display: block;
+  width: 42%;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, var(--accent) 55%, transparent);
+  animation: bootSlide 1.25s ease-in-out infinite;
 }
-@keyframes bootBeat {
-  0%, 100% { transform: scale(1); opacity: 0.85; }
-  14% { transform: scale(1.18); opacity: 1; }
-  28% { transform: scale(1); opacity: 0.85; }
-  42% { transform: scale(1.12); opacity: 1; }
-  70% { transform: scale(1); opacity: 0.85; }
+@keyframes bootSlide {
+  0% { transform: translateX(-110%); }
+  100% { transform: translateX(240%); }
 }
+@media (prefers-reduced-motion: reduce) {
+  .boot-progress-bar { animation: none; width: 100%; opacity: 0.55; }
+}
+/* 提示语轮播的淡入淡出 */
+.boot-fade-enter-active,
+.boot-fade-leave-active { transition: opacity 0.32s ease, transform 0.32s ease; }
+.boot-fade-enter-from { opacity: 0; transform: translateY(7px); }
+.boot-fade-leave-to { opacity: 0; transform: translateY(-7px); }
 .boot-text {
   font-size: 13px;
   color: var(--text-soft);
   letter-spacing: 0.06em;
+  text-align: center;
+  max-width: 260px;
+  line-height: 1.6;
 }
 .boot-err-text {
   font-size: 16px;
