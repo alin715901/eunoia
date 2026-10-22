@@ -217,6 +217,7 @@
         <div class="st-cat-row">
           <button class="st-cat" :class="{ on: textCat === 'font' }" @click="textCat = 'font'">字体</button>
           <button class="st-cat" :class="{ on: textCat === 'note' }" @click="textCat = 'note'">便签</button>
+          <button class="st-cat" :class="{ on: textCat === 'size' }" @click="textCat = 'size'">字号</button>
         </div>
         <div class="st-scroll">
           <!-- 字体：内置字体宫格，点选后输入文字（设置模式直接应用） -->
@@ -228,6 +229,42 @@
               :style="{ fontFamily: f.css }"
               @click="pickFont(f.key)"
             >{{ f.name }}</button>
+          </div>
+          <!-- 字号：字号大小 / 粗细 / 颜色 / 倾斜（设置模式实时应用到选中元素；新增模式暂存，随文字一起上墙） -->
+          <div v-else-if="textCat === 'size'" class="text-style-panel">
+            <div class="ts-label">字号</div>
+            <div class="ts-sizes">
+              <button
+                v-for="s in FONT_SIZES"
+                :key="s"
+                class="ts-size"
+                :class="{ on: curFontSize === s }"
+                :style="{ fontSize: Math.min(26, s * 0.7) + 'px' }"
+                @click="applyTextStyle({ font_size: s })"
+              >{{ s }}</button>
+            </div>
+            <div class="ts-label">粗细</div>
+            <div class="ts-row">
+              <button class="ts-opt" :class="{ on: curFontWeight === 400 }" @click="applyTextStyle({ font_weight: 400 })">常规</button>
+              <button class="ts-opt" :class="{ on: curFontWeight === 700 }" @click="applyTextStyle({ font_weight: 700 })">加粗</button>
+            </div>
+            <div class="ts-label">倾斜</div>
+            <div class="ts-row">
+              <button class="ts-opt" :class="{ on: !curItalic }" @click="applyTextStyle({ italic: false })">正常</button>
+              <button class="ts-opt ts-italic" :class="{ on: curItalic }" @click="applyTextStyle({ italic: true })">斜体</button>
+            </div>
+            <div class="ts-label">颜色</div>
+            <div class="ts-colors">
+              <button
+                v-for="c in TEXT_COLORS"
+                :key="c"
+                class="ts-color"
+                :class="{ on: curColor === c }"
+                :style="{ background: c }"
+                :aria-label="'颜色 ' + c"
+                @click="applyTextStyle({ color: c })"
+              ></button>
+            </div>
           </div>
           <!-- 便签：内置颜色 + 自定义上传便签纸（不限量；上传后自动存预设） -->
           <div v-else class="sticker-grid">
@@ -638,8 +675,15 @@ function addElement(type, content, meta = {}) {
     z: elements.value.length + 1,
     content: content || '',
     font: meta.font || '',
-    frame: meta.frame || ''
+    frame: meta.frame || '',
+    font_size: Number(meta.font_size) || 18,
+    font_weight: Number(meta.font_weight) || 400,
+    color: meta.color || '',
+    italic: meta.italic ? 1 : 0,
+    _fresh: !!meta.fresh
   }
+  /* 长句文字：初始按最小宽度呈现（预估 sx，挂载后 WallElement 会以实测自然宽校准） */
+  if (meta.sx) el.sx = meta.sx
   elements.value.push(el)
   selectedId.value = el._k
   scheduleSave()
@@ -647,11 +691,21 @@ function addElement(type, content, meta = {}) {
 
 /* ── 文字：先选样式（字体 / 便签）再输入内容 ──
    textEditMode：false = 底部工具栏「文字」新增；true = 选中文字元素点「设置」修改样式 */
-const textCat = ref('font') // 'font' 字体 | 'note' 便签
+const textCat = ref('font') // 'font' 字体 | 'note' 便签 | 'size' 字号
 const textEditMode = ref(false)
+/* 新增模式下「字号」分类的暂存选择（点字体/便签即上墙，字号等样式随文字一起带上） */
+const addStyle = ref({ font_size: 18, font_weight: 400, color: '', italic: false })
+const FONT_SIZES = [14, 18, 24, 32, 40]
+const TEXT_COLORS = ['#4a4036', '#333333', '#e05656', '#e8833a', '#4a7dbd', '#58a05c', '#9b6dc6', '#e87a9c']
+/* 面板高亮：设置模式取选中元素当前值，新增模式取暂存值 */
+const curFontSize = computed(() => (textEditMode.value ? selEl.value?.font_size : addStyle.value.font_size) || 18)
+const curFontWeight = computed(() => Number(textEditMode.value ? selEl.value?.font_weight : addStyle.value.font_weight) || 400)
+const curItalic = computed(() => (textEditMode.value ? selEl.value?.italic : addStyle.value.italic) || false)
+const curColor = computed(() => (textEditMode.value ? selEl.value?.color : addStyle.value.color) || '')
 function openTextSheet(edit) {
   textEditMode.value = edit
   textCat.value = 'font'
+  if (!edit) addStyle.value = { font_size: 18, font_weight: 400, color: '', italic: false }
   textSheet.value = true
 }
 /* 文字弹窗每次打开重读便签预设：keep-alive 复用实例时不会拿到陈旧列表 */
@@ -673,8 +727,18 @@ function pickNote(frame) {
   scheduleSave()
 }
 
-/* ── 自定义便签纸：上传即存（按 path 去重），不限数量 ── */
-const notePresets = ref([])
+/* 字号分类：设置模式实时应用到选中元素（弹窗不关，可连续调）；新增模式暂存 */
+function applyTextStyle(patch) {
+  if (textEditMode.value) {
+    if (!selEl.value) return
+    Object.assign(selEl.value, patch)
+    scheduleSave()
+  } else {
+    Object.assign(addStyle.value, patch)
+  }
+}
+
+/* ── 自定义便签纸：上传即存（按 path 去重），不限数量 ── */const notePresets = ref([])
 async function loadNotePresets() {
   try {
     notePresets.value = await getWallNotePresets()
@@ -725,7 +789,16 @@ async function addTextWith(frame, font) {
   textSheet.value = false
   const text = await promptDialog({ title: frame ? '写便利贴' : '添加文字', text: '写下想留在墙上的话', placeholder: '如：今天也很想你', okText: '添加' })
   if (text === null) return
-  addElement('text', text.trim() || '新留言', { font, frame })
+  const t = text.trim() || '新留言'
+  /* 长句初始按最小宽度（10 个字）呈现：_fresh 标记让 WallElement 首次实测自然宽后
+     把框宽收到 10 字（预估只做兜底），用户后续可自行拉宽（不会一上墙就撑满拖不动） */
+  const fs = addStyle.value.font_size || 18
+  const longestLine = Math.max(...t.split('\n').map((s) => s.length), 1)
+  const estNatW = longestLine * fs
+  const minW = 10 * fs
+  const meta = { font, frame, fresh: true, ...addStyle.value }
+  if (estNatW > minW) meta.sx = Math.max(0.05, minW / estNatW)
+  addElement('text', t, meta)
 }
 
 async function editText(el) {
@@ -1090,7 +1163,11 @@ async function flushSave() {
     font: e.font || '',
     frame: e.frame || '',
     stretch_x: Number(e.sx) || 1,
-    stretch_y: Number(e.sy) || 1
+    stretch_y: Number(e.sy) || 1,
+    font_size: Number(e.font_size) || 18,
+    font_weight: Number(e.font_weight) || 400,
+    color: e.color || '',
+    italic: e.italic ? 1 : 0
   }))
   try {
     await saveWallElements(props.wallId, payload)
@@ -1413,6 +1490,53 @@ defineExpose({ save: flushSave })
   -webkit-tap-highlight-color: transparent;
 }
 .font-cell:active { border-color: var(--accent); color: var(--accent); }
+
+/* ── 文字设置 → 字号：字号大小 / 粗细 / 倾斜 / 颜色 ── */
+.text-style-panel { display: flex; flex-direction: column; gap: 8px; align-content: start; }
+.ts-label { font-size: 12px; color: var(--text-soft); margin-top: 2px; }
+.ts-sizes {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 8px;
+}
+.ts-size {
+  aspect-ratio: 1;
+  border: 1.5px solid var(--border);
+  background: var(--bg-screen);
+  border-radius: 10px;
+  color: var(--text);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ts-size.on { border-color: var(--accent); color: var(--accent); background: rgba(0, 0, 0, 0.04); }
+.ts-row { display: flex; gap: 8px; }
+.ts-opt {
+  flex: 1;
+  height: 38px;
+  border: 1.5px solid var(--border);
+  background: var(--bg-screen);
+  border-radius: 10px;
+  font-size: 13px;
+  color: var(--text);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ts-opt.ts-italic { font-style: italic; }
+.ts-opt.on { border-color: var(--accent); color: var(--accent); background: rgba(0, 0, 0, 0.04); }
+.ts-colors {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 8px;
+}
+.ts-color {
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.08);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.ts-color.on { border-color: var(--accent); }
 .note-cell {
   position: relative;
   aspect-ratio: 1;

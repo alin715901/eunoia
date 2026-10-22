@@ -94,13 +94,19 @@ const stickyBg = computed(() => (noteSrc.value
 
 const textStyle = computed(() => ({
   fontFamily: fontCss(props.el.font),
+  fontSize: (props.el.font_size || 18) + 'px',
+  fontWeight: Number(props.el.font_weight) || 400,
+  fontStyle: props.el.italic ? 'italic' : 'normal',
   // 手账深色墨水：浅色底纸上可读，便利贴内同样清晰
-  color: '#4a4036'
+  color: props.el.color || '#4a4036'
 }))
 
 /* 纯文字元素（非便签纸）：拉伸 = 改文字框尺寸而非缩放字形。
    拉宽/拉窄只影响框宽 → 文字按框宽自动换行（两行变一行 / 一行变两行），字体大小不变 */
 const isPlain = computed(() => props.el.type === 'text' && !frameCls.value)
+/* 文字最小框宽 = 10 个字（CJK 字宽≈字号）：纯文字长句先按最小宽度呈现，拉伸不小于此宽 */
+const fsPx = computed(() => Number(props.el.font_size) || 18)
+const minTextW = computed(() => 10 * fsPx.value)
 
 /* 便签纸文字（内置手账纸面 / 自定义上传纸）：拉伸 = 纸面跟框拉伸（背景 100% 铺满），
    字体大小固定不变，文字按纸面框宽自动换行（拉宽时下一行文字补上来，字形不变形） */
@@ -140,13 +146,25 @@ function measureText() {
   node.parentNode.appendChild(clone)
   nat.value = { w: clone.offsetWidth || 0, h: clone.offsetHeight || 0 }
   clone.remove()
+  calibrateFresh()
+}
+/* 新增长句文字：首次实测自然宽后，把框宽收到 10 个字（_fresh 仅存在内存，不入库；
+   用户一动拉伸即取消校准，避免和手势打架） */
+function calibrateFresh() {
+  const el = props.el
+  if (!el._fresh || !isPlain.value) return
+  el._fresh = false
+  if (nat.value && nat.value.w && nat.value.w * (el.sx || 1) > minTextW.value) {
+    el.sx = minTextW.value / nat.value.w
+  }
+  emit('change')
 }
 onMounted(() => {
   nextTick(measureText)
   /* 自定义字体异步加载完成后自然宽会变：显式触发字库加载（带正文文本），
      就绪后重测；fonts.ready 兜底再测一次 */
   if (typeof document !== 'undefined' && document.fonts && document.fonts.load) {
-    const spec = '18px ' + fontCss(props.el.font)
+    const spec = fsPx.value + 'px ' + fontCss(props.el.font)
     document.fonts.load(spec, props.el.content || '').then(() => measureText()).catch(() => {})
   }
   if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {
@@ -157,7 +175,7 @@ onMounted(() => {
   ;[300, 800, 1800].forEach((t) => setTimeout(measureText, t))
 })
 watch(
-  () => [props.el.content, props.el.font],
+  () => [props.el.content, props.el.font, props.el.font_size, props.el.font_weight, props.el.italic],
   () => { nextTick(measureText) }
 )
 /* 相框切换（如纯文字 ↔ 便签纸）后自然尺寸基准不同，需重测 */
@@ -176,24 +194,22 @@ const styleObj = computed(() => {
   if (isPlain.value) {
     // 文字：拉伸改框不改字 —— 宽度驱动换行，高度只做占位，字形不再被拉扁/拉宽
     if (nat.value && nat.value.w) {
-      o.width = Math.max(24, nat.value.w * (props.el.sx || 1)) + 'px'
+      o.width = Math.max(minTextW.value, nat.value.w * (props.el.sx || 1)) + 'px'
       o.minHeight = Math.max(20, nat.value.h * (props.el.sy || 1)) + 'px'
     } else {
       o.width = 'max-content'
     }
     o.transform = `translate(${props.el.x}px, ${props.el.y}px) rotate(${props.el.rotation || 0}deg) scale(${props.el.scale || 1})`
-    o.fontSize = '18px'
     return o
   }
   if (isStickyText.value) {
     // 便签纸文字：纸面跟框拉伸（宽=自然宽×sx），字体固定、文字按框宽换行；
     // 高度 = 内容自适应，minHeight=自然高×sy 保底（拉宽换行减少时纸面不无端缩短）
     if (nat.value && nat.value.w) {
-      o.width = Math.max(72, nat.value.w * (props.el.sx || 1)) + 'px'
+      o.width = Math.max(minTextW.value, nat.value.w * (props.el.sx || 1)) + 'px'
       o.minHeight = Math.max(72, nat.value.h * (props.el.sy || 1)) + 'px'
     }
     o.transform = `translate(${props.el.x}px, ${props.el.y}px) rotate(${props.el.rotation || 0}deg) scale(${props.el.scale || 1})`
-    o.fontSize = '18px'
     return o
   }
   // 图片/贴纸：四边拉伸 = 横/纵缩放系数（sx/sy），与整体 scale 相乘后分别作用于两轴
@@ -302,6 +318,7 @@ function applyHandle(e) {
 let edge = null
 function onEdgeDown(e, which) {
   if (!props.editable) return
+  props.el._fresh = false
   try { e.target.setPointerCapture(e.pointerId) } catch (_) {}
   emit('select')
   const box = e.currentTarget.closest('.we')
@@ -332,6 +349,8 @@ function onEdgeDown(e, which) {
     sy0: props.el.sy || 1,
     natW,
     natH,
+    // 纯文字最小宽度 = 10 个字（拖动时宽度不小于此）
+    minW: minTextW.value,
     // 当前实际布局尺寸（换行后内容可能高于 minHeight，以此为拉伸基准避免死区）
     curW,
     curH,
@@ -364,7 +383,9 @@ function applyEdge(e) {
        让手上的那条边跟手、对边保持不动 */
     if (edge.which === 'l' || edge.which === 'r') {
       const dw = edge.which === 'r' ? dx : -dx // 本侧边引起的宽度变化（墙坐标）
-      el.sx = clamp((edge.curW + dw) / edge.natW, 0.3, 6)
+      // 纯文字最小宽度 = 10 个字；便签纸保持 0.3 系数下限
+      const minSx = isPlain.value ? edge.minW / edge.natW : 0.3
+      el.sx = clamp((edge.curW + dw) / edge.natW, minSx, 6)
       if (edge.which === 'l') {
         el.x = edge.ex0 - dw * cos
         el.y = edge.ey0 - dw * sin
@@ -571,18 +592,6 @@ function fitTextHeight(edge) {
   box-sizing: border-box;
   overflow: hidden;
 }
-.we.sticky .we-sticky::after {
-  /* 右下角折角 */
-  content: '';
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  border-style: solid;
-  border-width: 0 0 16px 16px;
-  border-color: transparent transparent rgba(0, 0, 0, 0.1) transparent;
-  filter: drop-shadow(-1px -1px 1px rgba(0, 0, 0, 0.06));
-}
-
 .we-corner {
   position: absolute;
   width: 32px;

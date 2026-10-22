@@ -51,7 +51,7 @@ export const STICKY_COLORS = ['#fff3b0', '#ffd9e0', '#d7f0ff', '#ddf7d3', '#efe1
    波浪/斜纹/双虚框/信封/云朵/角花；都带胶带或纸纹，避免纯色块的死板感）。参考手账风便签图。
    viewBox 100×100 + preserveAspectRatio=none，任意长宽都整张铺满（线条随手势拉伸，符合纸质观感）。 ── */
 function noteData(inner) {
-  const s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" preserveAspectRatio="none">${inner}</svg>`
+  const s = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="100" height="100" preserveAspectRatio="none">${inner}</svg>`
   return 'data:image/svg+xml,' + encodeURIComponent(s)
 }
 /* 顶部/角落的和纸胶带：半透明斜贴小条 */
@@ -228,7 +228,8 @@ export const STICKER_CATEGORIES = [
   { name: '记号' },
   { name: '涂鸦' },
   { name: '植物' },
-  { name: '动物' }
+  { name: '动物' },
+  { name: '便签' }
 ]
 
 /* ── 内置贴纸（按分类组织的透明 PNG 观感 SVG data URL） ── */
@@ -284,3 +285,11 @@ export const STICKERS = [
   { name: 'fish', cat: '动物', data: svgData(`<path d="M7.5 12c2-3 5.5-4.4 8.8-3.8 2.4.4 4 2 4.7 3.8-.7 1.8-2.3 3.4-4.7 3.8-3.3.6-6.8-.8-8.8-3.8z" fill="#7fb8d9"/><path d="M8 12 3.5 8v8z" fill="#5a94b8"/><circle cx="17" cy="11" r="0.9" fill="#2c4a5e"/>`) },
   { name: 'butterfly', cat: '动物', data: svgData(`<ellipse cx="7.5" cy="9" rx="4" ry="5" fill="#c79be0" transform="rotate(-20 7.5 9)"/><ellipse cx="16.5" cy="9" rx="4" ry="5" fill="#c79be0" transform="rotate(20 16.5 9)"/><ellipse cx="8" cy="16" rx="3.2" ry="3.8" fill="#b183d1" transform="rotate(-15 8 16)"/><ellipse cx="16" cy="16" rx="3.2" ry="3.8" fill="#b183d1" transform="rotate(15 16 16)"/><rect x="11.2" y="6" width="1.6" height="12" rx="0.8" fill="#5a4a5e"/><path d="M11.5 6c-1-1.5-2.5-2-3.5-2M12.5 6c1-1.5 2.5-2 3.5-2" stroke="#5a4a5e" stroke-width="0.7" fill="none" stroke-linecap="round"/>`) }
 ]
+
+/* ── 「便签」贴纸分类：16 款内置便签纸面复制而来（纯装饰贴纸上墙用，默认 1:1 方形，
+   选中后四边可任意拉伸；与「文字设置 → 便签」共用同一套纸面数据） ── */
+STICKERS.push(...NOTE_PRESETS.map((p) => ({
+  name: 'note-' + p.key,
+  cat: '便签',
+  data: p.paper
+})))

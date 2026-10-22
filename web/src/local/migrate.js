@@ -319,6 +319,11 @@ export function migrate() {
   // 四边拉伸：横向/纵向拉伸系数（1=不拉伸；选中框四边箭头拖动调整）
   addCol('photo_wall_elements', 'stretch_x', 'REAL DEFAULT 1')
   addCol('photo_wall_elements', 'stretch_y', 'REAL DEFAULT 1')
+  // 文字样式：字号 / 粗细 / 颜色 / 倾斜（「字号」分类里设置；空串/默认值回退内置样式）
+  addCol('photo_wall_elements', 'font_size', 'REAL DEFAULT 18')
+  addCol('photo_wall_elements', 'font_weight', 'INTEGER DEFAULT 400')
+  addCol('photo_wall_elements', 'color', "TEXT DEFAULT ''")
+  addCol('photo_wall_elements', 'italic', 'INTEGER DEFAULT 0')
   // 相册列表编辑弹窗可手动换封面：cover_manual=1 时钉住用户选的封面，
   // 装饰保存不再用「最靠左图片」自动覆盖（移除封面后恢复自动）
   addCol('photo_walls', 'cover_manual', 'INTEGER DEFAULT 0')
