@@ -55,6 +55,9 @@
       <Toast />
       <ConfirmDialog />
 
+      <!-- 首次进入的使用须知：勾选同意后写入本机标记，之后不再弹出 -->
+      <NoticeDialog v-if="showNotice" @enter="onNoticeEnter" />
+
       <!-- 全局通话组件：独立于路由，跨页面保持（主叫/来电/通话中/可拖动悬浮窗） -->
       <CallOverlay />
 
@@ -74,6 +77,7 @@ import BottomTabBar from '@/components/layout/BottomTabBar.vue'
 import BootBrand from '@/components/layout/BootBrand.vue'
 import Toast from '@/components/common/Toast.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import NoticeDialog from '@/components/common/NoticeDialog.vue'
 import CallOverlay from '@/components/chat/CallOverlay.vue'
 import MusicFloat from '@/components/music/MusicFloat.vue'
 import MusicLyrics from '@/components/music/MusicLyrics.vue'
@@ -137,12 +141,24 @@ dbReady
     setTimeout(() => {
       dbOk.value = true
       boot()
+      /* 首次进入：数据就绪后弹出使用须知（勾选同意才放行） */
+      try {
+        if (!localStorage.getItem(NOTICE_KEY)) showNotice.value = true
+      } catch (e) { /* 隐私模式等场景降级为每次弹出 */ showNotice.value = true }
     }, 420)
   })
   .catch((e) => {
     console.error('[app] 数据库初始化失败', e)
     dbErr.value = true
   })
+
+/* 使用须知：本机同意标记（key 带版本号，条款更新时可换 key 重新征集） */
+const NOTICE_KEY = 'eunoia-notice-acked-v1'
+const showNotice = ref(false)
+function onNoticeEnter() {
+  try { localStorage.setItem(NOTICE_KEY, '1') } catch (e) { /*  ignore */ }
+  showNotice.value = false
+}
 
 function reload() {
   location.reload()

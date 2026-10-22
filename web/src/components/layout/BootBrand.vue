@@ -25,7 +25,7 @@
 .boot-ears-img {
   position: absolute;
   right: -5px; /* 水平对准字母 a 上方略偏右 */
-  top: -10px; /* 底部刚好藏进字母顶部后方 */
+  top: -12px; /* 较字母顶略探出，避免贴得太近 */
   width: 28px;
   height: auto;
   pointer-events: none;
