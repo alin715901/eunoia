@@ -15,6 +15,16 @@ function getMessageById(id) {
   return db.prepare('SELECT * FROM chat_messages WHERE id = ?').get(id);
 }
 
+/* 统计页用：取某联系人的全部消息（仅统计所需列，按时间正序） */
+function getAllMessages(contactId) {
+  return db
+    .prepare(
+      `SELECT id, sender, content_type, text, asset_path, recalled, created_at
+       FROM chat_messages WHERE contact_id = ? ORDER BY id ASC`
+    )
+    .all(contactId);
+}
+
 function insertMessage(msg) {
   const {
     contact_id, sender, content_type = 'text', card_id = null,
@@ -93,6 +103,7 @@ function getFavorites() {
 
 export {
   getMessages,
+  getAllMessages,
   getMessageById,
   insertMessage,
   markRead,

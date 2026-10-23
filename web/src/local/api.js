@@ -129,6 +129,11 @@ export async function getMessages(contactId, cursor = null) {
   return { messages: rows, nextCursor }
 }
 
+// 统计页：某联系人全部消息（时间正序）
+export async function getAllMessages(contactId) {
+  return chatRepo.getAllMessages(Number(contactId))
+}
+
 // 发送用户消息 -> 触发回复（支持引用 quoteId）
 export async function sendMessage(contactId, text, quoteId = null) {
   if (!text) fail('text required')

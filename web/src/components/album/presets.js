@@ -41,7 +41,6 @@ export const FONTS = [
   { key: 'en-courier', cat: 'en', name: 'CourierNew', sample: 'Test', css: '"Courier Prime", "Courier New", Courier, monospace' },
   { key: 'en-times', cat: 'en', name: 'TimesNewRoman', sample: 'Test', css: '"Tinos", "Times New Roman", Times, serif' },
   { key: 'en-trebuchet', cat: 'en', name: 'TrebuchetMS', sample: 'Test', css: '"Trebuchet MS", Trebuchet, sans-serif' },
-  { key: 'en-verdana', cat: 'en', name: 'Verdana', sample: 'Test', css: 'Verdana, Geneva, sans-serif' },
   { key: 'en-rolesoft', cat: 'en', name: 'Role Soft', sample: 'Test', w: 600, css: '"Quicksand", "Comfortaa", sans-serif' },
   { key: 'en-courgette', cat: 'en', name: 'Courgette-Re', sample: 'Test', css: '"Courgette", cursive' },
   { key: 'en-aperitif', cat: 'en', name: 'French Aperitif', sample: 'Test', css: '"Italianno", cursive' },

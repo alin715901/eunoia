@@ -4,6 +4,7 @@ export {
   getChatList,
   searchMessages,
   getMessages,
+  getAllMessages,
   sendMessage,
   continueTalk,
   markMessageRead,
