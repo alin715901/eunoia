@@ -1429,7 +1429,8 @@ defineExpose({ save: flushSave })
 .card-grid, .sticker-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  gap: 8px;
+  /* 行距加大：便签纸面是满格出血设计，行间太近会像瀑布流连成一片 */
+  gap: 16px 8px;
   margin-bottom: 10px;
 }
 .card-thumb, .sticker-thumb {
