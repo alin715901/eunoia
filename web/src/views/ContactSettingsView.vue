@@ -179,6 +179,11 @@
           <span class="nav-label">其他设置</span>
           <span class="chev">›</span>
         </button>
+        <button v-if="!isGroup" class="nav-row" @click="go('/contacts/' + id + '/settings/voice')">
+          <span class="nav-label">MiniMax 语音</span>
+          <span class="nav-val">{{ voiceSummary }}</span>
+          <span class="chev">›</span>
+        </button>
         <button v-if="!isGroup" class="nav-row" @click="go('/contacts/' + id + '/cards')">
           <span class="nav-label">专属字卡库</span>
           <span class="chev">›</span>
@@ -271,6 +276,8 @@ import { useDeskCacheStore } from '@/stores/deskCache'
 import { clearMessages } from '@/api/chat'
 import { FONTS } from '@/stores/settings'
 import { bubblePresetName } from '@/utils/bubbleStyle'
+import { getSettings } from '@/api/settings'
+import { readOssCfg, ossReady, ossUpload } from '@/utils/oss'
 import { confirmDialog, notify } from '@/utils/dialog'
 
 const props = defineProps({ id: { type: [String, Number], required: true } })
@@ -408,6 +415,11 @@ const proactiveSummary = computed(() => {
 const momentSummary = computed(() => (Number(settings.value?.moment_enabled) ? '已开启' : '未开启'))
 const letterSummary = computed(() => (Number(settings.value?.letter_enabled) ? '已开启' : '未开启'))
 const callSummary = computed(() => (Number(settings.value?.call_enabled) ? '已开启' : '未开启'))
+const voiceSummary = computed(() => {
+  const s = settings.value
+  if (!s || !Number(s.minimax_enabled)) return '未开启'
+  return s.minimax_voice ? `已开启 · ${s.minimax_voice}` : '已开启'
+})
 
 async function load() {
   try {
@@ -546,6 +558,19 @@ async function onCropped(blob) {
   const file = new File([blob], 'avatar.jpg', { type: 'image/jpeg' })
   await applyAvatar(file)
 }
+/* 上传图片：配置了阿里云 OSS 就先传 OSS 拿对象 URL（省本地空间），
+   未配置或失败时回落本地存储（行为与原来完全一致） */
+async function smartUpload(file) {
+  try {
+    const s = await getSettings()
+    const cfg = readOssCfg(s)
+    if (ossReady(cfg)) {
+      const url = await ossUpload(cfg, file, `avatars/${props.id}/${Date.now()}.jpg`)
+      return { path: url }
+    }
+  } catch (e) { /* OSS 失败：静默回落本地 */ }
+  return uploadFile(file)
+}
 async function applyAvatar(file) {
   const synced = !!desk.value?.sync_chat_avatar
   try {
@@ -555,12 +580,12 @@ async function applyAvatar(file) {
       contact.value = await getContact(props.id)
     } else if (avatarTarget === 'mygroup') {
       /* 群聊里我的头像：写本群设置（不走人物卡同步） */
-      const r = await uploadFile(file)
+      const r = await smartUpload(file)
       await updateContactSettings(props.id, { my_avatar: r.path })
       settings.value = { ...settings.value, my_avatar: r.path }
     } else if (avatarTarget === 'them') {
       if (synced) {
-        const r = await uploadFile(file)
+        const r = await smartUpload(file)
         await updateDesktop(props.id, { partner_avatar: r.path })
         desk.value = { ...desk.value, partner_avatar: r.path }
       } else {
@@ -570,11 +595,11 @@ async function applyAvatar(file) {
       }
     } else {
       if (synced) {
-        const r = await uploadFile(file)
+        const r = await smartUpload(file)
         await updateDesktop(props.id, { my_avatar: r.path })
         desk.value = { ...desk.value, my_avatar: r.path }
       } else {
-        const r = await uploadFile(file)
+        const r = await smartUpload(file)
         await updateContactSettings(props.id, { my_avatar: r.path })
         settings.value = { ...settings.value, my_avatar: r.path }
       }

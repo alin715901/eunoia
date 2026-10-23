@@ -61,7 +61,12 @@
                 </span>
                 <span v-if="voiceDur" class="vm-dur">{{ voiceDur }}"</span>
               </div>
-              <div v-if="chatStore.voiceAsrOn(message.id) && message.text" class="vm-asr">{{ message.text }}</div>
+              <div v-if="chatStore.voiceAsrOn(message.id) && message.text" class="vm-asr">
+                <span class="vm-asr-text">{{ message.text }}</span>
+                <button v-if="mmReady" class="vm-asr-tts" type="button" :title="ttsBusy ? '生成中…' : '用 MiniMax 朗读'" @click.stop="speakAsr">
+                  <AppIcon :name="ttsBusy ? 'hourglass' : 'voice'" :size="13" />
+                </button>
+              </div>
             </div>
           </template>
           <!-- 红包：参考微信红包封的简约卡片（小尺寸，无 emoji） -->
@@ -335,6 +340,41 @@ function togglePlay() {
 }
 onBeforeUnmount(() => {
   if (__vState.key === String(props.message.id)) stopVm()
+})
+
+/* ── MiniMax 朗读：转写文字用 TTS 以目标语言播放（需在联系人设置里配置） ── */
+import { readCfg, cfgReady, minimaxTts } from '@/utils/minimax'
+import { useContactSettingsStore } from '@/stores/contactSettings'
+const settingsCache = useContactSettingsStore()
+const mmCfg = computed(() => {
+  try { return readCfg(settingsCache.get(props.message.contact_id)) } catch (e) { return null }
+})
+const mmReady = computed(() => !!(mmCfg.value && mmCfg.value.enabled && cfgReady(mmCfg.value)))
+const ttsBusy = ref(false)
+/* 朗读单实例：同一时间只有一段 TTS 在响（与语音条播放互斥） */
+const __ttsState = (window.__zikaChatTts = window.__zikaChatTts || { el: null })
+function stopTts() {
+  if (__ttsState.el) { __ttsState.el.pause(); __ttsState.el = null }
+  ttsBusy.value = false
+}
+async function speakAsr() {
+  if (ttsBusy.value) { stopTts(); return }
+  stopVm()
+  ttsBusy.value = true
+  try {
+    const url = await minimaxTts(mmCfg.value, props.message.text)
+    const a = new Audio(url)
+    __ttsState.el = a
+    a.onended = () => { URL.revokeObjectURL(url); if (__ttsState.el === a) { __ttsState.el = null; ttsBusy.value = false } }
+    a.onerror = () => { URL.revokeObjectURL(url); if (__ttsState.el === a) { __ttsState.el = null; ttsBusy.value = false } }
+    await a.play()
+  } catch (e) {
+    ttsBusy.value = false
+    try { const { notify } = await import('@/utils/dialog'); notify('朗读失败：' + (e.message || '未知错误')) } catch (_) {}
+  }
+}
+onBeforeUnmount(() => {
+  if (__ttsState.el) { __ttsState.el.pause(); __ttsState.el = null }
 })
 
 /* ── 特殊消息（图片/红包/通话/提问）的元数据与渲染辅助 ── */
@@ -841,6 +881,22 @@ function onRedpacketTap() {
   overflow-wrap: break-word;
   white-space: pre-wrap;
 }
+.vm-asr-text { vertical-align: middle; }
+/* MiniMax 朗读小按钮：跟在转写文字后面，仅配置了 TTS 的联系人显示 */
+.vm-asr-tts {
+  display: inline-flex;
+  align-items: center;
+  margin-left: 6px;
+  padding: 2px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+  vertical-align: middle;
+  -webkit-tap-highlight-color: transparent;
+}
+.vm-asr-tts:active { opacity: 0.7; }
 
 /* 图片消息：统一显示框 —— 宽 165 × 高 220（随气泡缩放），object-fit:cover 居中裁剪。
    任何原比例（横图/竖图/方图）都填满同一个框、画面不变形，

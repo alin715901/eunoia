@@ -200,6 +200,9 @@ function updateSettings(id, fields = {}) {
     'music_invite_prob', 'music_fav_prob', 'game_invite_prob', 'cinema_invite_prob',
     'contact_recall_enabled',
     'period_care_enabled', 'period_care_last_date',
+    // MiniMax 语音（按联系人）：开启后语音消息的转写文字可点「朗读」走 TTS 播放
+    'minimax_enabled', 'minimax_key', 'minimax_group', 'minimax_model',
+    'minimax_voice', 'minimax_lang', 'minimax_speed', 'minimax_gender', 'minimax_style',
   ];
   const sets = [];
   const params = [];

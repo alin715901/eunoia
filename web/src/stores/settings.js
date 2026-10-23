@@ -215,7 +215,9 @@ export const useSettingsStore = defineStore('settings', {
           startup: { ...DEFAULT.startup, ...(data.startup || {}) },
           moments: { ...DEFAULT.moments, ...(data.moments || {}) },
           keepAlive: data.keepAlive === true,
-          appearance
+          appearance,
+          /* 阿里云 OSS 配置（对象，未配置为 null） */
+          oss_config: data.oss_config || null
         }
       } catch (e) {
         this.global = JSON.parse(JSON.stringify(DEFAULT))
@@ -234,7 +236,8 @@ export const useSettingsStore = defineStore('settings', {
           startup: { ...DEFAULT.startup, ...(data.startup || {}) },
           moments: { ...DEFAULT.moments, ...(data.moments || {}) },
           keepAlive: data.keepAlive === true,
-          appearance: data.appearance === 'dark' || data.appearance === 'system' ? data.appearance : 'light'
+          appearance: data.appearance === 'dark' || data.appearance === 'system' ? data.appearance : 'light',
+          oss_config: data.oss_config || null
         }
       }
       this.applyTheme()

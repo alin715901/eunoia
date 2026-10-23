@@ -347,4 +347,15 @@ export function migrate() {
     due_at INTEGER NOT NULL,
     created_at INTEGER
   )`)
+  // MiniMax 语音（按联系人）：配置后语音消息的转写文字可点击「朗读」，
+  // 用 MiniMax TTS 以目标语言生成真实语音播放（中文字幕不变，声音按配置语言输出）
+  addCol('contact_settings', 'minimax_enabled', 'INTEGER DEFAULT 0')
+  addCol('contact_settings', 'minimax_key', "TEXT DEFAULT ''")
+  addCol('contact_settings', 'minimax_group', "TEXT DEFAULT ''")
+  addCol('contact_settings', 'minimax_model', "TEXT DEFAULT 'speech-02-turbo'")
+  addCol('contact_settings', 'minimax_voice', "TEXT DEFAULT ''")
+  addCol('contact_settings', 'minimax_lang', "TEXT DEFAULT 'auto'")
+  addCol('contact_settings', 'minimax_speed', 'REAL DEFAULT 1')
+  addCol('contact_settings', 'minimax_gender', "TEXT DEFAULT 'female'")
+  addCol('contact_settings', 'minimax_style', "TEXT DEFAULT ''")
 }

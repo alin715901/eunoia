@@ -67,8 +67,15 @@
         </p>
       </div>
 
-      <!-- 分组：内存数据 / 关于 -->
+      <!-- 分组：阿里云 OSS / 内存数据 / 关于 -->
       <div class="panel sec">
+        <button class="row-item" @click="goOss">
+          <span class="ri-icon"><AppIcon name="upload" :size="18" /></span>
+          <span class="ri-label">阿里云 OSS</span>
+          <span class="spacer"></span>
+          <span class="ri-value">{{ ossOn ? '已配置' : '未配置' }}</span>
+          <AppIcon name="chevron-right" :size="16" color="var(--text-soft)" />
+        </button>
         <button class="row-item" @click="goStorage">
           <span class="ri-icon"><AppIcon name="archive" :size="18" /></span>
           <span class="ri-label">内存数据</span>
@@ -89,7 +96,7 @@
 </template>
 
 <script setup>
-import { onMounted, computed, ref } from 'vue'
+import { onMounted, onActivated, computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
@@ -171,6 +178,15 @@ function goAbout() {
 function goStorage() {
   router.push('/storage')
 }
+function goOss() {
+  router.push('/settings/oss')
+}
+
+/* 阿里云 OSS 是否已配置（驱动入口行的状态文字） */
+const ossOn = computed(() => {
+  const c = settings.global.oss_config || {}
+  return !!(c.accessKeyId && c.accessKeySecret && c.bucket && c.endpoint)
+})
 
 /* 通知开关：全局 */
 const notifyOn = computed(() => settings.global.notifications?.browser !== false)
@@ -210,14 +226,18 @@ async function enableNotify() {
   }
 }
 
-onMounted(async () => {
+async function refresh() {
   try { await contactsStore.load() } catch (e) { /* ignore */ }
   await settings.load().catch(() => {})
   /* 若之前已开启后台保活，启动即恢复（无需手动进设置页） */
   if (settings.global.keepAlive === true) keepAlive.setEnabled(true).catch(() => {})
   sysDark.value = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
   await desktop.ensureValid()
-})
+}
+
+onMounted(refresh)
+/* keep-alive 缓存：从 OSS 等子页返回时重读全局设置，刷新「已配置/未配置」状态 */
+onActivated(refresh)
 
 </script>
 
