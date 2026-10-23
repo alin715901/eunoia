@@ -27,11 +27,12 @@
       </div>
     </div>
 
-    <!-- 缩放 HUD：装饰时缩小可看全被弹窗挡住的墙底，放大可精细摆放；点百分比复位 -->
+    <!-- 缩放 HUD：装饰时缩小可看全被弹窗挡住的墙底，放大可精细摆放；「恢复」复位初始大小 -->
     <div v-if="editable" class="pwc-zoomhud">
       <button class="zh-btn" type="button" aria-label="缩小" @click="zoomBy(1 / 1.25)">－</button>
       <button class="zh-val" type="button" @click="resetZoom">{{ Math.round(viewZoom * 100) }}%</button>
       <button class="zh-btn" type="button" aria-label="放大" @click="zoomBy(1.25)">＋</button>
+      <button class="zh-reset" type="button" @click="resetZoom">恢复</button>
     </div>
 
     <!-- 当前页指示：装饰时左上角标明「第几页 / 共几页」 -->
@@ -424,7 +425,7 @@ import { ref, computed, onMounted, onBeforeUnmount, nextTick, watch } from 'vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import ImageCropper from '@/components/common/ImageCropper.vue'
 import WallElement from './WallElement.vue'
-import { FONT_CATS, fontsOf, ensureGoogleFonts, PAPERS, STICKERS, STICKER_CATEGORIES, STICKY_COLORS, NOTE_PRESETS, noteBg, paperBg } from './presets'
+import { FONT_CATS, fontsOf, ensureGoogleFonts, warmWallFonts, PAPERS, STICKERS, STICKER_CATEGORIES, STICKY_COLORS, NOTE_PRESETS, noteBg, paperBg } from './presets'
 
 /* 便签宫格 16 款手账纸面缩略图样式（url 带引号，data URL 里的括号才不会被浏览器丢弃） */
 const noteCellStyles = NOTE_PRESETS.map((p) => ({
@@ -625,14 +626,28 @@ function measure() {
 }
 let ro = null
 onMounted(async () => {
+  /* 进装饰态即注入 webfont CSS（此前要等打开文字面板才注入，墙上文字
+     会先以 fallback 渲染、字体文件下载完才跳变） */
+  ensureGoogleFonts()
   await load()
+  /* 按墙上文字实际用到的字体预热（含元素自身字符的分片下载），
+     使用户点文字时目标字体已就绪，不再有「等一会才刷新」 */
+  warmWallFonts(elements.value)
   await nextTick()
   measure()
   ro = new ResizeObserver(() => measure())
   if (scrollEl.value) ro.observe(scrollEl.value)
+  /* 墙级双指缩放的兜底：长卷容器漏收 touchend/touchcancel 时
+     （手势被浏览器接管、切后台），wallPinch 残留会让下一次双指
+     一上来就按旧基准跳变。window 捕获层无条件清掉即可——
+     正常捏合松指时容器自身也会清，行为一致 */
+  window.addEventListener('touchend', onWinTouchEnd, true)
+  window.addEventListener('touchcancel', onWinTouchEnd, true)
 })
 onBeforeUnmount(() => {
   ro && ro.disconnect()
+  window.removeEventListener('touchend', onWinTouchEnd, true)
+  window.removeEventListener('touchcancel', onWinTouchEnd, true)
   flushSave()
 })
 
@@ -662,7 +677,12 @@ let wallPinch = null
 function onScrollTouchStart(e) {
   if (e.touches.length !== 2) return
   const ts = [...e.touches]
-  if (ts.every((t) => t.target.closest && t.target.closest('.we'))) return
+  if (ts.every((t) => t.target.closest && t.target.closest('.we'))) {
+    /* 让位给元素手势：同时清掉残留的 wallPinch——
+       切后台前发起的墙级捏合没收尾，回来后直接按旧基准跳变 */
+    wallPinch = null
+    return
+  }
   wallPinch = {
     d: Math.hypot(ts[0].clientX - ts[1].clientX, ts[0].clientY - ts[1].clientY) || 1,
     z: viewZoom.value
@@ -677,6 +697,11 @@ function onScrollTouchMove(e) {
 }
 function onScrollTouchEnd(e) {
   if (e.touches.length < 2) wallPinch = null
+}
+/* window 捕获层兜底：任何 touchend/touchcancel 都视为墙级捏合结束
+   （双指捏合抬起一指时容器自身同样会清，不存在误杀） */
+function onWinTouchEnd() {
+  wallPinch = null
 }
 function onScrollWheel(e) {
   if (!e.ctrlKey) return
@@ -755,7 +780,7 @@ function onCustomColor(e) {
   applyTextStyle({ color: e.target.value })
 }
 function openTextSheet(edit) {
-  ensureGoogleFonts() /* 首次打开文字面板按需注入 webfont（中文/英文/日韩三类） */
+  ensureGoogleFonts() /* 兜底：onMounted 已注入，这里对漏网场景（如预加载失败重试）保底 */
   if (edit && selEl.value && selEl.value.locked) {
     toast.pushToast({ type: 'info', title: '元素已锁定', text: '先点「解锁」才能修改' })
     return
@@ -772,7 +797,11 @@ watch(textSheet, (v) => {
 /* 设置模式下点字体直接应用到选中元素并关闭 */
 function pickFont(key) {
   if (!textEditMode.value) return addTextWith('', key)
-  if (selEl.value) selEl.value.font = key
+  if (selEl.value) {
+    selEl.value.font = key
+    /* 换字体即预热：设置态点选后立即可见新字体，不等下载 */
+    warmWallFonts([{ type: 'text', font: key, font_weight: selEl.value.font_weight, content: selEl.value.content }])
+  }
   textSheet.value = false
   scheduleSave()
 }
@@ -847,6 +876,8 @@ async function addTextWith(frame, font) {
   const text = await promptDialog({ title: frame ? '写便利贴' : '添加文字', text: '写下想留在墙上的话', placeholder: '如：今天也很想你', okText: '添加' })
   if (text === null) return
   const t = text.trim() || '新留言'
+  /* 新文字上墙前预热该字体 + 这段字符的分片，避免先 fallback 后跳变 */
+  warmWallFonts([{ type: 'text', font, font_weight: addStyle.value.font_weight, content: t }])
   /* 长句初始按最小宽度（10 个字）呈现：_fresh 标记让 WallElement 首次实测自然宽后
      把框宽收到 10 字（预估只做兜底），用户后续可自行拉宽（不会一上墙就撑满拖不动） */
   const fs = addStyle.value.font_size || 18
@@ -862,6 +893,8 @@ async function editText(el) {
   const text = await promptDialog({ title: '编辑文字', text: '', value: el.content, placeholder: '文字内容', okText: '保存' })
   if (text === null) return
   el.content = text
+  /* 新字符可能落在未下载的 unicode-range 分片，预热避免跳变 */
+  warmWallFonts([el])
   scheduleSave()
 }
 
@@ -1297,6 +1330,20 @@ defineExpose({ save: flushSave })
   -webkit-tap-highlight-color: transparent;
 }
 .zh-btn:active { background: var(--bg-soft); }
+.zh-reset {
+  min-width: 40px;
+  height: 30px;
+  padding: 0 10px;
+  border: none;
+  border-radius: 15px;
+  background: transparent;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--accent);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.zh-reset:active { background: var(--bg-soft); }
 .zh-val {
   min-width: 46px;
   padding: 5px 2px;

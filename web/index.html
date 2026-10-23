@@ -11,6 +11,12 @@
     <meta name="theme-color" content="#c5a47e" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Eunoia" />
+    <!-- 照片墙文字字体走 Google Fonts（按需注入，见 album/presets.js）。
+         提前建连：慢链路（含国内访问）下省掉 DNS+TLS 握手，
+         进装饰态时字体文件能立刻开始下载 -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
     <script>
       /* 首屏先按上次选择的外观上色，避免深色模式启动时闪一下白屏 */
       (function () {

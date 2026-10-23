@@ -41,7 +41,7 @@
 </template>
 
 <script setup>
-import { computed, ref, watch, onMounted, nextTick } from 'vue'
+import { computed, ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import { fontCss, fontWeight, STICKY_COLORS, noteBg } from './presets'
 
@@ -165,6 +165,17 @@ function calibrateFresh() {
   emit('change')
 }
 onMounted(() => {
+  /* 兜底监听（window 级）：
+     - pointerup/pointercancel 捕获段：元素漏收时按 pointerId 补清理，
+       capture 保证先于组件自身 @pointerup 执行，且不受中间层 stopPropagation 影响
+     - pointerup 冒泡段：手柄/拉伸手势漏收 up 时的兜底
+     - visibilitychange / blur：切后台、锁屏时指针事件可能永不到达 */
+  window.addEventListener('pointerup', onWinPointerEnd, true)
+  window.addEventListener('pointercancel', onWinPointerEnd, true)
+  window.addEventListener('pointerup', onWinGestureFallback)
+  window.addEventListener('pointercancel', onWinGestureFallback)
+  document.addEventListener('visibilitychange', onVisibility)
+  window.addEventListener('blur', onVisibility)
   nextTick(measureText)
   /* 自定义字体异步加载完成后自然宽会变：显式触发字库加载（带正文文本），
      就绪后重测；fonts.ready 兜底再测一次 */
@@ -189,6 +200,14 @@ watch(
   () => frameCls.value,
   () => { nextTick(measureText) }
 )
+onBeforeUnmount(() => {
+  window.removeEventListener('pointerup', onWinPointerEnd, true)
+  window.removeEventListener('pointercancel', onWinPointerEnd, true)
+  window.removeEventListener('pointerup', onWinGestureFallback)
+  window.removeEventListener('pointercancel', onWinGestureFallback)
+  document.removeEventListener('visibilitychange', onVisibility)
+  window.removeEventListener('blur', onVisibility)
+})
 
 const styleObj = computed(() => {
   const t = props.el.type
@@ -228,11 +247,72 @@ const styleObj = computed(() => {
   return o
 })
 
-/* ── 指针手势：单指拖拽；双指缩放 + 旋转 + 平移 ── */
+/* ── 指针手势：单指拖拽；双指缩放 + 旋转 + 平移 ──
+   注意：<script setup> 顶层变量按组件实例各一份，手势状态天然按元素隔离。
+   但真机上指针事件会丢失（捕获失败、手势被浏览器收回、切后台/锁屏、
+   事件被重定向），漏收 pointerup 时残留状态会被下一次点击误用——
+   幽灵指针让 size≥2 误判成「双指捏合」，元素突然疯狂缩放旋转，
+   或残留手柄劫持指针 id 复用后的新触摸。表现为「装饰时卡住、点不了、
+   操作不了」，必须靠兜底清理保证任何情况下都不残留。 */
 const pointers = new Map()
 let dragStart = null
 let pinch = null
 let handle = null // 角点手柄：tl=旋转；br=缩放+旋转二合一
+let edge = null // 四边拉伸手柄
+let gestureDirty = false // 本次手势是否真的改过元素（没改就不落库：避免每次轻点选中都全量存库）
+
+/* 手势收尾：清空全部手势状态；发生过真实改动才回写 */
+function endGesture() {
+  pointers.clear()
+  dragStart = null
+  pinch = null
+  handle = null
+  edge = null
+  if (gestureDirty) {
+    gestureDirty = false
+    emit('change')
+  }
+}
+/* 兜底一（捕获段，先于组件自身 @pointerup 执行）：元素自身漏收 pointerup /
+   pointercancel 时（指针捕获丢失、事件被重定向、指针在元素外松开），
+   window 捕获层按 pointerId 补一次清理。这里只维护 pointers 地图，
+   手柄/拉伸的收尾仍走组件自身处理器（冒泡段在目标之后，不会抢先） */
+function onWinPointerEnd(e) {
+  if (!pointers.has(e.pointerId)) return
+  pointers.delete(e.pointerId)
+  if (pointers.size === 0) endGesture()
+  else if (pointers.size === 1) {
+    // 抬起一根手指后，用剩下那根继续拖拽，避免位置跳变
+    const p = [...pointers.values()][0]
+    dragStart = { x: p.x, y: p.y, elX: props.el.x, elY: props.el.y }
+    pinch = null
+  }
+}
+/* 兜底二（冒泡段）：组件自身的 @pointerup 因节点被移除/事件被吞而没收到时，
+   补清手柄与拉伸手柄状态。正常路径下组件处理器已先跑完（handle/edge 已置空），
+   这里直接跳过 */
+function onWinGestureFallback(e) {
+  if (handle && handle.pid === e.pointerId) { endGesture(); return }
+  if (edge && edge.pid === e.pointerId) {
+    if (edge.text && (edge.which === 'l' || edge.which === 'r')) fitTextHeight(edge)
+    endGesture()
+  }
+}
+/* 兜底三：切后台 / 锁屏 / 窗口失焦时指针事件可能永不到达，判定手势死亡 */
+function onVisibility() {
+  if (typeof document !== 'undefined' && document.hidden) endGesture()
+  else if (typeof window !== 'undefined' && !document.hasFocus()) endGesture()
+}
+/* 兜底四：新指针落下时清掉超龄的幽灵指针（漏收 up 的残留）。
+   正常双指捏合两根手指落下间隔远小于 2s；残留指针往往已静默数秒，
+   不清掉会被误判成第二根手指 → 元素突然疯狂缩放旋转 */
+const STALE_MS = 2000
+function pruneStalePointers() {
+  const now = performance.now()
+  for (const [pid, p] of pointers) {
+    if (now - (p.t || 0) > STALE_MS) pointers.delete(pid)
+  }
+}
 
 function dist(a, b) {
   return Math.hypot(a.x - b.x, a.y - b.y)
@@ -247,8 +327,16 @@ function clamp(v, lo, hi) {
 function onDown(e) {
   if (!props.editable) return
   e.stopPropagation()
+  /* 新指针落下：先清掉可能残留的手柄/拉伸手柄（上一次手势漏收 up 时，
+     指针 id 复用会让残留手柄劫持这次新手势——元素突然疯飞/卡住） */
+  handle = null
+  edge = null
+  pruneStalePointers()
+  /* 全新手势（地图已空）才重置脏标记：双指捏合中途落下第二根手指时
+     地图非空，不能清掉第一根手指已经攒下的改动 */
+  if (pointers.size === 0) gestureDirty = false
   try { e.target.setPointerCapture(e.pointerId) } catch (_) {}
-  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, t: performance.now() })
   emit('select')
   // 锁定：仅允许选中（便于解锁），禁止拖动 / 双指变换
   if (props.el.locked) { dragStart = null; pinch = null; return }
@@ -277,6 +365,12 @@ function onDown(e) {
 function onHandleDown(e, which) {
   if (!props.editable) return
   if (props.el.locked) return
+  /* 上手柄前清掉残留的指针拖拽状态（上一次手势漏收 up 的幽灵指针），
+     避免双指地图里混入死指针把后续 move 误判成捏合 */
+  pointers.clear()
+  dragStart = null
+  pinch = null
+  gestureDirty = false
   try { e.target.setPointerCapture(e.pointerId) } catch (_) {}
   emit('select')
   const box = e.currentTarget.closest('.we')
@@ -307,6 +401,7 @@ function onHandleDown(e, which) {
 
 function applyHandle(e) {
   const el = props.el
+  gestureDirty = true
   if (handle.mode === 'rotate') {
     const a = Math.atan2(e.clientY - handle.cy, e.clientX - handle.cx)
     el.rotation = handle.startRot + ((a - handle.startAngle) * 180) / Math.PI
@@ -324,11 +419,15 @@ function applyHandle(e) {
 /* ── 四边拉伸手柄：拖动边中点箭头单独改宽/高，对边保持不动 ──
    图片/贴纸/便签：改 sx/sy 缩放系数（字形/纸面随框变形）
    纯文字：改文字框宽高（宽度驱动自动换行，字体大小不变） */
-let edge = null
 function onEdgeDown(e, which) {
   if (!props.editable) return
   if (props.el.locked) return
   props.el._fresh = false
+  /* 同 onHandleDown：先清残留指针拖拽状态再开始拉伸 */
+  pointers.clear()
+  dragStart = null
+  pinch = null
+  gestureDirty = false
   try { e.target.setPointerCapture(e.pointerId) } catch (_) {}
   emit('select')
   const box = e.currentTarget.closest('.we')
@@ -347,6 +446,7 @@ function onEdgeDown(e, which) {
     natH = Math.max(20, (nat.value && nat.value.h) || curH)
     props.el.sx = clamp(curW / natW, 0.3, 6)
     props.el.sy = clamp(curH / natH, 0.3, 6)
+    gestureDirty = true // 重校基准本身就是一次改动，松手要落库
   }
   // offsetWidth/Height 是未变换的布局尺寸；屏幕位移 ÷ zoom 换算回墙坐标
   edge = {
@@ -382,6 +482,7 @@ function onEdgeDown(e, which) {
 
 function applyEdge(e) {
   const el = props.el
+  gestureDirty = true
   const dx = (e.clientX - edge.x0) / zf()
   const dy = (e.clientY - edge.y0) / zf()
   const r = ((el.rotation || 0) * Math.PI) / 180
@@ -441,12 +542,16 @@ function onMove(e) {
     return
   }
   if (!pointers.has(e.pointerId)) return
-  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+  /* 桌面鼠标兜底：在元素上按下、移出元素才松手时 pointerup 不会到达本元素，
+     随后移动鼠标 buttons 已为 0 → 说明按键早已松开，直接结束手势 */
+  if (e.pointerType === 'mouse' && e.buttons === 0) { endGesture(); return }
+  pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, t: performance.now() })
 
   if (pointers.size === 1 && dragStart) {
     const z = zf()
     props.el.x = dragStart.elX + (e.clientX - dragStart.x) / z
     props.el.y = dragStart.elY + (e.clientY - dragStart.y) / z
+    gestureDirty = true
   } else if (pointers.size === 2 && pinch) {
     const pts = [...pointers.values()]
     const d = dist(pts[0], pts[1])
@@ -458,6 +563,7 @@ function onMove(e) {
     props.el.rotation = pinch.rot + (a - pinch.angle)
     props.el.x = pinch.elX + (midX - pinch.midX) / z
     props.el.y = pinch.elY + (midY - pinch.midY) / z
+    gestureDirty = true
   }
 }
 
@@ -465,7 +571,7 @@ function onUp(e) {
   if (handle && handle.pid === e.pointerId) {
     try { e.target.releasePointerCapture(e.pointerId) } catch (_) {}
     handle = null
-    emit('change')
+    if (gestureDirty) { gestureDirty = false; emit('change') }
     return
   }
   if (edge && edge.pid === e.pointerId) {
@@ -474,9 +580,11 @@ function onUp(e) {
        （拉宽换行减少时高度回落），保留用户上下拉伸显式加高的余量 */
     if (edge.text && (edge.which === 'l' || edge.which === 'r')) fitTextHeight(edge)
     edge = null
-    emit('change')
+    if (gestureDirty) { gestureDirty = false; emit('change') }
     return
   }
+  /* 指针拖拽的正常收尾已由 window 捕获层（onWinPointerEnd）先行处理，
+     这里仅兜底：极端情况下捕获层也没收到时按原逻辑收尾 */
   if (!pointers.has(e.pointerId)) return
   pointers.delete(e.pointerId)
   try { e.target.releasePointerCapture(e.pointerId) } catch (_) {}
@@ -488,7 +596,7 @@ function onUp(e) {
   } else if (pointers.size === 0) {
     dragStart = null
     pinch = null
-    emit('change')
+    if (gestureDirty) { gestureDirty = false; emit('change') }
   }
 }
 
@@ -510,6 +618,7 @@ function fitTextHeight(edge) {
   const contentH = box.offsetHeight
   box.style.minHeight = w0
   el.sy = clamp((contentH + edge.extraH) / edge.natH, 0.3, 6)
+  gestureDirty = true
 }
 </script>
 
@@ -553,10 +662,6 @@ function fitTextHeight(edge) {
 .we.selected {
   outline: 1.5px dashed var(--accent);
   outline-offset: 3px;
-  filter: drop-shadow(0 6px 16px rgba(0, 0, 0, 0.18));
-}
-.we.editable:not(.selected) {
-  filter: drop-shadow(0 3px 10px rgba(0, 0, 0, 0.14));
 }
 
 /* ── 拍立得白边：下边留宽一些，像真实拍立得 ── */
@@ -569,6 +674,13 @@ function fitTextHeight(edge) {
 .we.polaroid .we-media { border-radius: 1px; }
 /* 拍立得·横版：右边留宽（横放的拍立得） */
 .we.polaroid-h { padding: 7px 26px 7px 7px; }
+
+/* 可编辑/选中外阴影：box-shadow。
+   贴纸不用 filter:drop-shadow——Chromium 对带 filter 的元素按「过滤后的
+   包围盒」做命中判定，且污染范围是整个 .we 子树，旋转贴纸 AABB 的楔形
+   空白区会变成热区盖住相邻照片/文字；去掉投影保持干净观感 */
+.we.editable:not(.selected):not(.sticker) { box-shadow: 0 3px 10px rgba(0, 0, 0, 0.14); }
+.we.selected:not(.sticker) { box-shadow: 0 6px 16px rgba(0, 0, 0, 0.18); }
 
 /* ── 一键电子胶带：斜贴一条半透明胶带在元素上方 ── */
 .we.tape::before {
@@ -622,13 +734,15 @@ function fitTextHeight(edge) {
 
 .we-corner {
   position: absolute;
-  width: 32px;
-  height: 32px;
+  /* 热区 28px：够手指点，又不至于大范围吞掉相邻元素的点击 */
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
   touch-action: none;
   z-index: 5;
+  pointer-events: auto;
 }
 .we-corner::before {
   content: '';
@@ -639,21 +753,23 @@ function fitTextHeight(edge) {
   border: 2px solid #fff;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.28);
 }
-.we-corner.tl { left: -16px; top: -16px; cursor: grab; }
+.we-corner.tl { left: -14px; top: -14px; cursor: grab; }
 .we-corner.tl:active { cursor: grabbing; }
-.we-corner.br { right: -16px; bottom: -16px; cursor: nwse-resize; }
+.we-corner.br { right: -14px; bottom: -14px; cursor: nwse-resize; }
 
 /* ── 四边拉伸手柄：边中点小圆钮 + 拉伸箭头 ── */
 .we-edge {
   position: absolute;
-  width: 24px;
-  height: 24px;
+  /* 热区 22px：缩小吞点击范围，墙上元素密集时少误伤 */
+  width: 22px;
+  height: 22px;
   display: flex;
   align-items: center;
   justify-content: center;
   touch-action: none;
   z-index: 5;
   cursor: ns-resize;
+  pointer-events: auto;
 }
 .we-edge i {
   font-style: normal;
@@ -671,8 +787,8 @@ function fitTextHeight(edge) {
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.18);
   pointer-events: none;
 }
-.we-edge.t { left: 50%; top: -12px; transform: translate(-50%, 0); }
-.we-edge.b { left: 50%; bottom: -12px; transform: translate(-50%, 0); }
-.we-edge.l { left: -12px; top: 50%; transform: translate(0, -50%); cursor: ew-resize; }
-.we-edge.r { right: -12px; top: 50%; transform: translate(0, -50%); cursor: ew-resize; }
+.we-edge.t { left: 50%; top: -11px; transform: translate(-50%, 0); }
+.we-edge.b { left: 50%; bottom: -11px; transform: translate(-50%, 0); }
+.we-edge.l { left: -11px; top: 50%; transform: translate(0, -50%); cursor: ew-resize; }
+.we-edge.r { right: -11px; top: 50%; transform: translate(0, -50%); cursor: ew-resize; }
 </style>

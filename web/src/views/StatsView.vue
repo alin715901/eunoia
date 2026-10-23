@@ -691,7 +691,9 @@ onBeforeUnmount(() => {
   color: var(--text-soft); font-size: 13px;
   padding: 7px 14px; border-radius: 999px;
 }
-.st-tab.on { background: var(--text); color: var(--bg-screen); border-color: var(--text); font-weight: 600; }
+/* 选中态跟随主题强调色（与分段控件/主按钮同款模式） */
+.st-tab.on { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
+.st-tab:active { border-color: var(--accent); color: var(--accent); }
 
 /* ── 卡片基础 ── */
 .st-card {

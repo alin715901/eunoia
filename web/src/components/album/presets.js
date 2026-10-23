@@ -111,8 +111,7 @@ let googleFontsLoaded = false
 export function ensureGoogleFonts() {
   if (googleFontsLoaded || typeof document === 'undefined') return
   googleFontsLoaded = true
-  const families = [
-    /* 中文 */
+  const families = [    /* 中文 */
     'ZCOOL+KuaiLe', 'Noto+Sans+SC:wght@700;900', 'Zhi+Mang+Xing',
     'Noto+Serif+SC:wght@600;900', 'ZCOOL+QingKe+HuangYou', 'Ma+Shan+Zheng',
     'Long+Cang', 'ZCOOL+XiaoWei', 'LXGW+WenKai+TC:wght@400;700', 'Liu+Jian+Mao+Cao',
@@ -140,6 +139,29 @@ export function ensureGoogleFonts() {
   link.rel = 'stylesheet'
   link.href = 'https://fonts.googleapis.com/css2?' + families.map((f) => 'family=' + f).join('&') + '&display=swap'
   document.head.appendChild(link)
+}
+
+/* 预热墙上文字元素实际用到的 webfont。
+   为什么需要：Google Fonts 的 CSS 按需注入 + display=swap，意味着文字元素
+   挂载后浏览器才开始下载对应字体文件——用户看到的就是「先用 fallback 渲染，
+   等一下才跳变成目标字体」。进装饰态时主动对墙上每个字体调用
+   document.fonts.load()，把该字体 + 元素自身字符（unicode-range 分片）
+   的下载提前到用户点文字之前，点击时字体已然就绪。 */
+export function warmWallFonts(els) {
+  if (typeof document === 'undefined' || !document.fonts || !Array.isArray(els)) return
+  const seen = new Set()
+  for (const el of els) {
+    if (!el || el.type !== 'text' || !el.font) continue
+    const stack = fontCss(el.font)
+    const primary = String(stack).split(',')[0].trim().replace(/^["']+|["']+$/g, '')
+    if (!primary || seen.has(primary)) continue
+    seen.add(primary)
+    const w = Number(el.font_weight) || fontWeight(el.font) || 400
+    const sample = String(el.content || '测试').slice(0, 64)
+    try {
+      document.fonts.load(`${w > 400 ? w + ' ' : ''}16px "${primary}"`, sample).catch(() => {})
+    } catch (_) { /* 系统字体栈会立即 resolve/reject，忽略 */ }
+  }
 }
 
 /* ── 底纸（背景） ──
