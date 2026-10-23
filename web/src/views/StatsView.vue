@@ -62,17 +62,8 @@
                 <div class="st-main-sub">已相处 {{ stat.days }} 天</div>
               </div>
             </div>
-            <!-- 我 / TA 双栏：数字 + 迷你比例条 -->
+            <!-- TA / 我 双栏：数字 + 迷你比例条（我在右边） -->
             <div class="st-pair">
-              <div class="st-card st-mini">
-                <div class="st-mini-top">
-                  <AppAvatar class="st-mini-ava" :name="'我'" :avatar="myAvatar" :size="26" />
-                  <span class="st-mini-name">我发送的</span>
-                </div>
-                <div class="st-mini-num">{{ stat.meCount }}</div>
-                <div class="st-mini-bar"><i class="st-mini-bar-me" :style="{ width: pctMe + '%' }" /></div>
-                <div class="st-mini-sub">{{ pctMe }}%</div>
-              </div>
               <div class="st-card st-mini">
                 <div class="st-mini-top">
                   <AppAvatar class="st-mini-ava" :name="curContact ? curContact.name : '对方'" :avatar="curContact ? curContact.chat_avatar || curContact.avatar : ''" :size="26" />
@@ -81,6 +72,15 @@
                 <div class="st-mini-num">{{ stat.taCount }}</div>
                 <div class="st-mini-bar"><i class="st-mini-bar-ta" :style="{ width: pctTa + '%' }" /></div>
                 <div class="st-mini-sub">{{ pctTa }}%</div>
+              </div>
+              <div class="st-card st-mini">
+                <div class="st-mini-top">
+                  <AppAvatar class="st-mini-ava" :name="'我'" :avatar="myAvatar" :size="26" />
+                  <span class="st-mini-name">我发送的</span>
+                </div>
+                <div class="st-mini-num">{{ stat.meCount }}</div>
+                <div class="st-mini-bar"><i class="st-mini-bar-me" :style="{ width: pctMe + '%' }" /></div>
+                <div class="st-mini-sub">{{ pctMe }}%</div>
               </div>
             </div>
             <!-- 初次相遇 / 最近联络 -->
@@ -154,17 +154,19 @@
                   <span class="st-fav-name">{{ favName(it) }}</span>
                   <span class="st-fav-time">{{ fmtFull(it.created_at) }}</span>
                 </div>
-                <!-- 语音：声波条 + 时长 + 转写 -->
+                <!-- 语音：可点击播放的语音条 + 转写文字在下方（单行省略） -->
                 <div v-if="it.content_type === 'voice'" class="st-voice">
-                  <span class="st-voice-ico">
-                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
-                      <circle cx="6" cy="12" r="1.6" fill="currentColor" stroke="none" />
-                      <path d="M10.6 8.6a5.6 5.6 0 0 1 0 6.8" />
-                      <path d="M14.2 5.8a10 10 0 0 1 0 12.4" />
-                    </svg>
-                  </span>
-                  <span v-if="voiceDur(it)" class="st-voice-dur">{{ voiceDur(it) }}"</span>
-                  <span v-if="it.text" class="st-voice-asr">{{ it.text }}</span>
+                  <button class="st-voice-bar" type="button" @click="playVoice(it)">
+                    <span class="st-voice-ico" :class="{ playing: playingId === String(it.id) }">
+                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+                        <circle cx="6" cy="12" r="1.6" fill="currentColor" stroke="none" />
+                        <path d="M10.6 8.6a5.6 5.6 0 0 1 0 6.8" />
+                        <path d="M14.2 5.8a10 10 0 0 1 0 12.4" />
+                      </svg>
+                    </span>
+                    <span v-if="voiceDur(it)" class="st-voice-dur">{{ voiceDur(it) }}"</span>
+                  </button>
+                  <div v-if="it.text" class="st-voice-asr">{{ it.text }}</div>
                 </div>
                 <!-- 红包 -->
                 <div v-else-if="it.content_type === 'redpacket'" class="st-fav-rp">
@@ -336,12 +338,13 @@
 </template>
 
 <script setup>
-import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
+import { ref, computed, watch, onMounted, onActivated, onBeforeUnmount } from 'vue'
 import AppAvatar from '@/components/common/AppAvatar.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import { useContactsStore } from '@/stores/contacts'
 import { useDesktopStore } from '@/stores/desktop'
+import { getContactSettings } from '@/api/contacts'
 import * as api from '@/api/chat'
 
 /* 页签定义 */
@@ -365,21 +368,29 @@ const contactOpen = ref(false)
 
 const contactsStore = useContactsStore()
 const desktopStore = useDesktopStore()
-const myAvatar = computed(() => desktopStore.myAvatar || '')
+/* 我的头像：与「一起听歌」同源——设置里的 my_avatar 优先，桌面 my_avatar 兜底 */
+const myAvatarSet = ref('')
+async function refreshMyAvatar(cid) {
+  try {
+    const st = await getContactSettings(cid)
+    myAvatarSet.value = (st && st.my_avatar) || ''
+  } catch (e) {
+    myAvatarSet.value = ''
+  }
+}
+const myAvatar = computed(() => myAvatarSet.value || desktopStore.myAvatar || '')
 const contacts = computed(() => (contactsStore.list || []).filter((c) => c.kind !== 'group'))
 const curContact = computed(
   () => contacts.value.find((c) => String(c.id) === String(curCid.value)) || contacts.value[0] || null
 )
 
-/* ── 数据加载：切联系人重取全量消息；收藏一次取全后本地过滤 ── */
+/* ── 数据加载：切联系人重取全量消息；收藏每次重新拉取（收藏后返回要同步更新） ── */
 async function load() {
   loading.value = true
   try {
     msgs.value = curCid.value == null ? [] : ((await api.getAllMessages(curCid.value)) || [])
-    if (!favorites.value.length) {
-      const res = await api.getFavorites()
-      favorites.value = res.favorites || res || []
-    }
+    const res = await api.getFavorites()
+    favorites.value = res.favorites || res || []
   } catch (e) {
     msgs.value = []
   } finally {
@@ -398,6 +409,7 @@ function pickContact(c) {
   /* 同步桌面当前联系人，让「我的头像」跟随统计页的联系人 */
   desktopStore.setCurrent(c.id)
   desktopStore.load(c.id)
+  refreshMyAvatar(c.id)
   contactOpen.value = false
 }
 function onDocClick(e) {
@@ -430,7 +442,8 @@ const stat = computed(() => {
   out.lastAt = times.length ? Math.max(...times) : 0
   out.days = Math.max(1, Math.floor((Date.now() - out.firstAt * 1000) / 86400000) + 1)
   out.chars = list.reduce((s, m) => s + (m.content_type === 'text' && m.text ? String(m.text).length : 0), 0)
-  out.favs = favorites.value.filter((f) => String(f.contact_id) === String(curCid.value)).length
+  /* 收藏记录只算消息收藏（提问归「提问」tab，不计入） */
+  out.favs = favorites.value.filter((f) => String(f.contact_id) === String(curCid.value) && f.content_type !== 'question').length
 
   /* 消息比例 */
   for (const m of list) (m.sender === 'me' ? out.meCount++ : out.taCount++)
@@ -563,8 +576,39 @@ function favName(it) {
   return it.sender === 'me' ? '我' : (curContact.value ? curContact.value.name : '对方')
 }
 
+/* ── 收藏语音播放（全局单实例，与聊天页语音互斥） ── */
+const playingId = ref('')
+const __vState = (window.__zikaChatVoice = window.__zikaChatVoice || { el: null, key: '' })
+function stopVm() {
+  if (__vState.el) {
+    __vState.el.pause()
+    __vState.el = null
+    __vState.key = ''
+  }
+  playingId.value = ''
+}
+function playVoice(it) {
+  const key = String(it.id)
+  if (playingId.value === key) {
+    stopVm()
+    return
+  }
+  stopVm()
+  const a = new Audio(it.asset_path)
+  __vState.el = a
+  __vState.key = key
+  a.onended = () => { if (__vState.el === a) stopVm() }
+  a.onpause = () => { if (__vState.el === a) stopVm() }
+  a.play().catch(() => stopVm())
+  playingId.value = key
+}
+
 onMounted(async () => {
   document.addEventListener('click', onDocClick)
+  /* 直接刷新进统计页时联系人 store 可能还没加载，先等它就绪（否则落到空态） */
+  if (!contactsStore.list || !contactsStore.list.length) {
+    try { await contactsStore.load() } catch (e) { /* ignore */ }
+  }
   const saved = localStorage.getItem(LAST_CID_KEY)
   const init = contacts.value.find((c) => String(c.id) === saved) || contacts.value[0]
   curCid.value = init ? init.id : null
@@ -572,11 +616,19 @@ onMounted(async () => {
   if (init) {
     desktopStore.setCurrent(init.id)
     desktopStore.load(init.id)
+    refreshMyAvatar(init.id)
   }
   if (!curTab.value || !TABS.some((t) => t.key === curTab.value)) curTab.value = 'days'
   await load()
 })
-onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
+/* keep-alive：从聊天页等返回时重新拉取（收藏/新消息要同步更新） */
+onActivated(async () => {
+  await load()
+})
+onBeforeUnmount(() => {
+  document.removeEventListener('click', onDocClick)
+  stopVm()
+})
 </script>
 
 <style scoped>
@@ -717,10 +769,23 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 .st-fav-star { flex: 0 0 auto; margin-top: 2px; }
 
 /* 收藏里的语音条 */
-.st-voice { display: flex; align-items: center; gap: 8px; }
+.st-voice { display: flex; flex-direction: column; align-items: flex-start; gap: 4px; }
+.st-voice-bar {
+  display: inline-flex; align-items: center; gap: 7px;
+  border: none; background: var(--bg-soft); border-radius: 999px;
+  padding: 6px 14px 6px 12px; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.st-voice-bar:active { background: var(--border); }
 .st-voice-ico { color: var(--accent); display: inline-flex; }
+.st-voice-ico.playing { animation: st-voice-pulse 1s ease-in-out infinite; }
+@keyframes st-voice-pulse { 50% { opacity: 0.45; } }
 .st-voice-dur { font-size: 13px; color: var(--text-soft); font-variant-numeric: tabular-nums; }
-.st-voice-asr { font-size: 14px; color: var(--text); line-height: 1.5; word-break: break-word; }
+.st-voice-asr {
+  max-width: 100%;
+  font-size: 13px; color: var(--text); line-height: 1.5;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
 
 /* 收藏里的红包 */
 .st-fav-rp {
