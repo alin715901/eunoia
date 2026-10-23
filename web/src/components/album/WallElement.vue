@@ -43,7 +43,7 @@
 <script setup>
 import { computed, ref, watch, onMounted, nextTick } from 'vue'
 import AppIcon from '@/components/common/AppIcon.vue'
-import { fontCss, STICKY_COLORS, noteBg } from './presets'
+import { fontCss, fontWeight, STICKY_COLORS, noteBg } from './presets'
 
 const props = defineProps({
   el: { type: Object, required: true },
@@ -99,7 +99,8 @@ const stickyBg = computed(() => (noteSrc.value
 const textStyle = computed(() => ({
   fontFamily: fontCss(props.el.font),
   fontSize: (props.el.font_size || 18) + 'px',
-  fontWeight: Number(props.el.font_weight) || 400,
+  /* 字重：用户显式设置（粗细按钮）优先，否则用字体固有权重（尚黑900 / 粗宋900 / 文楷Bold 700 等） */
+  fontWeight: Number(props.el.font_weight) || fontWeight(props.el.font),
   fontStyle: props.el.italic ? 'italic' : 'normal',
   // 手账深色墨水：浅色底纸上可读，便利贴内同样清晰
   color: props.el.color || '#4a4036'
@@ -168,7 +169,8 @@ onMounted(() => {
   /* 自定义字体异步加载完成后自然宽会变：显式触发字库加载（带正文文本），
      就绪后重测；fonts.ready 兜底再测一次 */
   if (typeof document !== 'undefined' && document.fonts && document.fonts.load) {
-    const spec = fsPx.value + 'px ' + fontCss(props.el.font)
+    const wSpec = Number(props.el.font_weight) || fontWeight(props.el.font)
+    const spec = (wSpec > 400 ? wSpec + ' ' : '') + fsPx.value + 'px ' + fontCss(props.el.font)
     document.fonts.load(spec, props.el.content || '').then(() => measureText()).catch(() => {})
   }
   if (typeof document !== 'undefined' && document.fonts && document.fonts.ready) {

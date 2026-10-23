@@ -237,9 +237,11 @@
                 v-for="f in curFonts"
                 :key="f.key"
                 class="font-cell"
-                :style="{ fontFamily: f.css }"
                 @click="pickFont(f.key)"
-              >{{ f.name }}</button>
+              >
+                <span class="fc-sample" :style="{ fontFamily: f.css, fontWeight: f.w || 400 }">{{ f.sample }}</span>
+                <span class="fc-name">{{ f.name }}</span>
+              </button>
             </div>
           </template>
           <!-- 字号：拉条 + 粗细 / 颜色 / 倾斜（设置模式实时应用到选中元素；新增模式暂存，随文字一起上墙） -->
@@ -1508,6 +1510,7 @@ defineExpose({ save: flushSave })
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   align-content: start;
   margin-bottom: 0;
@@ -1522,30 +1525,47 @@ defineExpose({ save: flushSave })
   padding: 0;
 }
 
-/* 文字弹窗：字体宫格 + 便签宫格（复用贴纸弹窗的布局语言） */
+/* 文字弹窗：字体宫格（样张预览 + 名称小字，参考美图面板排版） + 便签宫格。
+   列轨必须 minmax(0,1fr)：1fr 的 min-width:auto 会被长英文名撑爆 → 整板横向滑动 */
 .font-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 8px;
   align-content: start;
 }
 .font-cell {
+  min-width: 0;
   aspect-ratio: 1;
   border: 1.5px solid var(--border);
   background: var(--bg-screen);
   border-radius: 10px;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
-  line-height: 1.25;
-  text-align: center;
-  color: var(--text);
-  padding: 4px;
+  gap: 3px;
+  padding: 4px 2px;
+  overflow: hidden;
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
 }
-.font-cell:active { border-color: var(--accent); color: var(--accent); }
+.font-cell:active { border-color: var(--accent); }
+.fc-sample {
+  max-width: 100%;
+  font-size: 21px;
+  line-height: 1.15;
+  overflow: hidden;
+  white-space: nowrap;
+}
+.fc-name {
+  max-width: 100%;
+  font-size: 9px;
+  line-height: 1.2;
+  color: var(--text-soft);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
 
 /* ── 文字设置 → 字号：字号大小 / 粗细 / 倾斜 / 颜色 ── */
 .text-style-panel { display: flex; flex-direction: column; gap: 8px; align-content: start; }

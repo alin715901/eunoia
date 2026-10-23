@@ -2,8 +2,8 @@
    纯数据模块，PhotoWallCanvas 与 WallElement 共用。
    注意：SVG data URL 统一交给 encodeURIComponent 编码，源串里不要预编码（如 url(#g) 保持原样）。 */
 
-/* ── 字体：中文 / 英文 / 日韩 三类（预设名参照美图秀秀字体面板提取；
-   每款映射到最接近的可用字体栈 —— 系统字体 + Google Fonts webfont，
+/* ── 字体：中文 / 英文 / 日韩 三类（条目与顺序按参考面板提取；sample 为宫格预览样张，
+   每款映射到最接近的可用字体栈 —— 系统字体 + Google Fonts webfont，w 为该字体固有权重。
    webfont 由 ensureGoogleFonts() 在首次打开文字面板时按需注入，不拖慢首屏） ── */
 export const FONT_CATS = [
   { key: 'zh', name: '中文' },
@@ -13,63 +13,66 @@ export const FONT_CATS = [
 
 export const FONTS = [
   /* ── 中文 ── */
-  { key: 'sans', cat: 'zh', name: '系统默认', css: '-apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif' },
-  { key: 'zh-song', cat: 'zh', name: '全字库正宋体', css: '"Songti SC", "STSong", "Noto Serif SC", "SimSun", serif' },
-  { key: 'zh-boldsong', cat: 'zh', name: '点字永胜粗宋', css: '"Noto Serif SC", "Songti SC", "SimSun", serif' },
-  { key: 'zh-hei', cat: 'zh', name: '点字尚黑', css: '"Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif' },
-  { key: 'kai', cat: 'zh', name: '淡雅楷体', css: '"Kaiti SC", "STKaiti", "KaiTi", "KaiTi_GB2312", "楷体", serif' },
-  { key: 'zh-maobi', cat: 'zh', name: '鸿雷拙书简体', css: '"Ma Shan Zheng", "Kaiti SC", "STKaiti", cursive' },
-  { key: 'zh-xingcao', cat: 'zh', name: '行草', css: '"Zhi Mang Xing", "Kaiti SC", cursive' },
-  { key: 'zh-liucao', cat: 'zh', name: '龚帆手写专辑体', css: '"Liu Jian Mao Cao", cursive' },
-  { key: 'zh-longcang', cat: 'zh', name: '云舒体', css: '"Long Cang", cursive' },
-  { key: 'zh-kuai', cat: 'zh', name: '点字云辰', css: '"ZCOOL KuaiLe", "Comic Sans MS", cursive' },
-  { key: 'zh-huangyou', cat: 'zh', name: '优设字由棒棒体', css: '"ZCOOL QingKe HuangYou", "Noto Sans SC", sans-serif' },
-  { key: 'zh-xiaowei', cat: 'zh', name: '霞鹜文楷', css: '"ZCOOL XiaoWei", "Kaiti SC", serif' },
-  { key: 'hand', cat: 'zh', name: '可爱手写体', css: '"Xingkai SC", "HanziPen SC", "Caveat", "Comic Sans MS", "Chalkboard SE", cursive' },
-  { key: 'zh-yuanti', cat: 'zh', name: '湾湾体', css: '"Yuanti SC", "YuanTi", "YouYuan", "Noto Sans SC", sans-serif' },
-  { key: 'zh-round', cat: 'zh', name: '江城圆体', css: '"Yuanti SC", "Hiragino Maru Gothic ProN", "M PLUS Rounded 1c", "Noto Sans SC", sans-serif' },
-  { key: 'zh-role', cat: 'zh', name: 'Role Soft', css: '"Zen Maru Gothic", "Yuanti SC", "Noto Sans SC", sans-serif' },
+  { key: 'sans', cat: 'zh', name: '系统默认', sample: '美图', css: '-apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif' },
+  { key: 'zh-yunchen', cat: 'zh', name: '点字云辰', sample: '美图', css: '"ZCOOL KuaiLe", "Comic Sans MS", cursive' },
+  { key: 'zh-shanghei', cat: 'zh', name: '点字尚黑', sample: '美图', w: 900, css: '"Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif' },
+  { key: 'zh-maobi', cat: 'zh', name: '鸿雷拙书简体', sample: '美图', css: '"Zhi Mang Xing", "Kaiti SC", "STKaiti", cursive' },
+  { key: 'zh-boldsong', cat: 'zh', name: '点字永胜粗宋', sample: '美图', w: 900, css: '"Noto Serif SC", "Songti SC", "SimSun", serif' },
+  { key: 'zh-guoguo', cat: 'zh', name: '字由果果体', sample: '美图', css: '"ZCOOL QingKe HuangYou", "Noto Sans SC", sans-serif' },
+  { key: 'zh-bangbang', cat: 'zh', name: '优设字由棒棒体', sample: '美图', w: 700, css: '"Noto Sans SC", "PingFang SC", sans-serif' },
+  { key: 'zh-guipu', cat: 'zh', name: '香蕉归朴灵感体', sample: '美图', css: '"Ma Shan Zheng", "Kaiti SC", cursive' },
+  { key: 'zh-manman', cat: 'zh', name: '点字漫漫体', sample: '美图', css: '"Long Cang", cursive' },
+  { key: 'zh-yunshu', cat: 'zh', name: '云舒体', sample: '美图', css: '"ZCOOL XiaoWei", "Kaiti SC", serif' },
+  { key: 'zh-xiaowei', cat: 'zh', name: '霞鹜文楷-Bold', sample: '美图', w: 700, css: '"LXGW WenKai TC", "Kaiti SC", "STKaiti", "KaiTi", serif' },
+  { key: 'zh-suiyi', cat: 'zh', name: '字由随意', sample: '美图', css: '"Liu Jian Mao Cao", cursive' },
+  { key: 'zh-fulu', cat: 'zh', name: '福芦大毛笔体', sample: '美图', css: '"Ma Shan Zheng", "Zhi Mang Xing", cursive' },
+  { key: 'zh-laiwan', cat: 'zh', name: '香蕉来玩灵感体', sample: '美图', css: '"ZCOOL KuaiLe", cursive' },
+  { key: 'zh-liucao', cat: 'zh', name: '龚帆手写专辑体', sample: '美图', css: '"Zhi Mang Xing", "Liu Jian Mao Cao", cursive' },
+  { key: 'zh-chengxing', cat: 'zh', name: '香蕉乘兴灵感体', sample: '美图', css: '"Long Cang", "Liu Jian Mao Cao", cursive' },
 
   /* ── 英文 ── */
-  { key: 'en-kalam', cat: 'en', name: 'Kallem', css: '"Kalam", "Comic Sans MS", cursive' },
-  { key: 'en-sacramento', cat: 'en', name: 'Sacramento', css: '"Sacramento", cursive' },
-  { key: 'en-royalia', cat: 'en', name: 'Royalia', css: '"Playfair Display", "Didot", "Times New Roman", serif' },
-  { key: 'en-schoolbell', cat: 'en', name: 'Schoolbell', css: '"Schoolbell", "Comic Sans MS", cursive' },
-  { key: 'en-gamahand', cat: 'en', name: 'GamaHand', css: '"Caveat", "Segoe Script", cursive' },
-  { key: 'en-corben', cat: 'en', name: 'Corben', css: '"Corben", Georgia, serif' },
-  { key: 'en-alexbrush', cat: 'en', name: 'AlexBrush', css: '"Alex Brush", cursive' },
-  { key: 'en-zapfino', cat: 'en', name: 'Zapfino', css: '"Snell Roundhand", "Zapfino", "Alex Brush", cursive' },
-  { key: 'en-monsieur', cat: 'en', name: 'MonsieurLaDoulaise', css: '"Monsieur La Doulaise", cursive' },
-  { key: 'en-meie', cat: 'en', name: 'MeieScript', css: '"Meie Script", cursive' },
-  { key: 'en-futura', cat: 'en', name: 'Futura', css: 'Futura, "Century Gothic", "Trebuchet MS", sans-serif' },
-  { key: 'en-courier', cat: 'en', name: 'CourierNew', css: '"Courier New", Courier, monospace' },
-  { key: 'en-times', cat: 'en', name: 'TimesNewRoman', css: '"Times New Roman", Times, serif' },
-  { key: 'en-trebuchet', cat: 'en', name: 'TrebuchetMS', css: '"Trebuchet MS", Trebuchet, sans-serif' },
-  { key: 'en-verdana', cat: 'en', name: 'Verdana', css: 'Verdana, Geneva, sans-serif' },
-  { key: 'en-cormorant', cat: 'en', name: 'CormorantGar', css: '"Cormorant Garamond", Garamond, serif' },
-  { key: 'en-bonanova', cat: 'en', name: 'BonaNova', css: '"Bona Nova", "Times New Roman", serif' },
-  { key: 'en-stronger', cat: 'en', name: 'The Stronger', css: '"Permanent Marker", "Comic Sans MS", cursive' },
-  { key: 'en-office', cat: 'en', name: 'Office Typewriter', css: '"Special Elite", "Courier New", monospace' },
+  { key: 'en-kallem', cat: 'en', name: 'Kallem', sample: 'Meitu', w: 600, css: '"Caveat", "Segoe Script", cursive' },
+  { key: 'en-sacramento', cat: 'en', name: 'Sacramento', sample: 'Meitu', css: '"Sacramento", cursive' },
+  { key: 'en-royalia', cat: 'en', name: 'Royalia', sample: 'Meitu', w: 600, css: '"Playfair Display", "Didot", "Times New Roman", serif' },
+  { key: 'en-schoolbell', cat: 'en', name: 'Schoolbell', sample: 'Meitu', css: '"Schoolbell", "Comic Sans MS", cursive' },
+  { key: 'en-stronger', cat: 'en', name: 'The Stronger', sample: 'Meitu', css: '"Shadows Into Light", "Segoe Print", cursive' },
+  { key: 'en-gamahand', cat: 'en', name: 'GamaHand', sample: 'Meitu', css: '"Gochi Hand", "Comic Sans MS", cursive' },
+  { key: 'en-corben', cat: 'en', name: 'Corben', sample: 'Meitu', w: 700, css: '"Corben", Georgia, serif' },
+  { key: 'en-alexbrush', cat: 'en', name: 'AlexBrush', sample: 'Meitu', css: '"Alex Brush", cursive' },
+  { key: 'en-afterzero', cat: 'en', name: 'AfterZero', sample: 'Meitu', css: '"Yellowtail", cursive' },
+  { key: 'en-zapfino', cat: 'en', name: 'Zapfino', sample: 'Meitu', css: '"Great Vibes", "Snell Roundhand", cursive' },
+  { key: 'en-futura', cat: 'en', name: 'Futura', sample: 'Meitu', w: 500, css: 'Futura, "Jost", "Century Gothic", "Trebuchet MS", sans-serif' },
+  { key: 'en-courier', cat: 'en', name: 'CourierNew', sample: 'Meitu', css: '"Courier Prime", "Courier New", Courier, monospace' },
+  { key: 'en-times', cat: 'en', name: 'TimesNewRoman', sample: 'Meitu', css: '"Tinos", "Times New Roman", Times, serif' },
+  { key: 'en-trebuchet', cat: 'en', name: 'TrebuchetMS', sample: 'Meitu', css: '"Trebuchet MS", Trebuchet, sans-serif' },
+  { key: 'en-verdana', cat: 'en', name: 'Verdana', sample: 'Meitu', css: 'Verdana, Geneva, sans-serif' },
+  { key: 'en-rolesoft', cat: 'en', name: 'Role Soft', sample: 'Meitu', w: 600, css: '"Quicksand", "Comfortaa", sans-serif' },
+  { key: 'en-courgette', cat: 'en', name: 'Courgette-Re', sample: 'Meitu', css: '"Courgette", cursive' },
+  { key: 'en-aperitif', cat: 'en', name: 'French Aperitif', sample: 'Meitu', css: '"Italianno", cursive' },
+  { key: 'zh-songtc', cat: 'en', name: '全字库正宋体', sample: 'Meitu', w: 600, css: '"Noto Serif SC", "Songti SC", "SimSun", serif' },
+  { key: 'en-flanogant', cat: 'en', name: 'Flanogant-Cle', sample: 'Meitu', css: '"Pinyon Script", cursive' },
+  { key: 'en-routine', cat: 'en', name: 'Routine Oldnig', sample: 'Meitu', css: '"Rozha One", Georgia, serif' },
+  { key: 'en-office', cat: 'en', name: 'Office-Typewri', sample: 'Meitu', css: '"Special Elite", "Courier New", monospace' },
+  { key: 'en-bonanova', cat: 'en', name: 'BonaNova-Re', sample: 'Meitu', css: '"Bona Nova", "Times New Roman", serif' },
+  { key: 'en-meiescript', cat: 'en', name: 'MeieScript-Re', sample: 'Meitu', css: '"Meie Script", cursive' },
+  { key: 'en-cormorant', cat: 'en', name: 'CormorantGar', sample: 'Meitu', w: 600, css: '"Cormorant Garamond", Garamond, serif' },
+  { key: 'en-monsieur', cat: 'en', name: 'MonsieurLaDo', sample: 'Meitu', css: '"Monsieur La Doulaise", cursive' },
 
   /* ── 日韩 ── */
-  { key: 'jk-chosun', cat: 'jk', name: 'ChosunSm 明朝', css: '"Noto Serif KR", "Song Myung", serif' },
-  { key: 'jk-gowun', cat: 'jk', name: 'ChosunLo 圆宋', css: '"Gowun Batang", "Noto Serif KR", serif' },
-  { key: 'jk-nanumpen', cat: 'jk', name: '나눔바른펜', css: '"Nanum Pen Script", cursive' },
-  { key: 'jk-nanumbrush', cat: 'jk', name: '나눔손글씨 붓', css: '"Nanum Brush Script", cursive' },
-  { key: 'jk-blacksans', cat: 'jk', name: '텍스트 粗黑', css: '"Black Han Sans", "Noto Sans KR", sans-serif' },
-  { key: 'jk-dohyeon', cat: 'jk', name: '텍스트 기본', css: '"Do Hyeon", "Noto Sans KR", sans-serif' },
-  { key: 'jk-jua', cat: 'jk', name: '둥근 텍스트', css: '"Jua", "Noto Sans KR", cursive' },
-  { key: 'jk-noserifjp', cat: 'jk', name: '日式超粗 Dela', css: '"Noto Serif JP", "Hiragino Mincho ProN", serif' },
-  { key: 'jk-sawarabi', cat: 'jk', name: '翠流デコマン', css: '"Sawarabi Mincho", "Noto Serif JP", serif' },
-  { key: 'jk-zenmaru', cat: 'jk', name: '美風 (Mikaze)', css: '"Zen Maru Gothic", "Hiragino Maru Gothic ProN", "Noto Sans JP", sans-serif' },
-  { key: 'jk-hachi', cat: 'jk', name: 'ひげ文字 (Hige)', css: '"Hachi Maru Pop", cursive' },
-  { key: 'jk-yusei', cat: 'jk', name: '马克笔手写', css: '"Yusei Magic", "Noto Sans JP", cursive' },
-  { key: 'jk-klee', cat: 'jk', name: 'ぽってり L (Pot)', css: '"Klee One", "Noto Sans JP", cursive' },
-  { key: 'jk-yomogi', cat: 'jk', name: '汐舟 (Shiofune)', css: '"Yomogi", "Noto Sans JP", cursive' },
-  { key: 'jk-dot', cat: 'jk', name: 'Galmuri 像素', css: '"DotGothic16", monospace' },
-  { key: 'jk-zenold', cat: 'jk', name: 'Dah_Font', css: '"Zen Old Mincho", "Noto Serif JP", serif' },
-  { key: 'jk-stick', cat: 'jk', name: '膨胀感姓名板', css: '"Stick", "Noto Sans JP", sans-serif' },
-  { key: 'jk-rampart', cat: 'jk', name: 'いまりゅう (Im)', css: '"Rampart One", "Noto Sans JP", cursive' }
+  { key: 'jk-barunpen', cat: 'jk', name: '너눔바른펜 일반', sample: '텍스트', css: '"Nanum Pen Script", cursive' },
+  { key: 'jk-higemoji', cat: 'jk', name: 'ひげ文字 (Hige)', sample: 'テキスト', css: '"Hachi Maru Pop", cursive' },
+  { key: 'jk-a1hei', cat: 'jk', name: 'A1黒體 繁體字', sample: 'テキスト', w: 900, css: '"Noto Sans TC", "Noto Sans JP", sans-serif' },
+  { key: 'jk-hazetoppo', cat: 'jk', name: 'はぜトッポ (Ha)', sample: 'テキスト', css: '"Mochiy Pop One", "Noto Sans JP", sans-serif' },
+  { key: 'jk-suiryu', cat: 'jk', name: '翠流デコロマン', sample: 'テキスト', css: '"Rampart One", "Noto Sans JP", cursive' },
+  { key: 'jk-mikaze', cat: 'jk', name: '美風 (Mikaze)', sample: 'テキスト', css: '"Sawarabi Mincho", "Hiragino Mincho ProN", serif' },
+  { key: 'jk-imaryu', cat: 'jk', name: 'いまりゅう (Im)', sample: 'テキスト', css: '"Yomogi", "Noto Sans JP", cursive' },
+  { key: 'jk-hotteri', cat: 'jk', name: 'ほってり L (Pot)', sample: 'テキスト', css: '"Kiwi Maru", "Noto Sans JP", serif' },
+  { key: 'jk-shiofune', cat: 'jk', name: '汐舟 (Shiofune)', sample: 'テキスト', css: '"Zen Maru Gothic", "Hiragino Maru Gothic ProN", sans-serif' },
+  { key: 'jk-harukaze', cat: 'jk', name: 'TT-PHarukaze', sample: 'テキスト', css: '"Zen Kurenaido", "Noto Sans JP", sans-serif' },
+  { key: 'jk-lineseed', cat: 'jk', name: 'LINESeedJP_T', sample: 'テキスト', css: '"Noto Sans JP", "Hiragino Sans", sans-serif' },
+  { key: 'jk-dahfont', cat: 'jk', name: 'Dah_Font', sample: '텍스트', css: '"Jua", "Noto Sans KR", cursive' },
+  { key: 'jk-galmuri11', cat: 'jk', name: 'Galmuri 11-Re', sample: '텍스트', css: '"DotGothic16", "Hi Melody", monospace' },
+  { key: 'jk-galmuri7', cat: 'jk', name: 'Galmuri 7-Reg', sample: '텍스트', css: '"Hi Melody", "Noto Sans KR", cursive' }
 ]
 
 /* 分类取字体（保持定义顺序） */
@@ -82,28 +85,35 @@ export function fontCss(key) {
   return f ? f.css : FONTS[0].css
 }
 
+/* 字体固有权重（尚黑/粗宋/文楷 Bold 等映射到 700/900 的 webfont；未标注按 400） */
+export function fontWeight(key) {
+  const f = FONTS.find((x) => x.key === key)
+  return (f && f.w) || 400
+}
+
 /* Google Fonts webfont 按需注入：首次打开文字面板时调用一次。
-   中文字体按 unicode-range 分片，只有实际用到的字符分片才会下载 */
+   中日韩字体按 unicode-range 分片，只有实际用到的字符分片才会下载 */
 let googleFontsLoaded = false
 export function ensureGoogleFonts() {
   if (googleFontsLoaded || typeof document === 'undefined') return
   googleFontsLoaded = true
   const families = [
     /* 中文 */
-    'Ma+Shan+Zheng', 'Zhi+Mang+Xing', 'Liu+Jian+Mao+Cao', 'Long+Cang',
-    'ZCOOL+KuaiLe', 'ZCOOL+QingKe+HuangYou', 'ZCOOL+XiaoWei',
-    'Noto+Serif+SC:wght@600', 'Noto+Sans+SC:wght@500',
+    'ZCOOL+KuaiLe', 'Noto+Sans+SC:wght@700;900', 'Zhi+Mang+Xing',
+    'Noto+Serif+SC:wght@600;900', 'ZCOOL+QingKe+HuangYou', 'Ma+Shan+Zheng',
+    'Long+Cang', 'ZCOOL+XiaoWei', 'LXGW+WenKai+TC:wght@700', 'Liu+Jian+Mao+Cao',
     /* 英文 */
-    'Kalam:wght@400;700', 'Sacramento', 'Playfair+Display:wght@600', 'Schoolbell',
-    'Caveat:wght@500', 'Corben:wght@700', 'Alex+Brush', 'Monsieur+La+Doulaise',
-    'Meie+Script', 'Cormorant+Garamond:wght@600', 'Bona+Nova',
-    'Permanent+Marker', 'Special+Elite',
+    'Caveat:wght@600', 'Sacramento', 'Playfair+Display:wght@600', 'Schoolbell',
+    'Shadows+Into+Light', 'Gochi+Hand', 'Corben:wght@700', 'Alex+Brush',
+    'Yellowtail', 'Great+Vibes', 'Jost:wght@500', 'Courier+Prime', 'Tinos',
+    'Quicksand:wght@600', 'Courgette', 'Italianno', 'Pinyon+Script',
+    'Rozha+One', 'Special+Elite', 'Bona+Nova', 'Meie+Script',
+    'Cormorant+Garamond:wght@600', 'Monsieur+La+Doulaise',
     /* 日韩 */
-    'Noto+Serif+KR:wght@600', 'Gowun+Batang', 'Nanum+Pen+Script', 'Nanum+Brush+Script',
-    'Black+Han+Sans', 'Do+Hyeon', 'Jua',
-    'Noto+Serif+JP:wght@600', 'Sawarabi+Mincho', 'Zen+Maru+Gothic:wght@500',
-    'Hachi+Maru+Pop', 'Yusei+Magic', 'Klee+One:wght@600', 'Yomogi',
-    'DotGothic16', 'Zen+Old+Mincho', 'Stick', 'Rampart+One'
+    'Nanum+Pen+Script', 'Hachi+Maru+Pop', 'Noto+Sans+TC:wght@900',
+    'Mochiy+Pop+One', 'Rampart+One', 'Sawarabi+Mincho', 'Yomogi', 'Kiwi+Maru',
+    'Zen+Maru+Gothic:wght@500', 'Zen+Kurenaido', 'Noto+Sans+JP', 'Jua',
+    'DotGothic16', 'Hi+Melody'
   ]
   const link = document.createElement('link')
   link.rel = 'stylesheet'
