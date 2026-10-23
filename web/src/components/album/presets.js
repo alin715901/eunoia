@@ -29,6 +29,16 @@ export const FONTS = [
   { key: 'zh-laiwan', cat: 'zh', name: '香蕉来玩灵感体', sample: '测试', css: '"ZCOOL KuaiLe", cursive' },
   { key: 'zh-liucao', cat: 'zh', name: '龚帆手写专辑体', sample: '测试', css: '"Zhi Mang Xing", "Liu Jian Mao Cao", cursive' },
   { key: 'zh-chengxing', cat: 'zh', name: '香蕉乘兴灵感体', sample: '测试', css: '"Long Cang", "Liu Jian Mao Cao", cursive' },
+  { key: 'zh-jingbai', cat: 'zh', name: '汉仪井柏然体简', sample: '测试', css: '"Zhi Mang Xing", "Long Cang", cursive' },
+  { key: 'zh-wennrou', cat: 'zh', name: '唯有你是我温柔', sample: '测试', css: '"Long Cang", "Ma Shan Zheng", cursive' },
+  { key: 'zh-heimingdan', cat: 'zh', name: '把坏情绪加入黑名单', sample: '测试', css: '"Liu Jian Mao Cao", "Long Cang", cursive' },
+  { key: 'zh-langman', cat: 'zh', name: '浪漫的你浪漫的事', sample: '测试', css: '"Ma Shan Zheng", cursive' },
+  { key: 'zh-xiaye', cat: 'zh', name: '夏夜晚风终遇见你', sample: '测试', css: '"Long Cang", "Zhi Mang Xing", cursive' },
+  { key: 'zh-naiyuan', cat: 'zh', name: '海盐蜜桃奶圆体', sample: '测试', w: 700, css: '"M PLUS Rounded 1c", "Zen Maru Gothic", "Noto Sans SC", sans-serif' },
+  { key: 'zh-wanfeng', cat: 'zh', name: '晚风玫瑰拼音体', sample: '测试', css: '"Caveat", "Long Cang", cursive' },
+  { key: 'zh-zhixin', cat: 'zh', name: '只要信不要问', sample: '测试', css: '"LXGW WenKai TC", "Kaiti SC", serif' },
+  { key: 'zh-yijian', cat: 'zh', name: '一见钟情再见倾心', sample: '测试', w: 700, css: '"LXGW WenKai TC", "Ma Shan Zheng", serif' },
+  { key: 'zh-yusheng', cat: 'zh', name: '余生漫漫你是所有', sample: '测试', w: 600, css: '"Noto Serif SC", "Songti SC", serif' },
 
   /* ── 英文 ── */
   { key: 'en-kallem', cat: 'en', name: 'Kallem', sample: 'Test', w: 600, css: '"Caveat", "Segoe Script", cursive' },
@@ -72,7 +82,26 @@ export const FONTS = [
   { key: 'jk-lineseed', cat: 'jk', name: 'LINESeedJP_T', sample: 'テスト', css: '"Noto Sans JP", "Hiragino Sans", sans-serif' },
   { key: 'jk-dahfont', cat: 'jk', name: 'Dah_Font', sample: '테스트', css: '"Jua", "Noto Sans KR", cursive' },
   { key: 'jk-galmuri11', cat: 'jk', name: 'Galmuri 11-Re', sample: '테스트', css: '"DotGothic16", "Hi Melody", monospace' },
-  { key: 'jk-galmuri7', cat: 'jk', name: 'Galmuri 7-Reg', sample: '테스트', css: '"Hi Melody", "Noto Sans KR", cursive' }
+  { key: 'jk-galmuri7', cat: 'jk', name: 'Galmuri 7-Reg', sample: '테스트', css: '"Hi Melody", "Noto Sans KR", cursive' },
+  /* 朝鲜日报体 Chosun 系列（明朝体 / 粗黑 / 圆体等风格变体） */
+  { key: 'jk-chosunsm', cat: 'jk', name: 'ChosunSm', sample: '테스트', css: '"Noto Serif KR", "Songti SC", serif' },
+  { key: 'jk-chosunsg', cat: 'jk', name: 'ChosunSg', sample: '테스트', css: '"Song Myung", "Noto Serif KR", serif' },
+  { key: 'jk-chosunnm', cat: 'jk', name: 'ChosunNm', sample: '테스트', css: '"Nanum Myeongjo", "Noto Serif KR", serif' },
+  { key: 'jk-chosunlo', cat: 'jk', name: 'ChosunLo', sample: '테스트', css: '"Gowun Batang", "Noto Serif KR", serif' },
+  { key: 'jk-chosunkm', cat: 'jk', name: 'ChosunKm', sample: '테스트', w: 600, css: '"Hahmlet", "Noto Serif KR", serif' },
+  { key: 'jk-chosunkg', cat: 'jk', name: 'ChosunKg', sample: '테스트', css: '"Gowun Dodum", "Noto Sans KR", sans-serif' },
+  { key: 'jk-chosungu', cat: 'jk', name: 'ChosunGu', sample: '테스트', css: '"Gugi", "Noto Sans KR", sans-serif' },
+  { key: 'jk-chosungs', cat: 'jk', name: 'ChosunGs', sample: '테스트', w: 500, css: '"IBM Plex Sans KR", "Noto Sans KR", sans-serif' },
+  { key: 'jk-chosunbg', cat: 'jk', name: 'ChosunBg', sample: '테스트', w: 900, css: '"Black Han Sans", "Noto Sans KR", sans-serif' },
+  /* IdeaFonts 手写系列 */
+  { key: 'jk-ideayou', cat: 'jk', name: 'IdeaFonts You', sample: '테스트', css: '"Gamja Flower", "Nanum Pen Script", cursive' },
+  { key: 'jk-ideasha', cat: 'jk', name: 'IdeaFonts Sha', sample: '테스트', css: '"Hi Melody", "Gamja Flower", cursive' },
+  { key: 'jk-ideasas', cat: 'jk', name: 'IdeaFonts SaS', sample: '테스트', css: '"Nanum Brush Script", "Hi Melody", cursive' },
+  /* 日文补充 */
+  { key: 'jk-delagothic', cat: 'jk', name: '日式超粗 DelaGothic', sample: 'テスト', w: 900, css: '"Dela Gothic One", "Noto Sans JP", sans-serif' },
+  { key: 'jk-kiraboshi', cat: 'jk', name: '翠流Kiraboshi', sample: 'テスト', css: '"Kaisei Decol", "Sawarabi Mincho", serif' },
+  { key: 'jk-puhupicnic', cat: 'jk', name: 'Puhu Picnic', sample: 'テスト', css: '"Mochiy Pop P One", "Mochiy Pop One", sans-serif' },
+  { key: 'jk-puhuholiday', cat: 'jk', name: 'Puhu Holiday', sample: 'テスト', css: '"Slackside One", "Zen Kurenaido", cursive' }
 ]
 
 /* 分类取字体（保持定义顺序） */
@@ -101,7 +130,8 @@ export function ensureGoogleFonts() {
     /* 中文 */
     'ZCOOL+KuaiLe', 'Noto+Sans+SC:wght@700;900', 'Zhi+Mang+Xing',
     'Noto+Serif+SC:wght@600;900', 'ZCOOL+QingKe+HuangYou', 'Ma+Shan+Zheng',
-    'Long+Cang', 'ZCOOL+XiaoWei', 'LXGW+WenKai+TC:wght@700', 'Liu+Jian+Mao+Cao',
+    'Long+Cang', 'ZCOOL+XiaoWei', 'LXGW+WenKai+TC:wght@400;700', 'Liu+Jian+Mao+Cao',
+    'M+PLUS+Rounded+1c:wght@700', 'Caveat:wght@500',
     /* 英文 */
     'Caveat:wght@600', 'Sacramento', 'Playfair+Display:wght@600', 'Schoolbell',
     'Shadows+Into+Light', 'Gochi+Hand', 'Corben:wght@700', 'Alex+Brush',
@@ -113,7 +143,13 @@ export function ensureGoogleFonts() {
     'Nanum+Pen+Script', 'Hachi+Maru+Pop', 'Noto+Sans+TC:wght@900',
     'Mochiy+Pop+One', 'Rampart+One', 'Sawarabi+Mincho', 'Yomogi', 'Kiwi+Maru',
     'Zen+Maru+Gothic:wght@500', 'Zen+Kurenaido', 'Noto+Sans+JP', 'Jua',
-    'DotGothic16', 'Hi+Melody'
+    'DotGothic16', 'Hi+Melody',
+    /* 日韩 · 新增（Chosun 系列 / IdeaFonts 系列 / 日文补充） */
+    'Noto+Serif+KR:wght@400;600', 'Song+Myung', 'Nanum+Myeongjo:wght@700',
+    'Gowun+Batang', 'Hahmlet:wght@600', 'Gowun+Dodum', 'Gugi',
+    'IBM+Plex+Sans+KR:wght@500', 'Black+Han+Sans',
+    'Gamja+Flower', 'Nanum+Brush+Script',
+    'Dela+Gothic+One', 'Kaisei+Decol', 'Mochiy+Pop+P+One', 'Slackside+One'
   ]
   const link = document.createElement('link')
   link.rel = 'stylesheet'
