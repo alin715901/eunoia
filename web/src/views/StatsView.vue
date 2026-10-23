@@ -59,7 +59,7 @@
               <div class="st-main-num">{{ total }}</div>
               <div class="st-main-side">
                 <div class="st-main-label">总消息数</div>
-                <div class="st-main-sub">已相处 {{ stat.days }} 天</div>
+                <div class="st-main-sub">已联系 {{ stat.days }} 天</div>
               </div>
             </div>
             <!-- TA / 我 双栏：数字 + 迷你比例条（我在右边） -->
@@ -344,7 +344,7 @@ import AppIcon from '@/components/common/AppIcon.vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import { useContactsStore } from '@/stores/contacts'
 import { useDesktopStore } from '@/stores/desktop'
-import { getContactSettings } from '@/api/contacts'
+import { getContactSettings, getDesktop } from '@/api/contacts'
 import * as api from '@/api/chat'
 
 /* 页签定义 */
@@ -368,17 +368,22 @@ const contactOpen = ref(false)
 
 const contactsStore = useContactsStore()
 const desktopStore = useDesktopStore()
-/* 我的头像：与「一起听歌」同源——设置里的 my_avatar 优先，桌面 my_avatar 兜底 */
+/* 我的头像：与「一起听歌」effectiveMyAvatar 完全同源——
+   sync_chat_avatar 开启时优先桌面 my_avatar，否则 设置 my_avatar 优先、桌面兜底。
+   不读 desktopStore（全局 store 会被其他页面并发 load 覆盖），按当前统计联系人直查 */
 const myAvatarSet = ref('')
 async function refreshMyAvatar(cid) {
   try {
-    const st = await getContactSettings(cid)
-    myAvatarSet.value = (st && st.my_avatar) || ''
+    const [st, desk] = await Promise.all([getContactSettings(cid), getDesktop(cid)])
+    const syncOn = !!desk && (desk.sync_chat_avatar === 1 || desk.sync_chat_avatar === true || desk.sync_chat_avatar === '1')
+    myAvatarSet.value = syncOn
+      ? (desk.my_avatar || st.my_avatar || '')
+      : (st.my_avatar || (desk && desk.my_avatar) || '')
   } catch (e) {
     myAvatarSet.value = ''
   }
 }
-const myAvatar = computed(() => myAvatarSet.value || desktopStore.myAvatar || '')
+const myAvatar = computed(() => myAvatarSet.value || '')
 const contacts = computed(() => (contactsStore.list || []).filter((c) => c.kind !== 'group'))
 const curContact = computed(
   () => contacts.value.find((c) => String(c.id) === String(curCid.value)) || contacts.value[0] || null
@@ -621,8 +626,9 @@ onMounted(async () => {
   if (!curTab.value || !TABS.some((t) => t.key === curTab.value)) curTab.value = 'days'
   await load()
 })
-/* keep-alive：从聊天页等返回时重新拉取（收藏/新消息要同步更新） */
+/* keep-alive：从聊天页等返回时重新拉取（收藏/新消息/头像设置要同步更新） */
 onActivated(async () => {
+  if (curCid.value != null) refreshMyAvatar(curCid.value)
   await load()
 })
 onBeforeUnmount(() => {
