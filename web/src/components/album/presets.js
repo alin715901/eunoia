@@ -32,7 +32,7 @@ export const FONTS = [
   { key: 'zh-jingbai', cat: 'zh', name: '汉仪井柏然体简', sample: '测试', css: '"Zhi Mang Xing", "Long Cang", cursive' },
   { key: 'zh-wennrou', cat: 'zh', name: '唯有你是我温柔', sample: '测试', css: '"Long Cang", "Ma Shan Zheng", cursive' },
   { key: 'zh-heimingdan', cat: 'zh', name: '把坏情绪加入黑名单', sample: '测试', css: '"Liu Jian Mao Cao", "Long Cang", cursive' },
-  { key: 'zh-langman', cat: 'zh', name: '浪漫的你浪漫的事', sample: '测试', css: '"Ma Shan Zheng", cursive' },
+  { key: 'zh-langman', cat: 'zh', name: '浪漫的你浪漫的事', sample: '测试', css: '"Zhi Mang Xing", "Long Cang", cursive' },
   { key: 'zh-xiaye', cat: 'zh', name: '夏夜晚风终遇见你', sample: '测试', css: '"Ma Shan Zheng", "Zhi Mang Xing", cursive' },
   { key: 'zh-naiyuan', cat: 'zh', name: '海盐蜜桃奶圆体', sample: '测试', css: '"ZCOOL KuaiLe", "M PLUS Rounded 1c", "Zen Maru Gothic", cursive' },
   { key: 'zh-wanfeng', cat: 'zh', name: '晚风玫瑰拼音体', sample: '测试', css: '"Long Cang", "Caveat", cursive' },

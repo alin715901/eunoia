@@ -23,8 +23,8 @@
     <!-- 自定义相框：覆盖在内容之上，随元素一起缩放旋转 -->
     <img v-if="customFrameSrc" :src="customFrameSrc" class="we-frame" alt="" draggable="false" />
 
-    <!-- 锁定角标：元素锁定时常驻显示 -->
-    <span v-if="el.locked" class="we-lock" aria-label="已锁定"><AppIcon name="lock" :size="12" color="#fff" /></span>
+    <!-- 锁定角标：仅装饰模式显示（浏览态保持画面干净） -->
+    <span v-if="el.locked && editable" class="we-lock" aria-label="已锁定"><AppIcon name="lock" :size="12" color="#fff" /></span>
 
     <!-- 选中态：左上角手柄=旋转，右下角手柄=缩放+旋转（可拖动）；锁定后不显示手柄 -->
     <span v-if="selected && editable && !el.locked" class="we-corner tl" role="slider" aria-label="旋转" @pointerdown.stop="onHandleDown($event, 'tl')"></span>

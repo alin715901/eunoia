@@ -122,6 +122,7 @@
             v-for="(s, i) in curStickers"
             :key="i"
             class="sticker-thumb"
+            :class="{ 'st-note': s.name && s.name.slice(0, 5) === 'note-' }"
             @click="addSticker(s.data)"
           >
             <img :src="s.data" alt="" />
@@ -918,7 +919,7 @@ const allCats = computed(() => [...STICKER_CATEGORIES.map((c) => c.name), ...cus
 const isCustomCat = (c) => customCats.value.names.includes(c)
 const curCat = ref(STICKER_CATEGORIES[0].name)
 const curStickers = computed(() => {
-  const builtin = STICKERS.filter((s) => s.cat === curCat.value).map((s) => ({ data: s.data, custom: false }))
+  const builtin = STICKERS.filter((s) => s.cat === curCat.value).map((s) => ({ data: s.data, custom: false, name: s.name }))
   const custom = (customCats.value.stickers[curCat.value] || []).map((s) => ({ data: s.data, custom: true }))
   return [...builtin, ...custom]
 })
@@ -1430,9 +1431,11 @@ defineExpose({ save: flushSave })
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   /* 行距加大：便签纸面是满格出血设计，行间太近会像瀑布流连成一片 */
-  gap: 16px 8px;
+  gap: 20px 8px;
   margin-bottom: 10px;
 }
+/* 便签缩略图内缩：纸面设计满格出血，贴边显示时相邻行会挤在一起 */
+.sticker-thumb.st-note img { padding: 6px; }
 .card-thumb, .sticker-thumb {
   position: relative;
   aspect-ratio: 1;
