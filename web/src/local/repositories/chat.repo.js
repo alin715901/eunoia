@@ -92,10 +92,12 @@ function getFavorites() {
     .prepare(
       `SELECT f.*, c.name AS contact_name, c.avatar AS contact_avatar, c.kind AS contact_kind,
               CASE WHEN cd.sync_chat_avatar = 1 AND cd.partner_avatar IS NOT NULL AND cd.partner_avatar != ''
-                   THEN cd.partner_avatar ELSE c.avatar END AS chat_avatar
+                   THEN cd.partner_avatar ELSE c.avatar END AS chat_avatar,
+              m.duration AS msg_duration
        FROM favorites f
        LEFT JOIN contacts c ON c.id = f.contact_id
        LEFT JOIN contact_desktop cd ON cd.contact_id = f.contact_id
+       LEFT JOIN chat_messages m ON m.id = f.message_id
        ORDER BY f.id DESC`
     )
     .all();

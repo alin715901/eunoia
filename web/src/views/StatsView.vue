@@ -46,7 +46,7 @@
       <div v-if="loading" class="sv-loading">加载中…</div>
 
       <template v-else>
-        <!-- ── 相处记录 ── -->
+        <!-- ── 统计 ── -->
         <template v-if="curTab === 'days'">
           <div v-if="!total" class="sv-empty">
             <div class="sv-empty-emoji">📊</div>
@@ -54,78 +54,87 @@
             <div class="sv-empty-sub">去和 TA 聊几句，这里就会长出你们的相处记录</div>
           </div>
           <template v-else>
-        <!-- 总消息数大卡 -->
-        <div class="st-card st-total">
-          <div class="st-total-num">{{ total }}</div>
-          <div class="st-total-label">总消息数</div>
-        </div>
-        <!-- 我 / TA 双栏 -->
-        <div class="st-pair">
-          <div class="st-card st-mini">
-            <div class="st-mini-num">{{ stat.meCount }}</div>
-            <div class="st-mini-sub">{{ pctMe }}%</div>
-            <div class="st-mini-label">我发送的</div>
-          </div>
-          <div class="st-card st-mini">
-            <div class="st-mini-num">{{ stat.taCount }}</div>
-            <div class="st-mini-sub">{{ pctTa }}%</div>
-            <div class="st-mini-label">{{ curContact ? curContact.name : '对方' }}发送的</div>
-          </div>
-        </div>
-        <!-- 初次相遇 / 最近联络 双栏 -->
-        <div class="st-pair">
-          <div class="st-card st-mini st-mini-ico">
-            <span class="st-mini-badge"><AppIcon name="flower" :size="13" color="#fff" /></span>
-            <div class="st-mini-date">{{ fmtDate(stat.firstAt) }}</div>
-            <div class="st-mini-sub">{{ fmtTime(stat.firstAt) }}</div>
-            <div class="st-mini-label">初次相遇</div>
-          </div>
-          <div class="st-card st-mini st-mini-ico">
-            <span class="st-mini-badge st-mini-badge-hot"><AppIcon name="heart" :size="13" color="#fff" /></span>
-            <div class="st-mini-date">{{ fmtDate(stat.lastAt) }}</div>
-            <div class="st-mini-sub">{{ fmtTime(stat.lastAt) }}</div>
-            <div class="st-mini-label">最近联络</div>
-          </div>
-        </div>
-        <!-- 明细行 -->
-        <div class="st-card">
-          <div class="st-row">
-            <span class="st-row-label">相处天数</span>
-            <span class="st-row-val">{{ stat.days }} 天</span>
-          </div>
-          <div class="st-row">
-            <span class="st-row-label">文字数量</span>
-            <span class="st-row-val">{{ stat.chars }} 字</span>
-          </div>
-          <div class="st-row">
-            <span class="st-row-label">最常聊天时间</span>
-            <span class="st-row-val">{{ stat.bestHour }}</span>
-          </div>
-          <div class="st-row">
-            <span class="st-row-label">最常聊天日期</span>
-            <span class="st-row-val">{{ stat.bestWeekday }}</span>
-          </div>
-          <div class="st-row">
-            <span class="st-row-label">平均每日消息</span>
-            <span class="st-row-val">{{ stat.avgDaily }} 条</span>
-          </div>
-          <div class="st-row">
-            <span class="st-row-label">最长连续聊天</span>
-            <span class="st-row-val">{{ stat.streak }} 天</span>
-          </div>
-          <div class="st-row">
-            <span class="st-row-label">单日最高消息</span>
-            <span class="st-row-val">{{ stat.maxDay }} 条</span>
-          </div>
-          <div class="st-row">
-            <span class="st-row-label">收藏记录</span>
-            <span class="st-row-val">{{ stat.favs }} 条</span>
-          </div>
-        </div>
-      </template>
-      </template>
+            <!-- 主卡：总消息数（左大数字 + 右标签）+ 相处天数 -->
+            <div class="st-card st-main">
+              <div class="st-main-num">{{ total }}</div>
+              <div class="st-main-side">
+                <div class="st-main-label">总消息数</div>
+                <div class="st-main-sub">已相处 {{ stat.days }} 天</div>
+              </div>
+            </div>
+            <!-- 我 / TA 双栏：数字 + 迷你比例条 -->
+            <div class="st-pair">
+              <div class="st-card st-mini">
+                <div class="st-mini-top">
+                  <AppAvatar class="st-mini-ava" :name="'我'" :avatar="myAvatar" :size="26" />
+                  <span class="st-mini-name">我发送的</span>
+                </div>
+                <div class="st-mini-num">{{ stat.meCount }}</div>
+                <div class="st-mini-bar"><i class="st-mini-bar-me" :style="{ width: pctMe + '%' }" /></div>
+                <div class="st-mini-sub">{{ pctMe }}%</div>
+              </div>
+              <div class="st-card st-mini">
+                <div class="st-mini-top">
+                  <AppAvatar class="st-mini-ava" :name="curContact ? curContact.name : '对方'" :avatar="curContact ? curContact.chat_avatar || curContact.avatar : ''" :size="26" />
+                  <span class="st-mini-name">{{ curContact ? curContact.name : '对方' }}发送的</span>
+                </div>
+                <div class="st-mini-num">{{ stat.taCount }}</div>
+                <div class="st-mini-bar"><i class="st-mini-bar-ta" :style="{ width: pctTa + '%' }" /></div>
+                <div class="st-mini-sub">{{ pctTa }}%</div>
+              </div>
+            </div>
+            <!-- 初次相遇 / 最近联络 -->
+            <div class="st-card st-meet">
+              <div class="st-meet-row">
+                <span class="st-meet-badge"><AppIcon name="flower" :size="13" color="#fff" /></span>
+                <div class="st-meet-main">
+                  <div class="st-meet-label">初次相遇</div>
+                  <div class="st-meet-val">{{ fmtFull(stat.firstAt) }}</div>
+                </div>
+              </div>
+              <div class="st-meet-row">
+                <span class="st-meet-badge st-meet-badge-hot"><AppIcon name="heart" :size="13" color="#fff" /></span>
+                <div class="st-meet-main">
+                  <div class="st-meet-label">最近联络</div>
+                  <div class="st-meet-val">{{ fmtFull(stat.lastAt) }}</div>
+                </div>
+              </div>
+            </div>
+            <!-- 明细行 -->
+            <div class="st-card">
+              <div class="st-row">
+                <span class="st-row-label">文字数量</span>
+                <span class="st-row-val">{{ stat.chars }} 字</span>
+              </div>
+              <div class="st-row">
+                <span class="st-row-label">最常聊天时间</span>
+                <span class="st-row-val">{{ stat.bestHour }}</span>
+              </div>
+              <div class="st-row">
+                <span class="st-row-label">最常聊天日期</span>
+                <span class="st-row-val">{{ stat.bestWeekday }}</span>
+              </div>
+              <div class="st-row">
+                <span class="st-row-label">平均每日消息</span>
+                <span class="st-row-val">{{ stat.avgDaily }} 条</span>
+              </div>
+              <div class="st-row">
+                <span class="st-row-label">最长连续聊天</span>
+                <span class="st-row-val">{{ stat.streak }} 天</span>
+              </div>
+              <div class="st-row">
+                <span class="st-row-label">单日最高消息</span>
+                <span class="st-row-val">{{ stat.maxDay }} 条</span>
+              </div>
+              <div class="st-row">
+                <span class="st-row-label">收藏记录</span>
+                <span class="st-row-val">{{ stat.favs }} 条</span>
+              </div>
+            </div>
+          </template>
+        </template>
 
-        <!-- ── 消息收藏 ── -->
+        <!-- ── 消息收藏（只收消息：文本 / 图片 / 语音 / 红包等；提问归「提问」tab） ── -->
         <template v-else-if="curTab === 'fav'">
           <div v-if="!curFavs.length" class="sv-empty">
             <div class="sv-empty-emoji">⭐</div>
@@ -136,54 +145,61 @@
             <div v-for="it in curFavs" :key="it.id" class="st-card st-fav-card">
               <AppAvatar
                 class="st-fav-avatar"
-                :name="it.sender === 'me' ? '我' : (curContact ? curContact.name : '对方')"
-                :avatar="it.sender === 'me' ? '' : (curContact ? curContact.chat_avatar || curContact.avatar : '')"
+                :name="favName(it)"
+                :avatar="it.sender === 'me' ? myAvatar : (curContact ? curContact.chat_avatar || curContact.avatar : '')"
                 :size="40"
               />
               <div class="st-fav-main">
                 <div class="st-fav-head">
-                  <span class="st-fav-name">{{ it.sender === 'me' ? '我' : (curContact ? curContact.name : '对方') }}</span>
+                  <span class="st-fav-name">{{ favName(it) }}</span>
                   <span class="st-fav-time">{{ fmtFull(it.created_at) }}</span>
                 </div>
-                <template v-if="it.content_type === 'question' && parseJSON(it.text)">
-                  <div class="st-q">
-                    <span class="st-q-tag">{{ qLabel(parseJSON(it.text).type) }}</span>
-                    <div class="st-q-text">{{ parseJSON(it.text).question }}</div>
-                    <div v-if="parseJSON(it.text).options?.length" class="st-q-opts">
-                      <div v-for="(o, i) in parseJSON(it.text).options" :key="i" class="st-q-opt">
-                        {{ ['A','B','C','D','E','F'][i] || i + 1 }}. {{ o }}
-                      </div>
-                    </div>
-                  </div>
-                </template>
-                <template v-else>
-                  <img v-if="it.asset_path" :src="it.asset_path" class="st-fav-img" />
-                  <div class="st-fav-text">{{ it.text || (it.asset_path ? '[图片]' : '') }}</div>
-                </template>
+                <!-- 语音：声波条 + 时长 + 转写 -->
+                <div v-if="it.content_type === 'voice'" class="st-voice">
+                  <span class="st-voice-ico">
+                    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+                      <circle cx="6" cy="12" r="1.6" fill="currentColor" stroke="none" />
+                      <path d="M10.6 8.6a5.6 5.6 0 0 1 0 6.8" />
+                      <path d="M14.2 5.8a10 10 0 0 1 0 12.4" />
+                    </svg>
+                  </span>
+                  <span v-if="voiceDur(it)" class="st-voice-dur">{{ voiceDur(it) }}"</span>
+                  <span v-if="it.text" class="st-voice-asr">{{ it.text }}</span>
+                </div>
+                <!-- 红包 -->
+                <div v-else-if="it.content_type === 'redpacket'" class="st-fav-rp">
+                  <AppIcon name="redpacket" :size="14" color="#e05a4e" />
+                  <span class="st-fav-rp-text">{{ parseJSON(it.text).wish || '红包' }}</span>
+                </div>
+                <!-- 图片 -->
+                <img v-else-if="it.asset_path" :src="it.asset_path" class="st-fav-img" />
+                <!-- 文本 / 信件 -->
+                <div v-else class="st-fav-text">{{ it.text || (it.content_type === 'letter' ? '[信件]' : '') }}</div>
               </div>
               <AppIcon class="st-fav-star" name="star" :size="16" color="#e8b94e" filled />
             </div>
           </div>
         </template>
 
-        <!-- ── 提问 ── -->
+        <!-- ── 提问（含双方提问与回答） ── -->
         <template v-else-if="curTab === 'q'">
           <div v-if="!questions.length" class="sv-empty">
             <div class="sv-empty-emoji">❓</div>
             <div class="sv-empty-title">还没有提问</div>
-            <div class="sv-empty-sub">聊天里发出提问后，这里会记录每一次发起</div>
+            <div class="sv-empty-sub">聊天里发出提问后，这里会记录每一次发起与回答</div>
           </div>
           <template v-else>
-            <div class="st-hero st-hero-sm">
-              <div class="st-hero-num">{{ questions.length }}</div>
-              <div class="st-hero-label">累计提问</div>
+            <div class="st-q-sum">
+              <span class="st-q-sum-num">{{ questions.length }}</span>
+              <span class="st-q-sum-label">累计提问</span>
+              <span class="st-q-sum-ans">{{ answeredCount }} 个已回答</span>
             </div>
             <div class="st-favs">
               <div v-for="(q, i) in questions" :key="i" class="st-card st-fav-card">
                 <AppAvatar
                   class="st-fav-avatar"
                   :name="q.sender === 'me' ? '我' : (curContact ? curContact.name : '对方')"
-                  :avatar="q.sender === 'me' ? '' : (curContact ? curContact.chat_avatar || curContact.avatar : '')"
+                  :avatar="q.sender === 'me' ? myAvatar : (curContact ? curContact.chat_avatar || curContact.avatar : '')"
                   :size="40"
                 />
                 <div class="st-fav-main">
@@ -195,10 +211,18 @@
                     <span class="st-q-tag">{{ qLabel(q.type) }}</span>
                     <div class="st-q-text">{{ q.question }}</div>
                     <div v-if="q.options?.length" class="st-q-opts">
-                      <div v-for="(o, j) in q.options" :key="j" class="st-q-opt">
-                        {{ ['A','B','C','D','E','F'][j] || j + 1 }}. {{ o }}
+                      <div v-for="(o, j) in q.options" :key="j" class="st-q-opt" :class="{ on: q.picked.some((p) => p.i === j) }">
+                        <span class="st-q-opt-key">{{ ['A','B','C','D','E','F'][j] || j + 1 }}</span>
+                        <span class="st-q-opt-txt">{{ o }}</span>
+                        <AppIcon v-if="q.picked.some((p) => p.i === j)" name="check" :size="13" color="var(--accent)" />
                       </div>
                     </div>
+                    <!-- 问答题回答 / 选择题兜底原文 -->
+                    <div v-if="q.ansText && !q.picked.length" class="st-q-ans">
+                      <AppIcon name="chat" :size="12" color="var(--text-soft)" />
+                      <span>回答：{{ q.ansText }}</span>
+                    </div>
+                    <div v-else-if="!q.ansText" class="st-q-ans st-q-ans-none">等待回答…</div>
                   </div>
                 </div>
               </div>
@@ -214,28 +238,41 @@
             <div class="sv-empty-sub">聊天里发出第一个红包，这里就开始记账</div>
           </div>
           <template v-else>
-            <div class="st-card st-rp-card">
+            <div class="st-card st-rp">
               <div class="st-rp-head">
-                <AppIcon name="redpacket" :size="16" color="#e05a4e" />
+                <AppAvatar class="st-rp-ava" :name="'我'" :avatar="myAvatar" :size="26" />
                 <span class="st-rp-title">我 发红包</span>
                 <span class="st-rp-badge">{{ stat.rpMe.count }} 笔</span>
               </div>
-              <div class="st-rp-amount">
-                <span class="st-rp-tag">累计心意币</span>
-                <span class="st-rp-num">¥{{ fmtMoney(stat.rpMe.sum) }}</span>
-                <span class="st-rp-times">共 {{ stat.rpMe.count }} 次</span>
+              <div class="st-rp-body">
+                <span class="st-rp-cur">¥</span>
+                <span class="st-rp-num">{{ fmtMoney(stat.rpMe.sum) }}</span>
               </div>
+              <div class="st-rp-foot">累计金额 · 共 {{ stat.rpMe.count }} 次</div>
             </div>
-            <div class="st-card st-rp-card">
+            <div class="st-card st-rp">
               <div class="st-rp-head">
-                <AppIcon name="redpacket" :size="16" color="#e05a4e" />
+                <AppAvatar class="st-rp-ava" :name="curContact ? curContact.name : '对方'" :avatar="curContact ? curContact.chat_avatar || curContact.avatar : ''" :size="26" />
                 <span class="st-rp-title">{{ curContact ? curContact.name : 'TA' }} 发红包</span>
                 <span class="st-rp-badge">{{ stat.rpTa.count }} 笔</span>
               </div>
-              <div class="st-rp-amount">
-                <span class="st-rp-tag">累计心意币</span>
-                <span class="st-rp-num">¥{{ fmtMoney(stat.rpTa.sum) }}</span>
-                <span class="st-rp-times">共 {{ stat.rpTa.count }} 次</span>
+              <div class="st-rp-body">
+                <span class="st-rp-cur">¥</span>
+                <span class="st-rp-num">{{ fmtMoney(stat.rpTa.sum) }}</span>
+              </div>
+              <div class="st-rp-foot">累计金额 · 共 {{ stat.rpTa.count }} 次</div>
+            </div>
+            <!-- 往来对比 -->
+            <div v-if="stat.rpMe.count && stat.rpTa.count" class="st-card st-rp-cmp">
+              <div class="st-rp-cmp-row">
+                <span>我发出</span>
+                <div class="st-rp-cmp-bar"><i class="me" :style="{ width: rpPctMe + '%' }" /></div>
+                <span class="st-rp-cmp-val">{{ rpPctMe }}%</span>
+              </div>
+              <div class="st-rp-cmp-row">
+                <span>{{ curContact ? curContact.name : 'TA' }}发出</span>
+                <div class="st-rp-cmp-bar"><i class="ta" :style="{ width: rpPctTa + '%' }" /></div>
+                <span class="st-rp-cmp-val">{{ rpPctTa }}%</span>
               </div>
             </div>
           </template>
@@ -243,32 +280,52 @@
 
         <!-- ── 邀请 ── -->
         <template v-else>
-          <div v-if="!stat.invGame.me && !stat.invGame.ta && !stat.invCinema.me && !stat.invCinema.ta" class="sv-empty">
+          <div v-if="!stat.invGame.me && !stat.invGame.ta && !stat.invCinema.me && !stat.invCinema.ta && !stat.invListen.me && !stat.invListen.ta" class="sv-empty">
             <div class="sv-empty-emoji">🎮</div>
             <div class="sv-empty-title">还没有邀请记录</div>
-            <div class="sv-empty-sub">发起游戏或一起观影邀请后，这里会记下来</div>
+            <div class="sv-empty-sub">发起游戏、一起观影或听歌邀请后，这里会记下来</div>
           </div>
           <template v-else>
-            <div class="st-card">
+            <div class="st-card st-inv">
               <div class="st-sec st-sec-icon"><AppIcon name="game" :size="16" color="var(--accent)" />游戏邀请</div>
-              <div class="st-row">
-                <span class="st-row-label">我发出</span>
-                <span class="st-row-val">{{ stat.invGame.me }} 次</span>
-              </div>
-              <div class="st-row">
-                <span class="st-row-label">{{ curContact ? curContact.name : 'TA' }}发出</span>
-                <span class="st-row-val">{{ stat.invGame.ta }} 次</span>
+              <div class="st-inv-body">
+                <div class="st-inv-col">
+                  <div class="st-inv-num">{{ stat.invGame.me }}</div>
+                  <div class="st-inv-label">我发出</div>
+                </div>
+                <div class="st-inv-div" />
+                <div class="st-inv-col">
+                  <div class="st-inv-num">{{ stat.invGame.ta }}</div>
+                  <div class="st-inv-label">{{ curContact ? curContact.name : 'TA' }}发出</div>
+                </div>
               </div>
             </div>
-            <div class="st-card">
+            <div class="st-card st-inv">
               <div class="st-sec st-sec-icon"><AppIcon name="film" :size="16" color="var(--accent)" />观影邀请</div>
-              <div class="st-row">
-                <span class="st-row-label">我发出</span>
-                <span class="st-row-val">{{ stat.invCinema.me }} 次</span>
+              <div class="st-inv-body">
+                <div class="st-inv-col">
+                  <div class="st-inv-num">{{ stat.invCinema.me }}</div>
+                  <div class="st-inv-label">我发出</div>
+                </div>
+                <div class="st-inv-div" />
+                <div class="st-inv-col">
+                  <div class="st-inv-num">{{ stat.invCinema.ta }}</div>
+                  <div class="st-inv-label">{{ curContact ? curContact.name : 'TA' }}发出</div>
+                </div>
               </div>
-              <div class="st-row">
-                <span class="st-row-label">{{ curContact ? curContact.name : 'TA' }}发出</span>
-                <span class="st-row-val">{{ stat.invCinema.ta }} 次</span>
+            </div>
+            <div class="st-card st-inv">
+              <div class="st-sec st-sec-icon"><AppIcon name="music" :size="16" color="var(--accent)" />听歌邀请</div>
+              <div class="st-inv-body">
+                <div class="st-inv-col">
+                  <div class="st-inv-num">{{ stat.invListen.me }}</div>
+                  <div class="st-inv-label">我发出</div>
+                </div>
+                <div class="st-inv-div" />
+                <div class="st-inv-col">
+                  <div class="st-inv-num">{{ stat.invListen.ta }}</div>
+                  <div class="st-inv-label">{{ curContact ? curContact.name : 'TA' }}发出</div>
+                </div>
               </div>
             </div>
           </template>
@@ -284,6 +341,7 @@ import AppAvatar from '@/components/common/AppAvatar.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import { useContactsStore } from '@/stores/contacts'
+import { useDesktopStore } from '@/stores/desktop'
 import * as api from '@/api/chat'
 
 /* 页签定义 */
@@ -306,6 +364,8 @@ const curTab = ref(LAST_TAB_KEY)
 const contactOpen = ref(false)
 
 const contactsStore = useContactsStore()
+const desktopStore = useDesktopStore()
+const myAvatar = computed(() => desktopStore.myAvatar || '')
 const contacts = computed(() => (contactsStore.list || []).filter((c) => c.kind !== 'group'))
 const curContact = computed(
   () => contacts.value.find((c) => String(c.id) === String(curCid.value)) || contacts.value[0] || null
@@ -335,6 +395,9 @@ watch(curTab, (t) => localStorage.setItem(LAST_TAB_KEY, t))
 
 function pickContact(c) {
   curCid.value = c.id
+  /* 同步桌面当前联系人，让「我的头像」跟随统计页的联系人 */
+  desktopStore.setCurrent(c.id)
+  desktopStore.load(c.id)
   contactOpen.value = false
 }
 function onDocClick(e) {
@@ -357,7 +420,7 @@ const stat = computed(() => {
     meCount: 0, taCount: 0,
     bestHour: '—', bestWeekday: '—', avgDaily: 0, streak: 0, maxDay: 0,
     rpMe: { count: 0, sum: 0 }, rpTa: { count: 0, sum: 0 },
-    invGame: { me: 0, ta: 0 }, invCinema: { me: 0, ta: 0 }
+    invGame: { me: 0, ta: 0 }, invCinema: { me: 0, ta: 0 }, invListen: { me: 0, ta: 0 }
   }
   if (!list.length) return out
 
@@ -408,10 +471,11 @@ const stat = computed(() => {
     else { out.rpTa.count++; out.rpTa.sum += amt }
   }
 
-  /* 邀请：game_invite / cinema_invite，sender 即发起方 */
+  /* 邀请：game_invite / cinema_invite / listen_invite，sender 即发起方 */
   for (const m of list) {
     if (m.content_type === 'game_invite') (m.sender === 'me' ? out.invGame.me++ : out.invGame.ta++)
     else if (m.content_type === 'cinema_invite') (m.sender === 'me' ? out.invCinema.me++ : out.invCinema.ta++)
+    else if (m.content_type === 'listen_invite') (m.sender === 'me' ? out.invListen.me++ : out.invListen.ta++)
   }
   return out
 })
@@ -419,19 +483,57 @@ const stat = computed(() => {
 const pctMe = computed(() => (total.value ? Math.round((stat.value.meCount / total.value) * 100) : 0))
 const pctTa = computed(() => (total.value ? 100 - pctMe.value : 0))
 
-/* 收藏（当前联系人） */
+/* 红包往来占比 */
+const rpPctMe = computed(() => {
+  const t = stat.value.rpMe.count + stat.value.rpTa.count
+  return t ? Math.round((stat.value.rpMe.count / t) * 100) : 0
+})
+const rpPctTa = computed(() => (rpPctMe.value ? 100 - rpPctMe.value : 0))
+
+/* 收藏（当前联系人；提问类收藏归「提问」tab，这里只展示消息类） */
 const curFavs = computed(() =>
-  favorites.value.filter((f) => String(f.contact_id) === String(curCid.value))
+  favorites.value.filter((f) => String(f.contact_id) === String(curCid.value) && f.content_type !== 'question')
 )
 
-/* 提问列表 */
-const questions = computed(() =>
-  valid.value
+/* 提问列表：含双方提问；回答 = 提问之后对方发来的第一条文字消息（5 分钟内，且不被其他提问占用） */
+const questions = computed(() => {
+  const qList = valid.value
     .filter((m) => m.content_type === 'question')
-    .map((m) => ({ ...parseJSON(m.text), sender: m.sender, time: m.created_at }))
-    .filter((q) => q.question)
-    .reverse()
-)
+    .sort((a, b) => a.created_at - b.created_at)
+  const used = new Set()
+  const out = []
+  for (const q of qList) {
+    const meta = parseJSON(q.text)
+    if (!meta.question) continue
+    const ans = valid.value.find(
+      (m) =>
+        !used.has(m.id) &&
+        m.content_type === 'text' &&
+        m.sender !== q.sender &&
+        !!m.text &&
+        m.created_at >= q.created_at &&
+        m.created_at - q.created_at <= 300
+    )
+    if (ans) used.add(ans.id)
+    let picked = []
+    if (ans && meta.options && meta.options.length) {
+      const lines = String(ans.text).split('\n').map((s) => s.trim()).filter(Boolean)
+      picked = meta.options
+        .map((o, i) => ({ o, i }))
+        .filter((x) => lines.includes(String(x.o).trim()))
+    }
+    out.push({
+      ...meta,
+      sender: q.sender,
+      time: q.created_at,
+      ansText: ans ? ans.text : '',
+      ansAt: ans ? ans.created_at : 0,
+      picked
+    })
+  }
+  return out.reverse()
+})
+const answeredCount = computed(() => questions.value.filter((q) => q.ansText).length)
 function qLabel(t) {
   return t === 'single' ? '提问 · 单选' : t === 'multi' ? '提问 · 多选' : '提问 · 问答'
 }
@@ -447,18 +549,18 @@ function fmtFull(sec) {
   const d = new Date(toMs(sec))
   return `${d.getMonth() + 1}月${d.getDate()}日 ${pad(d.getHours())}:${pad(d.getMinutes())}`
 }
-function fmtDate(sec) {
-  if (!sec) return '—'
-  const d = new Date(toMs(sec))
-  return `${pad(d.getMonth() + 1)}/${pad(d.getDate())}`
-}
-function fmtTime(sec) {
-  if (!sec) return '—'
-  const d = new Date(toMs(sec))
-  return `${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
 function fmtMoney(n) {
-  return String(Math.round(n * 100) / 100)
+  return (Math.round(n * 100) / 100).toFixed(2)
+}
+/* 语音时长（不足 1 分钟只显示秒） */
+function voiceDur(it) {
+  const d = Number(it.msg_duration)
+  if (!Number.isFinite(d) || d <= 0) return ''
+  const s = Math.round(d)
+  return s < 60 ? `${s}` : `${Math.floor(s / 60)}'${pad(s % 60)}`
+}
+function favName(it) {
+  return it.sender === 'me' ? '我' : (curContact.value ? curContact.value.name : '对方')
 }
 
 onMounted(async () => {
@@ -466,6 +568,11 @@ onMounted(async () => {
   const saved = localStorage.getItem(LAST_CID_KEY)
   const init = contacts.value.find((c) => String(c.id) === saved) || contacts.value[0]
   curCid.value = init ? init.id : null
+  /* 同步桌面当前联系人，保证「我的头像」取到当前统计联系人的配置 */
+  if (init) {
+    desktopStore.setCurrent(init.id)
+    desktopStore.load(init.id)
+  }
   if (!curTab.value || !TABS.some((t) => t.key === curTab.value)) curTab.value = 'days'
   await load()
 })
@@ -528,13 +635,7 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 }
 .st-tab.on { background: var(--text); color: var(--bg-screen); border-color: var(--text); font-weight: 600; }
 
-/* 大数字（相处天数 / 累计提问） */
-.st-hero { text-align: center; padding: 26px 0 18px; }
-.st-hero-sm { padding: 18px 0 14px; }
-.st-hero-num { font-size: 56px; font-weight: 700; color: var(--text); line-height: 1.1; }
-.st-hero-label { margin-top: 6px; font-size: 13px; color: var(--text-soft); }
-
-/* 卡片与行 */
+/* ── 卡片基础 ── */
 .st-card {
   margin: 0 12px 12px;
   background: var(--bg-screen);
@@ -553,47 +654,57 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 .st-row-label { font-size: 14px; color: var(--text-soft); flex: 0 0 auto; }
 .st-row-val { font-size: 15px; font-weight: 600; color: var(--text); text-align: right; }
 
-/* 总消息数大卡 */
-.st-total { text-align: center; padding: 22px 14px 18px; }
-.st-total-num { font-size: 44px; font-weight: 700; color: #d4a94e; line-height: 1.1; font-variant-numeric: tabular-nums; }
-.st-total-label { margin-top: 6px; font-size: 13px; color: var(--text-soft); }
+/* ── 统计 tab ── */
+/* 主卡：左大数字 + 右标签 */
+.st-main {
+  display: flex; align-items: center; gap: 14px;
+  padding: 18px 16px;
+  background: linear-gradient(135deg, color-mix(in srgb, var(--accent) 12%, var(--bg-screen)), var(--bg-screen) 70%);
+}
+.st-main-num {
+  font-size: 46px; font-weight: 700; color: var(--accent); line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+.st-main-side { display: flex; flex-direction: column; gap: 4px; }
+.st-main-label { font-size: 15px; font-weight: 600; color: var(--text); }
+.st-main-sub { font-size: 12px; color: var(--text-soft); }
 
-/* 双栏小卡 */
+/* 双栏小卡：头像 + 数字 + 迷你条 */
 .st-pair {
   display: grid; grid-template-columns: 1fr 1fr; gap: 10px;
   margin: 0 12px 12px;
 }
 .st-pair .st-card { margin: 0; }
-.st-mini { padding: 14px 12px 12px; text-align: center; }
-.st-mini-ico { padding-top: 16px; }
+.st-mini { padding: 12px 12px 11px; }
+.st-mini-top { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.st-mini-ava { flex: 0 0 auto; }
+.st-mini-name { font-size: 12px; color: var(--text-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .st-mini-num {
-  font-size: 26px; font-weight: 700; color: var(--text); line-height: 1.15;
+  margin-top: 8px;
+  font-size: 24px; font-weight: 700; color: var(--text); line-height: 1.1;
   font-variant-numeric: tabular-nums;
 }
-.st-mini-sub { margin-top: 2px; font-size: 12px; color: var(--text-soft); font-variant-numeric: tabular-nums; }
-.st-mini-label { margin-top: 6px; font-size: 12px; color: var(--text-soft); }
-.st-mini-badge {
+.st-mini-bar { margin-top: 8px; height: 5px; border-radius: 999px; background: var(--bg-soft); overflow: hidden; }
+.st-mini-bar i { display: block; height: 100%; border-radius: 999px; }
+.st-mini-bar-me { background: var(--accent); }
+.st-mini-bar-ta { background: #9aa3ad; }
+.st-mini-sub { margin-top: 5px; font-size: 11px; color: var(--text-soft); font-variant-numeric: tabular-nums; }
+
+/* 初次相遇 / 最近联络 */
+.st-meet { padding: 6px 14px; }
+.st-meet-row { display: flex; align-items: center; gap: 12px; padding: 11px 0; }
+.st-meet-row + .st-meet-row { border-top: 1px solid var(--border); }
+.st-meet-badge {
   display: inline-flex; align-items: center; justify-content: center;
-  width: 26px; height: 26px; border-radius: 50%;
-  background: #8fbf6f; margin-bottom: 8px;
+  width: 30px; height: 30px; border-radius: 50%; flex: 0 0 auto;
+  background: #8fbf6f;
 }
-.st-mini-badge-hot { background: #e0758a; }
+.st-meet-badge-hot { background: #e0758a; }
+.st-meet-main { display: flex; align-items: baseline; gap: 10px; min-width: 0; flex: 1; }
+.st-meet-label { font-size: 13px; color: var(--text-soft); flex: 0 0 auto; }
+.st-meet-val { font-size: 14px; font-weight: 600; color: var(--text); text-align: right; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-/* 红包卡 */
-.st-rp-card { padding: 12px 14px; }
-.st-rp-head { display: flex; align-items: center; gap: 7px; }
-.st-rp-title { font-size: 14px; font-weight: 600; color: var(--text); flex: 1; }
-.st-rp-badge { font-size: 12px; color: var(--text-soft); background: var(--bg-soft); border-radius: 999px; padding: 2px 9px; }
-.st-rp-amount {
-  margin-top: 10px;
-  display: flex; align-items: center; gap: 10px;
-  background: var(--bg-soft); border-radius: 10px; padding: 10px 12px;
-}
-.st-rp-tag { font-size: 12px; color: var(--text-soft); border: 1px solid var(--border); border-radius: 8px; padding: 3px 8px; background: var(--bg-screen); }
-.st-rp-num { flex: 1; font-size: 20px; font-weight: 700; color: var(--text); }
-.st-rp-times { font-size: 12px; color: var(--text-soft); }
-
-/* 收藏卡片（头像 + 昵称 + 时间 + 星标） */
+/* ── 收藏卡片 ── */
 .st-favs { display: flex; flex-direction: column; gap: 10px; margin: 0 12px; }
 .st-fav-card { display: flex; align-items: flex-start; gap: 10px; padding: 12px; }
 .st-fav-avatar { flex: 0 0 auto; }
@@ -605,7 +716,28 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
 .st-fav-img { max-width: 180px; max-height: 180px; border-radius: 8px; display: block; }
 .st-fav-star { flex: 0 0 auto; margin-top: 2px; }
 
-/* 提问卡片 */
+/* 收藏里的语音条 */
+.st-voice { display: flex; align-items: center; gap: 8px; }
+.st-voice-ico { color: var(--accent); display: inline-flex; }
+.st-voice-dur { font-size: 13px; color: var(--text-soft); font-variant-numeric: tabular-nums; }
+.st-voice-asr { font-size: 14px; color: var(--text); line-height: 1.5; word-break: break-word; }
+
+/* 收藏里的红包 */
+.st-fav-rp {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: #fdf0ec; border-radius: 8px; padding: 6px 10px;
+}
+.st-fav-rp-text { font-size: 13px; color: #c2503f; }
+
+/* ── 提问 tab ── */
+.st-q-sum {
+  display: flex; align-items: baseline; gap: 8px;
+  margin: 2px 12px 12px; padding: 12px 14px;
+  background: var(--bg-soft); border-radius: 12px;
+}
+.st-q-sum-num { font-size: 22px; font-weight: 700; color: var(--text); font-variant-numeric: tabular-nums; }
+.st-q-sum-label { font-size: 13px; color: var(--text-soft); flex: 1; }
+.st-q-sum-ans { font-size: 12px; color: var(--accent); }
 .st-q { display: flex; flex-direction: column; gap: 6px; }
 .st-q-tag {
   align-self: flex-start;
@@ -614,6 +746,55 @@ onBeforeUnmount(() => document.removeEventListener('click', onDocClick))
   border-radius: 999px; padding: 2px 8px;
 }
 .st-q-text { font-size: 15px; font-weight: 600; color: var(--text); line-height: 1.5; word-break: break-word; }
-.st-q-opts { display: flex; flex-direction: column; gap: 3px; }
-.st-q-opt { font-size: 13px; color: var(--text-soft); line-height: 1.5; }
+.st-q-opts { display: flex; flex-direction: column; gap: 4px; }
+.st-q-opt {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 13px; color: var(--text-soft); line-height: 1.5;
+  padding: 5px 9px; border-radius: 8px; background: var(--bg-soft);
+}
+.st-q-opt.on { color: var(--text); background: color-mix(in srgb, var(--accent) 14%, var(--bg-soft)); font-weight: 600; }
+.st-q-opt-key { flex: 0 0 auto; font-size: 11px; color: var(--text-soft); }
+.st-q-opt-txt { flex: 1; min-width: 0; word-break: break-word; }
+.st-q-ans {
+  display: flex; align-items: flex-start; gap: 5px;
+  font-size: 13px; color: var(--text); line-height: 1.5;
+  padding: 7px 10px; border-radius: 8px;
+  background: color-mix(in srgb, var(--accent) 10%, var(--bg-soft));
+  word-break: break-word;
+}
+.st-q-ans-none { color: var(--text-soft); background: transparent; padding: 2px 0; }
+
+/* ── 红包 tab ── */
+.st-rp { padding: 14px; }
+.st-rp-head { display: flex; align-items: center; gap: 8px; }
+.st-rp-ava { flex: 0 0 auto; }
+.st-rp-title { font-size: 14px; font-weight: 600; color: var(--text); flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-rp-badge { font-size: 11px; color: var(--text-soft); background: var(--bg-soft); border-radius: 999px; padding: 2px 9px; flex: 0 0 auto; }
+.st-rp-body {
+  margin-top: 12px;
+  display: flex; align-items: baseline; gap: 4px;
+  padding: 12px 14px;
+  background: linear-gradient(135deg, #fdf0ec, var(--bg-soft));
+  border-radius: 12px;
+}
+.st-rp-cur { font-size: 15px; font-weight: 600; color: #c2503f; }
+.st-rp-num { font-size: 30px; font-weight: 700; color: #c2503f; line-height: 1; font-variant-numeric: tabular-nums; }
+.st-rp-foot { margin-top: 8px; font-size: 12px; color: var(--text-soft); text-align: right; }
+/* 往来对比条 */
+.st-rp-cmp { padding: 4px 14px; }
+.st-rp-cmp-row { display: flex; align-items: center; gap: 10px; padding: 10px 0; }
+.st-rp-cmp-row > span:first-child { flex: 0 0 auto; font-size: 13px; color: var(--text-soft); max-width: 90px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.st-rp-cmp-bar { flex: 1; height: 8px; border-radius: 999px; background: var(--bg-soft); overflow: hidden; }
+.st-rp-cmp-bar i { display: block; height: 100%; border-radius: 999px; }
+.st-rp-cmp-bar i.me { background: #c2503f; }
+.st-rp-cmp-bar i.ta { background: #e8a49a; }
+.st-rp-cmp-val { flex: 0 0 auto; font-size: 12px; color: var(--text-soft); min-width: 36px; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* ── 邀请 tab ── */
+.st-inv { padding: 4px 14px 10px; }
+.st-inv-body { display: flex; align-items: center; padding: 6px 0 10px; }
+.st-inv-col { flex: 1; text-align: center; }
+.st-inv-num { font-size: 26px; font-weight: 700; color: var(--text); line-height: 1.15; font-variant-numeric: tabular-nums; }
+.st-inv-label { margin-top: 4px; font-size: 12px; color: var(--text-soft); }
+.st-inv-div { width: 1px; align-self: stretch; background: var(--border); }
 </style>
