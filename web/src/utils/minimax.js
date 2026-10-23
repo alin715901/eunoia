@@ -63,10 +63,10 @@ function hexToBlob(hex, type = 'audio/mpeg') {
 }
 
 /**
- * 调用 MiniMax TTS，返回音频 objectURL（调用方负责 revoke）。
- * 抛错带可读信息（配置缺失 / 网络或 CORS / 接口业务错误）。
+ * 调用 MiniMax TTS，返回 mp3 Blob（失败抛错，错误信息可读）。
+ * 消息生成（chat.service）用它拿 Blob 转 dataURL 持久化；试听/播放用它转 objectURL。
  */
-export async function minimaxTts(cfg, text) {
+export async function minimaxTtsBlob(cfg, text) {
   const t = String(text || '').trim()
   if (!t) throw new Error('没有要朗读的文字')
   if (!cfgReady(cfg)) throw new Error('MiniMax 配置不完整（API Key / Group ID / 模型 / Voice ID）')
@@ -107,5 +107,10 @@ export async function minimaxTts(cfg, text) {
   }
   const audio = json?.data?.audio
   if (!audio) throw new Error('MiniMax 未返回音频（可能文本超长或参数有误）')
-  return URL.createObjectURL(hexToBlob(audio))
+  return hexToBlob(audio)
+}
+
+/* 调用 MiniMax TTS，返回音频 objectURL（调用方负责 revoke）。供试听/即时播放用 */
+export async function minimaxTts(cfg, text) {
+  return URL.createObjectURL(await minimaxTtsBlob(cfg, text))
 }

@@ -31,17 +31,6 @@
               <span class="img-cover" aria-hidden="true"></span>
             </span>
             <div v-if="message.text" :class="{ 'card-text-below': message.asset_path }" v-html="squeezedHtml(message.text)"></div>
-            <!-- 文字字卡播放条：MiniMax 开启时用 TTS 读出文字；未开启为伪语音（有播放态、无声音） -->
-            <div v-if="message.text" class="ct-play" :class="{ playing: cardPlaying }" @click.stop="toggleCardSpeak">
-              <span class="ct-icon">
-                <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
-                  <circle cx="6" cy="12" r="1.6" fill="currentColor" stroke="none" />
-                  <path class="ct-a1" d="M10.6 8.6a5.6 5.6 0 0 1 0 6.8" />
-                  <path class="ct-a2" d="M14.2 5.8a10 10 0 0 1 0 12.4" />
-                </svg>
-              </span>
-              <span class="ct-dur">{{ cardDur }}"</span>
-            </div>
           </template>
           <!-- 图片消息（相册发送）：无气泡底，圆角图片；点击查看大图 -->
           <template v-else-if="message.content_type === 'image'">
@@ -72,7 +61,7 @@
                 </span>
                 <span v-if="voiceDur" class="vm-dur">{{ voiceDur }}"</span>
               </div>
-              <div v-if="chatStore.voiceAsrOn(message.id) && message.text" class="vm-asr">{{ message.text }}</div>
+              <div v-if="(chatStore.voiceAsrOn(message.id) || message.voice_src === 'mm') && message.text" class="vm-asr">{{ message.text }}</div>
             </div>
           </template>
           <!-- 红包：参考微信红包封的简约卡片（小尺寸，无 emoji） -->
@@ -321,24 +310,40 @@ const voiceDur = computed(() => {
   return `${m}'${String(s % 60).padStart(2, '0')}`
 })
 /* 全局单实例：同一时间只有一条语音在响 */
-const __vState = (window.__zikaChatVoice = window.__zikaChatVoice || { el: null, key: '' })
+const __vState = (window.__zikaChatVoice = window.__zikaChatVoice || { el: null, timer: null, key: '' })
 function stopVm() {
   if (__vState.el) {
     __vState.el.pause()
     __vState.el = null
-    __vState.key = ''
   }
+  if (__vState.timer) {
+    clearTimeout(__vState.timer)
+    __vState.timer = null
+  }
+  if (__vState.key === String(props.message.id)) __vState.key = ''
   playing.value = false
 }
+/* MiniMax 伪语音（未配置时生成的语音消息无音频）：点播放只走波形动画，走完估算时长自动复位，首次轻提示 */
+let pseudoNotified = false
 function togglePlay() {
   if (playing.value) {
     stopVm()
     return
   }
   stopVm()
+  __vState.key = String(props.message.id)
+  if (!props.message.asset_path) {
+    const dur = Math.max(2, Math.round(Number(props.message.duration) || 2))
+    playing.value = true
+    __vState.timer = setTimeout(() => { __vState.timer = null; stopVm() }, dur * 1000)
+    if (!pseudoNotified) {
+      pseudoNotified = true
+      try { import('@/utils/dialog').then((m) => m.notify('未配置 MiniMax，当前为无声语音')) } catch (_) {}
+    }
+    return
+  }
   const a = new Audio(props.message.asset_path)
   __vState.el = a
-  __vState.key = String(props.message.id)
   a.onended = () => { if (__vState.el === a) stopVm() }
   a.onpause = () => { if (__vState.el === a) stopVm() }
   a.play().catch(() => stopVm())
@@ -347,59 +352,6 @@ function togglePlay() {
 onBeforeUnmount(() => {
   if (__vState.key === String(props.message.id)) stopVm()
 })
-
-/* ── 文字字卡播放条：MiniMax 开启且配置好 → TTS 读出字卡文字（真语音）；
-   未开启 → 伪语音（播放动画走完时长，无音频，首次给一次轻提示） ── */
-import { readCfg, cfgReady, minimaxTts } from '@/utils/minimax'
-import { useContactSettingsStore } from '@/stores/contactSettings'
-const settingsCache = useContactSettingsStore()
-const mmCfg = computed(() => {
-  try { return readCfg(settingsCache.get(props.message.contact_id)) } catch (e) { return null }
-})
-const mmReady = computed(() => !!(mmCfg.value && mmCfg.value.enabled && cfgReady(mmCfg.value)))
-/* 估算时长：中文约 4 字/秒，2 秒起步 */
-const cardDur = computed(() => Math.max(2, Math.round(String(props.message.text || '').length / 4)))
-const cardPlaying = ref(false)
-/* 播放单实例：同一时间只有一段在响（与语音条播放互斥） */
-const __ctState = (window.__zikaChatCardTts = window.__zikaChatCardTts || { el: null, timer: null, key: '' })
-let pseudoNotified = false
-function stopCardSpeak() {
-  if (__ctState.el) { __ctState.el.pause(); __ctState.el = null }
-  if (__ctState.timer) { clearTimeout(__ctState.timer); __ctState.timer = null }
-  if (__ctState.key === String(props.message.id)) { __ctState.key = ''; cardPlaying.value = false }
-}
-async function toggleCardSpeak() {
-  if (cardPlaying.value) { stopCardSpeak(); return }
-  stopVm()
-  cardPlaying.value = true
-  if (!mmReady.value) {
-    /* 伪语音：无声播放，进度到时自动复位 */
-    if (!pseudoNotified) {
-      pseudoNotified = true
-      try { const { notify } = await import('@/utils/dialog'); notify('未开启 MiniMax 语音，当前为无声播放') } catch (_) {}
-    }
-    __ctState.key = String(props.message.id)
-    __ctState.timer = setTimeout(() => { __ctState.timer = null; stopCardSpeak() }, cardDur.value * 1000)
-    return
-  }
-  try {
-    const url = await minimaxTts(mmCfg.value, props.message.text)
-    const a = new Audio(url)
-    __ctState.el = a
-    __ctState.key = String(props.message.id)
-    a.onended = () => { URL.revokeObjectURL(url); if (__ctState.el === a) { __ctState.el = null; cardPlaying.value = false } }
-    a.onerror = () => {
-      URL.revokeObjectURL(url)
-      if (__ctState.el === a) { __ctState.el = null; cardPlaying.value = false }
-      import('@/utils/dialog').then((m) => m.notify('播放失败：' + '请检查 MiniMax 配置')).catch(() => {})
-    }
-    await a.play()
-  } catch (e) {
-    cardPlaying.value = false
-    try { const { notify } = await import('@/utils/dialog'); notify('播放失败：' + (e.message || '请检查 MiniMax 配置')) } catch (_) {}
-  }
-}
-onBeforeUnmount(stopCardSpeak)
 
 /* ── 特殊消息（图片/红包/通话/提问）的元数据与渲染辅助 ── */
 const meta = computed(() => {
@@ -906,29 +858,6 @@ function onRedpacketTap() {
   white-space: pre-wrap;
 }
 .vm-asr-text { vertical-align: middle; }
-/* 文字字卡播放条：微信语音条样式（喇叭+声波+秒数），真伪语音共用 */
-.ct-play {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 8px;
-  padding: 6px 12px 6px 10px;
-  border-radius: 999px;
-  background: var(--bg-soft);
-  border: 1px solid var(--border);
-  color: var(--text);
-  cursor: pointer;
-  -webkit-tap-highlight-color: transparent;
-  user-select: none;
-}
-.ct-play:active { opacity: 0.75; }
-.ct-icon { display: inline-flex; line-height: 0; }
-.ct-dur { font-size: 12px; font-family: var(--font-serif); color: var(--text-soft); }
-/* 播放中：两道弧依次亮起（与语音条同款动效） */
-.ct-play .ct-a1, .ct-play .ct-a2 { opacity: 0.35; }
-.ct-play.playing .ct-a1 { opacity: 1; animation: ctWave 0.9s ease-in-out infinite; }
-.ct-play.playing .ct-a2 { opacity: 1; animation: ctWave 0.9s ease-in-out 0.45s infinite; }
-@keyframes ctWave { 0%, 100% { opacity: 0.35; } 50% { opacity: 1; } }
 
 /* 图片消息：统一显示框 —— 宽 165 × 高 220（随气泡缩放），object-fit:cover 居中裁剪。
    任何原比例（横图/竖图/方图）都填满同一个框、画面不变形，

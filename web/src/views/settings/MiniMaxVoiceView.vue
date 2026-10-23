@@ -38,10 +38,6 @@
         <p class="hint">中文消息选「原文」即可；选其他语言时会先翻译再以该语言读出（中文字幕不变）。</p>
         <label class="field-label">语速 <span class="field-val">{{ form.speed.toFixed(1) }}×</span></label>
         <input v-model.number="form.speed" class="range" type="range" min="0.5" max="2" step="0.1" />
-        <label class="field-label">角色性别</label>
-        <div class="chip-row">
-          <button v-for="g in MM_GENDERS" :key="g.k" class="chip" :class="{ on: form.gender === g.k }" type="button" @click="form.gender = g.k">{{ g.n }}</button>
-        </div>
         <label class="field-label">说话风格（选填，50 字以内）</label>
         <input v-model="form.style" class="field" maxlength="50" />
       </div>
@@ -68,7 +64,7 @@ import { ref, reactive, onBeforeUnmount } from 'vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import ToggleSwitch from '@/components/common/ToggleSwitch.vue'
 import { useContactSettingsPage } from '@/composables/useContactSettingsPage'
-import { MM_LANGS, MM_MODELS, MM_GENDERS, readCfg, cfgReady, minimaxTts } from '@/utils/minimax'
+import { MM_LANGS, MM_MODELS, readCfg, cfgReady, minimaxTts } from '@/utils/minimax'
 import { notify } from '@/utils/dialog'
 
 const props = defineProps({ id: { type: [String, Number], required: true } })
@@ -77,7 +73,7 @@ const { settings, load, patch } = useContactSettingsPage(props.id)
 const enabled = ref(false)
 const form = reactive({
   key: '', group: '', model: 'speech-02-turbo', voice: '',
-  lang: 'auto', speed: 1, gender: 'female', style: ''
+  lang: 'auto', speed: 1, style: ''
 })
 const saving = ref(false)
 const testing = ref(false)
@@ -94,7 +90,7 @@ function fill(s) {
   enabled.value = c.enabled
   Object.assign(form, {
     key: c.key, group: c.group, model: c.model, voice: c.voice,
-    lang: c.lang, speed: c.speed, gender: c.gender, style: c.style
+    lang: c.lang, speed: c.speed, style: c.style
   })
   showSaved.value = cfgReady(c)
 }
@@ -116,7 +112,6 @@ async function doSave() {
       minimax_voice: form.voice.trim(),
       minimax_lang: form.lang,
       minimax_speed: Number(form.speed) || 1,
-      minimax_gender: form.gender,
       minimax_style: form.style.trim()
     })
     showSaved.value = !!(form.key.trim() && form.group.trim() && form.voice.trim())

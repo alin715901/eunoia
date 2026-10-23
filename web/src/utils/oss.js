@@ -94,6 +94,23 @@ export async function ossUpload(cfg, blob, path) {
 }
 
 /**
+ * 从 OSS 下载对象（Bucket 公共读时直接 GET；返回 Blob）。
+ */
+export async function ossDownload(cfg, path) {
+  if (!ossReady(cfg)) throw new Error('阿里云 OSS 配置不完整（AccessKey / Bucket / 地域节点）')
+  const url = ossUrlOf(cfg, ossKeyOf(cfg, path))
+  let res
+  try {
+    res = await fetch(url)
+  } catch (e) {
+    throw new Error('下载请求失败（浏览器直连可能被 CORS 拦截，需在 OSS 控制台配置 CORS 规则）')
+  }
+  if (res.status === 404 || res.status === 403) throw new Error('云端还没有备份')
+  if (!res.ok) throw new Error(`OSS 下载失败 HTTP ${res.status}`)
+  return res.blob()
+}
+
+/**
  * 测试连接：上传一个探测文件再删除。
  * 返回 { ok, level, message }——level: 'ok' 读写正常 / 'write' 只能写 / 'cors' 疑似 CORS。
  */

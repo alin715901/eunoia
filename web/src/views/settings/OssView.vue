@@ -29,6 +29,10 @@
 
       <!-- 已配置：断开连接 -->
       <button v-if="configured" class="btn-block danger" type="button" :disabled="saving || testing" @click="doClear">断开连接</button>
+      <!-- 从云端恢复梦角到本浏览器 -->
+      <button class="btn-block" type="button" :disabled="restoring || !configured" @click="doRestore">
+        {{ restoring ? '恢复中…' : '从云端恢复梦角到本浏览器' }}
+      </button>
       <!-- 迁移本地图片到云端 -->
       <button class="btn-block" type="button" :disabled="migrating || !configured" @click="doMigrate">
         {{ migrating ? `迁移中…（已完成 ${migDone}）` : '迁移本地图片到云端（省空间）' }}
@@ -50,9 +54,9 @@
 import { ref, reactive, computed } from 'vue'
 import { useRouter } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
-import { getSettings, saveSettings, migrateImagesToOss } from '@/api/settings'
+import { getSettings, saveSettings, migrateImagesToOss, backupToOss, restoreFromOss } from '@/api/settings'
 import { readOssCfg, ossReady, ossTest } from '@/utils/oss'
-import { notify } from '@/utils/dialog'
+import { notify, confirmDialog } from '@/utils/dialog'
 
 const router = useRouter()
 
@@ -67,7 +71,8 @@ const REGIONS = [
   { n: '华北 5（呼和浩特）', endpoint: 'oss-cn-huhehaote.aliyuncs.com' },
   { n: '华北 6（乌兰察布）', endpoint: 'oss-cn-wulanchabu.aliyuncs.com' },
   { n: '华南 1（深圳）', endpoint: 'oss-cn-shenzhen.aliyuncs.com' },
-  { n: '华南 2（广州）', endpoint: 'oss-cn-guangzhou.aliyuncs.com' },
+  { n: '华南 2（河源）', endpoint: 'oss-cn-heyuan.aliyuncs.com' },
+  { n: '华南 3（广州）', endpoint: 'oss-cn-guangzhou.aliyuncs.com' },
   { n: '西南 1（成都）', endpoint: 'oss-cn-chengdu.aliyuncs.com' },
   { n: '中国香港', endpoint: 'oss-cn-hongkong.aliyuncs.com' },
   { n: '亚太东南 1（新加坡）', endpoint: 'oss-ap-southeast-1.aliyuncs.com' },
@@ -81,6 +86,7 @@ const saving = ref(false)
 const testing = ref(false)
 const migrating = ref(false)
 const migDone = ref(0)
+const restoring = ref(false)
 const msg = ref('')
 const isErr = ref(false)
 
@@ -125,6 +131,14 @@ async function doSave() {
     })
     msg.value = '已保存并连接'
     notify('云端同步配置已保存')
+    /* 保存成功 → 自动把当前全部数据备份到云端（供「从云端恢复梦角到本浏览器」使用） */
+    try {
+      await backupToOss()
+      notify('已自动备份当前数据到云端')
+    } catch (be) {
+      isErr.value = true
+      msg.value = `已保存，但自动备份失败：${be.message || '请检查 Bucket 权限'}`
+    }
   } catch (e) {
     isErr.value = true
     msg.value = e.message || '保存失败'
@@ -168,6 +182,31 @@ async function doTest() {
     msg.value = e.message || '测试失败'
   } finally {
     testing.value = false
+  }
+}
+
+/* 从云端恢复梦角到本浏览器：下载备份 JSON → 覆盖导入 → 整页刷新重新初始化 */
+async function doRestore() {
+  const ok = await confirmDialog({
+    title: '从云端恢复',
+    text: '将用云端备份的数据覆盖本浏览器当前的梦角数据（聊天、字卡、设置等全部替换），且无法撤销。确定继续吗？',
+    okText: '恢复',
+    danger: true
+  })
+  if (!ok) return
+  restoring.value = true
+  isErr.value = false
+  msg.value = '正在从云端下载数据…'
+  try {
+    const r = await restoreFromOss()
+    msg.value = '恢复完成，正在刷新…'
+    notify(`已恢复云端数据（导入 ${r?.inserted ?? '--'} 条）`)
+    setTimeout(() => location.reload(), 800)
+  } catch (e) {
+    isErr.value = true
+    msg.value = e.message || '恢复失败'
+  } finally {
+    restoring.value = false
   }
 }
 

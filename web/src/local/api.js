@@ -23,7 +23,7 @@ import * as musicCache from './services/musicCache'
 import * as mochiService from './services/mochi.service'
 import * as backupService from './services/backup.service'
 import * as notification from './services/notification.service'
-import { readOssCfg, ossReady, ossUpload } from '../utils/oss'
+import { readOssCfg, ossReady, ossUpload, ossDownload } from '../utils/oss'
 
 export { resetDb }
 
@@ -1291,6 +1291,33 @@ export async function importBackup(payload, mode) {
 // 备份文件预校验（导入前用，错误信息直接展示；同步，因为底层校验是纯函数）
 export function validateBackupFile(payload) {
   return backupService.validateBackup(payload)
+}
+
+/* ─────────── 云端（OSS）备份 / 恢复梦角 ─────────── */
+
+const OSS_BACKUP_PATH = 'backup/eunoia.json'
+
+/* 备份当前全部数据到 OSS（全量 JSON，保存并连接成功后自动触发） */
+export async function backupToOss() {
+  const cfg = readOssCfg(readGlobalSettings())
+  if (!ossReady(cfg)) throw new Error('请先填写并保存 OSS 配置')
+  const payload = backupService.buildBackup({ type: 'full' })
+  const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' })
+  return ossUpload(cfg, blob, OSS_BACKUP_PATH)
+}
+
+/* 从云端恢复梦角数据到本浏览器（下载备份 JSON → 覆盖导入）。
+   成功后调用方需整页刷新，让全部 store/服务基于新数据重新初始化 */
+export async function restoreFromOss() {
+  const cfg = readOssCfg(readGlobalSettings())
+  if (!ossReady(cfg)) throw new Error('请先填写并保存 OSS 配置')
+  const blob = await ossDownload(cfg, OSS_BACKUP_PATH)
+  const text = await blob.text()
+  let payload
+  try { payload = JSON.parse(text) } catch (e) { throw new Error('云端备份文件格式不正确') }
+  const err = backupService.validateBackup(payload)
+  if (err) throw new Error(err)
+  return backupService.importBackup(payload, 'overwrite')
 }
 
 export async function getBadges() {

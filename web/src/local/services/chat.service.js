@@ -4,6 +4,91 @@ import * as notification from './notification.service'
 import * as settingsRepo from '../repositories/settings.repo'
 import * as chatRepo from '../repositories/chat.repo'
 import * as walletRepo from '../repositories/wallet.repo'
+import { readCfg, cfgReady, minimaxTtsBlob } from '../../utils/minimax'
+
+/* ── MiniMax：开启后对方发出的「纯文字字卡」有 20% 概率转成语音消息 ──
+ *   配置齐全（key/group/model/voice）→ 调 T2A 生成真实语音（mp3 → dataURL 持久化）；
+ *   仅开启未配置 → 伪语音（无音频，前端播播放动画走完估算时长）；TTS 失败也回落伪语音。
+ *   未开启 → 不转换，保持文字字卡。 */
+const MM_VOICE_PROB = 0.2
+
+function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const fr = new FileReader()
+    fr.onload = () => resolve(String(fr.result))
+    fr.onerror = () => reject(new Error('音频编码失败'))
+    fr.readAsDataURL(blob)
+  })
+}
+
+/* 用 Audio 元素探测真实时长（秒），失败按字数估算（约 4 字/秒，2 秒起步） */
+function audioDurationOf(src, text) {
+  return new Promise((resolve) => {
+    try {
+      const a = new Audio(src)
+      const done = (v) => resolve(Math.max(2, Math.round(v)))
+      a.onloadedmetadata = () => {
+        const d = Number(a.duration)
+        done(Number.isFinite(d) && d > 0 ? d : String(text || '').length / 4)
+      }
+      a.onerror = () => done(String(text || '').length / 4)
+      setTimeout(() => done(String(text || '').length / 4), 4000)
+    } catch (e) {
+      resolve(Math.max(2, Math.round(String(text || '').length / 4)))
+    }
+  })
+}
+
+/* 判定这条字卡是否转语音：返回 { text, asset_path, duration } 或 null */
+async function voiceConvertInfo(d, contactId, card) {
+  try {
+    /* 只转纯文字字卡：带资源的（图片/表情包/语音）与问答选择题等纯文本消息不转 */
+    if (!card || card.asset_path || card.category === 'voice' || card.category === 'sticker' || card.category === 'image') return null
+    const st = d.prepare('SELECT * FROM contact_settings WHERE contact_id = ?').get(contactId)
+    const cfg = st ? readCfg(st) : null
+    if (!cfg || !cfg.enabled) return null
+    /* 内置 20% 触发；window.__mmVoiceProb 仅供自动化测试覆盖概率 */
+    const _p = Number(typeof window !== 'undefined' ? window.__mmVoiceProb : NaN)
+    const prob = Number.isFinite(_p) && _p >= 0 && _p <= 1 ? _p : MM_VOICE_PROB
+    if (Math.random() >= prob) return null
+    const text = String(card.content || '').trim()
+    if (!text) return null
+    if (cfgReady(cfg)) {
+      try {
+        const blob = await minimaxTtsBlob(cfg, text)
+        const dataUrl = await blobToDataUrl(blob)
+        const duration = await audioDurationOf(dataUrl, text)
+        return { text, asset_path: dataUrl, duration }
+      } catch (e) {
+        /* TTS 失败 → 伪语音兜底 */
+      }
+    }
+    return { text, asset_path: '', duration: Math.max(2, Math.round(text.length / 4)) }
+  } catch (e) {
+    return null
+  }
+}
+
+/* 把转换结果落库为语音消息（与字卡库语音消息同构，voice_src='mm' 标记来源） */
+function insertConvertedVoice(d, contactId, conv, card, memberId = null, proactive = false) {
+  const info = d
+    .prepare(
+      `INSERT INTO chat_messages(contact_id, sender, content_type, card_id, text, asset_path, duration, author_member_id, is_proactive, read_receipt, read, seq, created_at, voice_src)
+       VALUES(?, 'contact', 'voice', ?, ?, ?, ?, ?, ?, 'delivered', 0, ?, ?, 'mm')`
+    )
+    .run(
+      contactId,
+      card?.id || null,
+      conv.text,
+      conv.asset_path,
+      conv.duration,
+      memberId,
+      proactive ? 1 : 0,
+      getNextSeq(contactId),
+      Math.floor(Date.now() / 1000)
+    );
+  return d.prepare('SELECT * FROM chat_messages WHERE id = ?').get(info.lastInsertRowid);
+}
 
 function randInt(min, max) {
   const lo = Math.min(min, max);
@@ -41,7 +126,8 @@ function guard(fn, contactId) {
         const alive = db.prepare('SELECT id FROM contacts WHERE id = ?').get(contactId);
         if (!alive) return;
       }
-      fn();
+      /* 回调可能是 async（MiniMax 转语音需要网络请求），Promise 拒绝也要兜住 */
+      Promise.resolve(fn()).catch((e) => console.error('[guard] skipped:', e.message));
     } catch (e) {
       console.error('[guard] skipped:', e.message);
     }
@@ -173,11 +259,15 @@ function continueTalk(dbRef, contactId) {
   }
   notification.broadcast('typing', { contactId, typing: true });
   setTimeout(
-    guard(() => {
+    guard(async () => {
+      // MiniMax 开启时纯文字字卡有概率转语音（配置好=真语音；未配置=伪语音）
+      const conv = await voiceConvertInfo(d, contactId, card);
       // 抽到图片字卡（表情包）→ 按字卡消息落库（前端渲染为图）；纯文字字卡 → 文本消息
-      const m = card && card.asset_path
-        ? insertContactCard(d, contactId, card, memberId)
-        : insertContactText(d, contactId, card?.content || '…', null, memberId);
+      const m = conv
+        ? insertConvertedVoice(d, contactId, conv, card, memberId)
+        : card && card.asset_path
+          ? insertContactCard(d, contactId, card, memberId)
+          : insertContactText(d, contactId, card?.content || '…', null, memberId);
       notification.broadcast('typing', { contactId, typing: false });
       const info = effectiveContactInfo(d, contactId);
       notification.broadcast('new_messages', { contactId, messages: [m], avatar: info.avatar, name: info.name });
@@ -322,7 +412,8 @@ function scheduleReply(dbRef, contactId) {
       try {
         const alive = d.prepare('SELECT id FROM contacts WHERE id = ?').get(contactId);
         if (!alive) return;
-        fn();
+        /* 回调可能是 async（MiniMax 转语音需要网络请求），Promise 拒绝也要兜住 */
+        Promise.resolve(fn()).catch((e) => console.error('[scheduleReply] skipped:', e.message));
       } catch (e) {
         console.error('[scheduleReply] skipped:', e.message);
       }
@@ -352,45 +443,57 @@ function scheduleReply(dbRef, contactId) {
     d.prepare(
       "UPDATE chat_messages SET read = 1, read_receipt = 'read' WHERE contact_id = ? AND sender = 'me' AND read_receipt != 'read'"
     ).run(contactId);
-    const messages = [];
-    for (let i = 0; i < cardIds.length; i++) {
-      const card = cardIds[i];
-      const q = i === 0 && quote ? quote : null;
-      const seq = getNextSeq(contactId);
-      const info = d
-        .prepare(
-          `INSERT INTO chat_messages(contact_id, sender, content_type, card_id, text, asset_path, duration, author_member_id, is_proactive, read_receipt, read, seq, created_at, quote_id, quote_text, quote_image)
-           VALUES(?, 'contact', ?, ?, ?, ?, ?, ?, ?, 'delivered', 0, ?, ?, ?, ?, ?)`
-        )
-        .run(
-          contactId,
-          cardContentType(card),
-          card.id,
-          card.content,
-          card.asset_path,
-          card.duration,
-          memberId,
-          card.proactive ? 1 : 0,
-          seq,
-          Math.floor(Date.now() / 1000),
-          q ? q.quoteId : null,
-          q ? q.quoteText : '',
-          q ? q.quoteImage : ''
-        );
-      messages.push(d.prepare('SELECT * FROM chat_messages WHERE id = ?').get(info.lastInsertRowid));
-    }
-    // 带上有效头像/名称（同步到聊天时用人物卡头像），让弹窗与聊天界面一致
-    const info = effectiveContactInfo();
-    notification.broadcast('new_messages', {
-      contactId,
-      messages,
-      avatar: info.avatar,
-      name: info.name
-    });
-    const badges = settingsRepo.getBadges();
-    notification.broadcast('badge_update', badges);
-    // 对方小概率撤回刚发出的一条消息（开关在「主动消息」设置页，内定概率 10%）
-    maybeContactRecall(d, contactId, messages);
+    const insertAll = async () => {
+      const messages = [];
+      for (let i = 0; i < cardIds.length; i++) {
+        const card = cardIds[i];
+        const q = i === 0 && quote ? quote : null;
+        const seq = getNextSeq(contactId);
+        // MiniMax 开启时纯文字字卡有概率转语音（配置好=真语音；未配置=伪语音；TTS 失败回落伪语音）
+        const conv = await voiceConvertInfo(d, contactId, card);
+        let m;
+        if (conv) {
+          m = insertConvertedVoice(d, contactId, conv, card, memberId, card.proactive);
+        } else {
+          const info = d
+            .prepare(
+              `INSERT INTO chat_messages(contact_id, sender, content_type, card_id, text, asset_path, duration, author_member_id, is_proactive, read_receipt, read, seq, created_at, quote_id, quote_text, quote_image)
+               VALUES(?, 'contact', ?, ?, ?, ?, ?, ?, ?, 'delivered', 0, ?, ?, ?, ?, ?)`
+            )
+            .run(
+              contactId,
+              cardContentType(card),
+              card.id,
+              card.content,
+              card.asset_path,
+              card.duration,
+              memberId,
+              card.proactive ? 1 : 0,
+              seq,
+              Math.floor(Date.now() / 1000),
+              q ? q.quoteId : null,
+              q ? q.quoteText : '',
+              q ? q.quoteImage : ''
+            );
+          m = d.prepare('SELECT * FROM chat_messages WHERE id = ?').get(info.lastInsertRowid);
+        }
+        messages.push(m);
+      }
+      // 带上有效头像/名称（同步到聊天时用人物卡头像），让弹窗与聊天界面一致
+      const info = effectiveContactInfo();
+      notification.broadcast('new_messages', {
+        contactId,
+        messages,
+        avatar: info.avatar,
+        name: info.name
+      });
+      const badges = settingsRepo.getBadges();
+      notification.broadcast('badge_update', badges);
+      // 对方小概率撤回刚发出的一条消息（开关在「主动消息」设置页，内定概率 10%）
+      maybeContactRecall(d, contactId, messages);
+    };
+    /* MiniMax 转语音是异步的，整段落库在 Promise 里，拒绝要兜住 */
+    Promise.resolve(insertAll()).catch((e) => console.error('[emitCards] skipped:', e.message));
   }
 
   /* 拍一拍：对方不说话，而是"拍了拍我"。

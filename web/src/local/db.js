@@ -281,6 +281,32 @@ export async function resetDb() {
   return initDb()
 }
 
+/* 导出整个数据库字节（云端备份用）。注意 export() 会使语句缓存全部失效 */
+export function exportDbBytes() {
+  if (!state.raw) throw new Error('数据库尚未初始化')
+  const bytes = state.raw.export()
+  stmtCache.clear()
+  return new Uint8Array(bytes)
+}
+
+/* 用备份字节整体替换当前数据库（云端恢复用）：替换 → migrate（幂等）→ 落盘。
+   返回后调用方需整页刷新，让全部 store/服务基于新库重新初始化 */
+export async function restoreDbBytes(bytes) {
+  const SQL = await loadSqlJs()
+  const fresh = new SQL.Database(new Uint8Array(bytes))
+  try {
+    fresh.exec('SELECT count(*) FROM sqlite_master')
+  } catch (e) {
+    throw new Error('备份文件不是有效的应用数据库')
+  }
+  state.raw = fresh
+  stmtCache.clear()
+  state.raw.exec('PRAGMA foreign_keys = ON')
+  migrate()
+  state.dirty = true
+  await flush()
+}
+
 /* 数据库就绪 Promise：module 加载即开始初始化（与 Vue 挂载并行）。
    main.js 不再 await 它——先渲染应用外壳/骨架屏，就绪后由 App.vue
    的 dbReady.then(...) 触发各 store 加载，白屏时间从「下载+init」总和
