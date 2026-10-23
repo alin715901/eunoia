@@ -1525,7 +1525,7 @@ defineExpose({ save: flushSave })
   padding: 0;
 }
 
-/* 文字弹窗：字体宫格（样张预览 + 名称小字，参考美图面板排版） + 便签宫格。
+/* 文字弹窗：字体宫格（样张预览 + 名称小字） + 便签宫格。
    列轨必须 minmax(0,1fr)：1fr 的 min-width:auto 会被长英文名撑爆 → 整板横向滑动 */
 .font-grid {
   display: grid;
