@@ -7,7 +7,7 @@
         <div class="switch-row">
           <div class="row-main">
             <div class="row-title">启用 MiniMax 语音</div>
-            <p class="hint">开启后，语音消息的转写文字旁会出现「朗读」按钮，用 MiniMax 生成真实语音播放</p>
+            <p class="hint">开启后，文字字卡下方的播放条会用 MiniMax 生成真实语音；未开启时为无声的伪语音</p>
           </div>
           <ToggleSwitch v-model="enabled" @update:modelValue="saveEnabled" />
         </div>
@@ -17,16 +17,15 @@
       <div class="panel sec">
         <div class="sec-title">接口配置</div>
         <label class="field-label">MiniMax API Key</label>
-        <input v-model="form.key" class="field" type="password" placeholder="在 MiniMax 开放平台获取" autocomplete="off" />
+        <input v-model="form.key" class="field" type="password" autocomplete="off" />
         <label class="field-label">Group ID</label>
-        <input v-model="form.group" class="field" placeholder="账号对应的 Group ID" autocomplete="off" />
+        <input v-model="form.group" class="field" autocomplete="off" />
         <label class="field-label">模型</label>
         <select v-model="form.model" class="field">
           <option v-for="m in MM_MODELS" :key="m.k" :value="m.k">{{ m.n }}</option>
         </select>
         <label class="field-label">Voice ID</label>
-        <input v-model="form.voice" class="field" placeholder="音色 ID，如 male-qn-qingse" autocomplete="off" />
-        <p class="hint">Voice ID 可在 MiniMax 控制台「音色列表」查看；不同模型可用音色不同。</p>
+        <input v-model="form.voice" class="field" autocomplete="off" />
       </div>
 
       <!-- 声音设置 -->
@@ -44,7 +43,7 @@
           <button v-for="g in MM_GENDERS" :key="g.k" class="chip" :class="{ on: form.gender === g.k }" type="button" @click="form.gender = g.k">{{ g.n }}</button>
         </div>
         <label class="field-label">说话风格（选填，50 字以内）</label>
-        <input v-model="form.style" class="field" maxlength="50" placeholder="如：温柔体贴" />
+        <input v-model="form.style" class="field" maxlength="50" />
       </div>
 
       <!-- 操作 -->
@@ -52,6 +51,9 @@
         <button class="mini-btn" type="button" :disabled="testing" @click="doTest">{{ testing ? '生成中…' : '试听一句' }}</button>
         <button class="mini-btn primary" type="button" :disabled="saving" @click="doSave">{{ saving ? '保存中…' : '保存配置' }}</button>
       </div>
+      <!-- 保存状态条：灰底「已保存」+ 绿字确认（真实语音是否启用看总开关） -->
+      <div v-if="showSaved" class="saved-bar">已保存</div>
+      <p v-if="showSaved" class="saved-ok">✓ 配置已保存，真实语音{{ enabled ? '已启用' : '未开启' }}</p>
       <p v-if="msg" class="msg" :class="{ err: isErr }">{{ msg }}</p>
       <p v-if="ttsUrl" class="tts-tip">
         试听播放中…
@@ -66,7 +68,7 @@ import { ref, reactive, onBeforeUnmount } from 'vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import ToggleSwitch from '@/components/common/ToggleSwitch.vue'
 import { useContactSettingsPage } from '@/composables/useContactSettingsPage'
-import { MM_LANGS, MM_MODELS, MM_GENDERS, readCfg, minimaxTts } from '@/utils/minimax'
+import { MM_LANGS, MM_MODELS, MM_GENDERS, readCfg, cfgReady, minimaxTts } from '@/utils/minimax'
 import { notify } from '@/utils/dialog'
 
 const props = defineProps({ id: { type: [String, Number], required: true } })
@@ -82,6 +84,8 @@ const testing = ref(false)
 const msg = ref('')
 const isErr = ref(false)
 const ttsUrl = ref('')
+/* 保存状态条：配置三要素齐全即视为已保存（进入页面时按库里内容初始化） */
+const showSaved = ref(false)
 let ttsEl = null
 
 function fill(s) {
@@ -92,6 +96,7 @@ function fill(s) {
     key: c.key, group: c.group, model: c.model, voice: c.voice,
     lang: c.lang, speed: c.speed, gender: c.gender, style: c.style
   })
+  showSaved.value = cfgReady(c)
 }
 
 async function saveEnabled() {
@@ -114,7 +119,8 @@ async function doSave() {
       minimax_gender: form.gender,
       minimax_style: form.style.trim()
     })
-    msg.value = '已保存'
+    showSaved.value = !!(form.key.trim() && form.group.trim() && form.voice.trim())
+    msg.value = ''
   } catch (e) {
     isErr.value = true
     msg.value = '保存失败：' + e.message
@@ -190,6 +196,16 @@ select.field { appearance: none; }
 .mini-btn:disabled { opacity: 0.5; cursor: default; }
 .msg { font-size: 12px; color: var(--text-soft); margin: 0 4px; }
 .msg.err { color: #c0576b; }
+/* 保存状态条：灰底「已保存」+ 绿色确认行（对齐参考图底部） */
+.saved-bar {
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-soft);
+  background: var(--bg-soft);
+  border-radius: 999px;
+  padding: 8px 0;
+}
+.saved-ok { text-align: center; font-size: 12px; color: #3d9a6d; margin: 8px 0 0; }
 .tts-tip { font-size: 12px; color: var(--accent); margin: 0 4px; }
 .link-btn { border: none; background: none; color: var(--accent); font-size: 12px; text-decoration: underline; cursor: pointer; padding: 0 2px; }
 </style>

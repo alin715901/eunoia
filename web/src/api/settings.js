@@ -2,6 +2,7 @@
 export {
   getSettings,
   saveSettings,
+  migrateImagesToOss,
   getBadges,
   getStorageStats,
   resetDb,

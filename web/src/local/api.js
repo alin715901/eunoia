@@ -23,6 +23,7 @@ import * as musicCache from './services/musicCache'
 import * as mochiService from './services/mochi.service'
 import * as backupService from './services/backup.service'
 import * as notification from './services/notification.service'
+import { readOssCfg, ossReady, ossUpload } from '../utils/oss'
 
 export { resetDb }
 
@@ -1172,6 +1173,99 @@ export async function saveSettings(payload = {}) {
     settingsRepo.setGlobal(k, v)
   }
   return readGlobalSettings()
+}
+
+/* ─────────── 阿里云 OSS：本地图片迁移 ─────────── */
+/* 把各表里的本地图片（dataURL）上传到 OSS，字段替换为对象 URL，省浏览器存储。
+   只迁「本地形式」的图（data: 开头）；已是 http(s) URL 的跳过。
+   返回 { migrated, failed, total }。 */
+export async function migrateImagesToOss() {
+  const s = readGlobalSettings()
+  const cfg = readOssCfg(s)
+  if (!ossReady(cfg)) throw new Error('请先填写并保存 OSS 配置')
+  const isLocal = (v) => typeof v === 'string' && v.startsWith('data:')
+  const dataUrlToBlob = async (dataUrl) => {
+    const res = await fetch(dataUrl)
+    return res.blob()
+  }
+  let migrated = 0
+  let failed = 0
+  const uploadOne = async (value, name) => {
+    try {
+      const blob = await dataUrlToBlob(value)
+      return await ossUpload(cfg, blob, `images/migrate/${name}-${Date.now()}-${Math.floor(Math.random() * 1e4)}.jpg`)
+    } catch (e) {
+      failed++
+      return null
+    }
+  }
+
+  /* 1) 联系人头像 */
+  for (const c of db.prepare('SELECT id, avatar FROM contacts').all()) {
+    if (!isLocal(c.avatar)) continue
+    const url = await uploadOne(c.avatar, `contact-${c.id}`)
+    if (url) { contactsRepo.updateContact(c.id, { avatar: url }); migrated++ }
+  }
+  /* 2) 联系人设置：我的头像 / 聊天背景（非 # 开头的纯色才算图） */
+  for (const r of db.prepare('SELECT contact_id, my_avatar, chat_bg FROM contact_settings').all()) {
+    const next = {}
+    if (isLocal(r.my_avatar)) {
+      const url = await uploadOne(r.my_avatar, `myava-${r.contact_id}`)
+      if (url) { next.my_avatar = url; migrated++ }
+    }
+    if (isLocal(r.chat_bg)) {
+      const url = await uploadOne(r.chat_bg, `chatbg-${r.contact_id}`)
+      if (url) { next.chat_bg = url; migrated++ }
+    }
+    if (Object.keys(next).length) contactsRepo.updateSettings(r.contact_id, next)
+  }
+  /* 3) 桌面（人物卡）：双方头像 */
+  for (const r of db.prepare('SELECT contact_id, my_avatar, partner_avatar FROM contact_desktop').all()) {
+    const next = {}
+    if (isLocal(r.my_avatar)) {
+      const url = await uploadOne(r.my_avatar, `desk-my-${r.contact_id}`)
+      if (url) { next.my_avatar = url; migrated++ }
+    }
+    if (isLocal(r.partner_avatar)) {
+      const url = await uploadOne(r.partner_avatar, `desk-ta-${r.contact_id}`)
+      if (url) { next.partner_avatar = url; migrated++ }
+    }
+    if (Object.keys(next).length) desktopRepo.update(r.contact_id, next)
+  }
+  /* 4) 全局：朋友圈资料头像/背景、主页背景、桌面图标背景 */
+  const patch = {}
+  const moments = settingsRepo.getGlobal('moments') || {}
+  if (isLocal(moments.avatar)) {
+    const url = await uploadOne(moments.avatar, 'moments-ava')
+    if (url) { patch.moments = { ...moments, avatar: url }; migrated++ }
+  }
+  if (isLocal(moments.bg)) {
+    const url = await uploadOne(moments.bg, 'moments-bg')
+    if (url) { patch.moments = { ...(patch.moments || moments), bg: url }; migrated++ }
+  }
+  const theme = settingsRepo.getGlobal('theme') || {}
+  const nextTheme = { ...theme }
+  let themeDirty = false
+  if (isLocal(theme.homeBg)) {
+    const url = await uploadOne(theme.homeBg, 'home-bg')
+    if (url) { nextTheme.homeBg = url; themeDirty = true; migrated++ }
+  }
+  if (theme.icons && typeof theme.icons === 'object') {
+    const icons = { ...theme.icons }
+    let iconDirty = false
+    for (const [k, v] of Object.entries(icons)) {
+      if (isLocal(v)) {
+        const url = await uploadOne(v, `icon-${k}`)
+        if (url) { icons[k] = url; iconDirty = true; migrated++ }
+      }
+    }
+    if (iconDirty) { nextTheme.icons = icons; themeDirty = true }
+  }
+  if (themeDirty) patch.theme = nextTheme
+  for (const [k, v] of Object.entries(patch)) settingsRepo.setGlobal(k, v)
+
+  const total = migrated + failed
+  return { migrated, failed, total }
 }
 
 /* ─────────── 数据备份 / 恢复 ─────────── */
