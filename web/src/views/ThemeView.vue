@@ -547,8 +547,9 @@ onMounted(async () => {
   font-family: ui-monospace, Menlo, Consolas, monospace;
 }
 .css-area:focus { border-color: var(--accent); outline: none; }
-.css-actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 8px; }
-.css-tip { font-size: 11px; color: var(--text-soft); }
+/* 提示语独占左侧，清空/应用两个按钮紧挨在右侧（space-between 会把三个元素均摊，按钮被甩开） */
+.css-actions { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+.css-tip { font-size: 11px; color: var(--text-soft); margin-right: auto; }
 
 /* 主页背景图 */
 .bg-row { display: flex; gap: 12px; padding: 12px; }
