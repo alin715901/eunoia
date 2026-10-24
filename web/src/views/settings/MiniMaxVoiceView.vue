@@ -2,8 +2,6 @@
   <div class="sp-view">
     <AppHeader title="MiniMax 语音" back />
     <div class="sp-body">
-      <p class="paid-note">该服务是付费功能，使用过程中会产生费用，费用直接支付给 minimax，与本站无关。</p>
-
       <!-- 总开关 -->
       <div class="panel sec">
         <div class="switch-row">
@@ -206,7 +204,6 @@ load().then(fill)
 .row-main { flex: 1; min-width: 0; }
 .row-title { font-size: 14px; font-weight: 600; }
 .hint { font-size: 11px; color: var(--text-soft); line-height: 1.6; margin: 8px 0 0; }
-.paid-note { font-size: 12px; line-height: 1.6; margin: 0; padding: 10px 12px; border-radius: var(--radius); background: rgba(192, 149, 106, 0.12); color: #c0956a; font-weight: 600; }
 .field-label { display: flex; align-items: center; justify-content: space-between; font-size: 12px; color: var(--text-soft); margin: 12px 0 6px; }
 .field-label:first-of-type { margin-top: 0; }
 .field-val { color: var(--accent); font-weight: 700; }
