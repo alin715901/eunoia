@@ -63,7 +63,7 @@
       <div class="ms-card">
         <div class="ms-title"><AppIcon name="download" :size="15" color="var(--accent)" /> 补全缺失时长</div>
         <div class="ms-hint-row">
-          <span>导入时没带上时长的歌曲，按来源批量补全（网易云/酷云可查，本地音频播放时自动识别）；网易云的会员标志也会一起补上</span>
+          <span>导入时没带上时长的歌曲，按来源批量补全（网易云/酷云可查，本地音频播放时自动识别）；网易云的会员标志也会一起补上。</span>
         </div>
         <button class="ms-primary soft" :disabled="durLoading" @click="backfillDurations">
           {{ durLoading ? (durProgress || '补全中…') : '一键补全缺失时长' }}
@@ -74,7 +74,7 @@
       <div class="ms-card">
         <div class="ms-title"><AppIcon name="download" :size="15" color="var(--accent)" /> 本地缓存</div>
         <div class="ms-hint-row">
-          <span>把曲库里歌曲的封面图和歌词抓到本地存好，之后断网也能显示；新导入的歌会在后台自动缓存</span>
+          <span>把曲库里歌曲的封面图和歌词抓到本地存好，之后断网也能显示；新导入的歌会在后台自动缓存。</span>
         </div>
         <button class="ms-primary soft" :disabled="cacheBtnLoading" @click="backfillCache">
           {{ cacheBtnLoading ? (cacheProgress || '缓存中…') : '一键缓存封面和歌词' }}

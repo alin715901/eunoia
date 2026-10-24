@@ -2,12 +2,14 @@
   <div class="sp-view">
     <AppHeader title="云端同步设置" back />
     <div class="sp-body">
-      <!-- 顶部状态区：成功/错误提示与最近同步时间（放在最上方，避免被底部按钮挤出屏幕看不到） -->
-      <p v-if="msg" class="msg" :class="{ err: isErr, ok: msgOk && !isErr }">{{ msg }}</p>
-      <p v-if="lastSyncText" class="sync-time">{{ lastSyncText }}</p>
-
-      <!-- 帮助链接 -->
-      <a class="help-link" href="https://help.aliyun.com/zh/ram/user-guide/create-an-accesskey-pair" target="_blank" rel="noopener">如何申请阿里云密钥？</a>
+      <!-- 顶部状态行：左侧帮助链接，右侧最近同步时间与成功/错误提示 -->
+      <div class="top-row">
+        <a class="help-link" href="https://help.aliyun.com/zh/ram/user-guide/create-an-accesskey-pair" target="_blank" rel="noopener">如何申请阿里云密钥？</a>
+        <span class="top-status">
+          <span v-if="lastSyncText" class="sync-time">{{ lastSyncText }}</span>
+          <span v-if="msg" class="msg" :class="{ err: isErr, ok: msgOk && !isErr }">{{ msg }}</span>
+        </span>
+      </div>
 
       <!-- Bucket 名称 -->
       <label class="field-label">Bucket 名称</label>
@@ -262,16 +264,19 @@ async function doMigrate() {
 <style scoped>
 .sp-view { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .sp-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 16px 14px 12px; display: flex; flex-direction: column; }
+.top-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.top-status { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; margin-left: auto; text-align: right; }
 .help-link {
-  align-self: flex-start;
   font-size: 12px;
   color: var(--accent);
   text-decoration: none;
-  margin-bottom: 14px;
 }
-/* 顶部状态区样式：提示与同步时间固定在页首可见 */
-.sp-body > .msg { margin: 0 0 10px; }
-.sp-body > .sync-time { margin: 0 2px 10px; }
 .field-label { display: block; font-size: 13px; color: var(--text); margin: 14px 0 8px; }
 .field-label:first-of-type { margin-top: 0; }
 .field {
@@ -303,21 +308,12 @@ select.field {
 .btn-block:disabled { opacity: 0.5; cursor: default; }
 .btn-block:active { opacity: 0.8; }
 .btn-block.danger { background: rgba(192, 87, 107, 0.12); color: #c0576b; }
-.msg { font-size: 12px; color: var(--text-soft); margin: 14px 0 0; }
+.msg { font-size: 12px; color: var(--text-soft); margin: 0; }
 .msg.err { color: #c0576b; }
-/* 成功提示：参考 iOS 风格的绿色胶囊（✓ + 浅绿底） */
-.msg.ok {
-  display: inline-block;
-  align-self: flex-start;
-  background: rgba(76, 175, 120, 0.12);
-  color: #3d9a6c;
-  font-size: 13px;
-  font-weight: 600;
-  padding: 9px 16px;
-  border-radius: 10px;
-}
+/* 成功提示：仅绿字 + ✓ 前缀，无背景色 */
+.msg.ok { color: #3d9a6c; font-weight: 600; }
 .msg.ok::before { content: '✓ '; }
-.sync-time { font-size: 11px; color: var(--text-soft); margin: 8px 2px 0; }
+.sync-time { font-size: 11px; color: var(--text-soft); margin: 0; }
 /* 底部按钮栏：取消 / 测试连接 / 保存并连接 */
 .oss-footer {
   display: flex;
