@@ -1,11 +1,15 @@
-/* 阿里云 OSS 工具：浏览器直传（PUT Object）+ V1 签名（HMAC-SHA1，Web Crypto）。
+/* 阿里云 OSS 工具：浏览器直传 + V4 查询串签名（presigned URL，HMAC-SHA256，Web Crypto）。
  * 配置为全局一份，存在 global_settings 的 oss_config 键（对象）：
  *   { accessKeyId, accessKeySecret, bucket, endpoint, prefix }
- * endpoint 填 OSS 控制台的地域节点（如 oss-cn-hangzhou.aliyuncs.com，不带协议头）。
+ * endpoint 填 OSS 控制台的地域节点（如 oss-cn-guangzhou.aliyuncs.com，不带协议头）。
  *
- * 注意：浏览器直连 OSS 需要在 OSS 控制台为该 Bucket 配置 CORS 规则
- * （允许来源=当前站点，允许方法=PUT/DELETE/HEAD/GET），否则上传会被浏览器拦截。
- * 另外 Bucket 需「公共读」才能让生成的对象 URL 直接打开（私有读需额外签名 URL）。
+ * 为什么用 V4 查询串签名：浏览器 fetch 禁止 JS 设置 Date 头（forbidden header），
+ * V1 头签名需要 Date / x-oss-* 自定义头，既容易被浏览器丢弃也会被 CORS 预检拦截；
+ * V4 查询串签名把全部签名参数放进 URL，请求头只需 Content-Type，最稳。
+ *
+ * 注意：浏览器直连 OSS 需在 OSS 控制台为 Bucket 配置 CORS 规则
+ * （允许来源=当前站点，允许方法=PUT/GET/DELETE，允许 Headers=* 或留空均可）。
+ * 对象 URL 直接打开需 Bucket 为「公共读」。
  */
 
 export const OSS_DEFAULT = {
@@ -37,6 +41,12 @@ function hostOf(cfg) {
   return `${cfg.bucket}.${cfg.endpoint}`
 }
 
+/* 从 endpoint 提取 V4 签名所需 region（如 oss-cn-guangzhou → cn-guangzhou） */
+function regionOf(cfg) {
+  const first = String(cfg.endpoint || '').split('.')[0] || ''
+  return first.replace(/^oss-/, '') || 'cn-hangzhou'
+}
+
 /* 拼接对象键：prefix + 业务路径（统一正斜杠、去掉重复斜杠） */
 export function ossKeyOf(cfg, path) {
   const p = String(path || '').replace(/^\/+/, '')
@@ -48,30 +58,115 @@ export function ossUrlOf(cfg, key) {
   return `https://${hostOf(cfg)}/${key}`
 }
 
-/* ── OSS V1 签名（HMAC-SHA1） ────────────────────────────── */
-async function hmacSha1(secret, content) {
-  const enc = new TextEncoder()
-  const key = await crypto.subtle.importKey('raw', enc.encode(secret), { name: 'HMAC', hash: 'SHA-1' }, false, ['sign'])
-  const sig = await crypto.subtle.sign('HMAC', key, enc.encode(content))
-  let bin = ''
-  const bytes = new Uint8Array(sig)
-  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i])
-  return btoa(bin)
+/* ── OSS V4 查询串签名（presigned URL） ───────────────────── */
+function pad2(n) { return n < 10 ? '0' + n : '' + n }
+function iso8601(d) {
+  return d.getUTCFullYear() + pad2(d.getUTCMonth() + 1) + pad2(d.getUTCDate())
+    + 'T' + pad2(d.getUTCHours()) + pad2(d.getUTCMinutes()) + pad2(d.getUTCSeconds()) + 'Z'
+}
+function dateStamp(d) {
+  return d.getUTCFullYear() + pad2(d.getUTCMonth() + 1) + pad2(d.getUTCDate())
 }
 
-async function authHeader(cfg, method, key, contentType, extraOssHeaders = {}) {
-  /* 浏览器 fetch 禁止设置 Date 头（forbidden header），改用 x-oss-date（ISO8601 格式）。
-   * 按官方 SDK 规则：x-oss-date 在签名字符串中出现两次——
-   * 既作为 Date 字段，也按字典序进入 CanonicalizedOSSHeaders。 */
-  const date = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
-  const ossHeaders = { 'x-oss-date': date, ...extraOssHeaders }
-  const canon = Object.keys(ossHeaders).sort()
-    .map((k) => `${k.toLowerCase()}:${String(ossHeaders[k]).trim()}\n`)
-    .join('')
-  const resource = `/${cfg.bucket}/${key}`
-  const stringToSign = [method, '', contentType || '', date, canon, resource].join('\n')
-  const sign = await hmacSha1(cfg.accessKeySecret, stringToSign)
-  return { ossHeaders, authorization: `OSS ${cfg.accessKeyId}:${sign}` }
+/* OSS 要求的百分号编码（保留 - _ . ~，其余全编码；encodeSlash=false 时保留 /） */
+function ossEncode(s, encodeSlash) {
+  s = encodeURIComponent(s).replace(/[!'()*]/g, (c) => '%' + c.charCodeAt(0).toString(16).toUpperCase())
+  if (!encodeSlash) s = s.replace(/%2F/g, '/')
+  return s
+}
+
+function bytesToHex(bytes) {
+  let hex = ''
+  for (let i = 0; i < bytes.length; i++) hex += (bytes[i] < 16 ? '0' : '') + bytes[i].toString(16)
+  return hex
+}
+
+async function hmacSha256(key, message) {
+  const enc = new TextEncoder()
+  const keyBuf = key instanceof Uint8Array ? key : enc.encode(key)
+  const cryptoKey = await crypto.subtle.importKey('raw', keyBuf, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign'])
+  const sig = await crypto.subtle.sign('HMAC', cryptoKey, enc.encode(message))
+  return new Uint8Array(sig)
+}
+
+async function sha256Hex(message) {
+  const enc = new TextEncoder()
+  const buf = await crypto.subtle.digest('SHA-256', enc.encode(message))
+  return bytesToHex(new Uint8Array(buf))
+}
+
+/**
+ * 生成 V4 预签名 URL（参考官方「在URL中包含V4签名」）。
+ * @param {string} contentType PUT 时传入且必须与请求头一致（content-type 属必签头）
+ * @param {number} expires 签名有效期秒数
+ */
+async function signedUrlOf(cfg, method, key, extraQuery, contentType, expires) {
+  const now = new Date()
+  const dateTime = iso8601(now)
+  const dStamp = dateStamp(now)
+  const region = regionOf(cfg)
+  const host = hostOf(cfg)
+  const credentialScope = `${dStamp}/${region}/oss/aliyun_v4_request`
+  const credential = `${cfg.accessKeyId}/${credentialScope}`
+
+  const query = {}
+  if (extraQuery) for (const k of Object.keys(extraQuery)) query[k] = String(extraQuery[k])
+  query['x-oss-signature-version'] = 'OSS4-HMAC-SHA256'
+  query['x-oss-credential'] = credential
+  query['x-oss-date'] = dateTime
+  query['x-oss-expires'] = String(expires || 600)
+  query['x-oss-additional-headers'] = 'host'
+
+  const canonicalQuery = Object.keys(query).sort()
+    .map((k) => `${ossEncode(k, true)}=${ossEncode(query[k], true)}`)
+    .join('&')
+
+  /* canonicalUri 签名计算时需包含 bucket 名；实际请求路径为虚拟主机风格（不含 bucket） */
+  const canonicalUri = `/${cfg.bucket}/${key ? ossEncode(key, false) : ''}`
+  const requestPath = `/${key ? ossEncode(key, false) : ''}`
+
+  /* Canonical Headers：必签 content-type / content-md5 / x-oss-* 头 + host（额外签名） */
+  const headersMap = { host }
+  if (contentType) headersMap['content-type'] = contentType
+  const canonicalHeaders = Object.keys(headersMap).sort()
+    .map((k) => `${k}:${headersMap[k]}`)
+    .join('\n') + '\n'
+
+  const canonicalRequest = [
+    method,
+    canonicalUri,
+    canonicalQuery,
+    canonicalHeaders,
+    'host',
+    'UNSIGNED-PAYLOAD'
+  ].join('\n')
+
+  const stringToSign = [
+    'OSS4-HMAC-SHA256',
+    dateTime,
+    credentialScope,
+    await sha256Hex(canonicalRequest)
+  ].join('\n')
+
+  const kDate = await hmacSha256('aliyun_v4' + cfg.accessKeySecret, dStamp)
+  const kRegion = await hmacSha256(kDate, region)
+  const kService = await hmacSha256(kRegion, 'oss')
+  const kSigning = await hmacSha256(kService, 'aliyun_v4_request')
+  const signature = bytesToHex(await hmacSha256(kSigning, stringToSign))
+
+  return `https://${host}${requestPath}?${canonicalQuery}&x-oss-signature=${ossEncode(signature, true)}`
+}
+
+/* 从 OSS 错误 XML 中提取友好信息 */
+function parseOssError(status, txt) {
+  const code = (/<Code>([^<]+)<\/Code>/.exec(txt) || [])[1] || ''
+  const msg = (/<Message>([^<]+)<\/Message>/.exec(txt) || [])[1] || ''
+  let friendly = ''
+  if (code === 'InvalidAccessKeyId') friendly = 'AccessKey ID 不正确'
+  else if (code === 'SignatureDoesNotMatch') friendly = '签名校验失败，请确认 AccessKey Secret 是否正确'
+  else if (code === 'NoSuchBucket') friendly = '找不到 Bucket，请检查 Bucket 名称与地区是否匹配'
+  else if (code === 'AccessDenied') friendly = '权限不足，请检查 AccessKey 是否有该 Bucket 的读写权限'
+  return `OSS 请求失败 HTTP ${status}${code ? ` [${code}]` : ''}：${friendly || msg || txt.slice(0, 120)}`
 }
 
 /**
@@ -82,38 +177,38 @@ export async function ossUpload(cfg, blob, path) {
   if (!ossReady(cfg)) throw new Error('阿里云 OSS 配置不完整（AccessKey / Bucket / 地域节点）')
   const key = ossKeyOf(cfg, path)
   const contentType = blob.type || 'application/octet-stream'
-  const { ossHeaders, authorization } = await authHeader(cfg, 'PUT', key, contentType, { 'x-oss-object-acl': 'public-read' })
   let res
   try {
-    res = await fetch(ossUrlOf(cfg, key), {
-      method: 'PUT',
-      headers: { Authorization: authorization, 'Content-Type': contentType, ...ossHeaders },
-      body: blob
-    })
+    const url = await signedUrlOf(cfg, 'PUT', key, null, contentType, 600)
+    res = await fetch(url, { method: 'PUT', headers: { 'Content-Type': contentType }, body: blob })
   } catch (e) {
     throw new Error('上传请求失败（浏览器直连可能被 CORS 拦截，需在 OSS 控制台配置 CORS 规则）')
   }
   if (!res.ok) {
-    const txt = (await res.text().catch(() => '')).slice(0, 200)
-    throw new Error(`OSS 上传失败 HTTP ${res.status}${txt ? `：${txt}` : ''}`)
+    const txt = await res.text().catch(() => '')
+    throw new Error(parseOssError(res.status, txt))
   }
   return ossUrlOf(cfg, key)
 }
 
 /**
- * 从 OSS 下载对象（Bucket 公共读时直接 GET；返回 Blob）。
+ * 从 OSS 下载对象（预签名 GET，公共读 / 私有读均可；返回 Blob）。
  */
 export async function ossDownload(cfg, path) {
   if (!ossReady(cfg)) throw new Error('阿里云 OSS 配置不完整（AccessKey / Bucket / 地域节点）')
-  const url = ossUrlOf(cfg, ossKeyOf(cfg, path))
+  const key = ossKeyOf(cfg, path)
   let res
   try {
-    res = await fetch(url)
+    const url = await signedUrlOf(cfg, 'GET', key, null, '', 600)
+    res = await fetch(url, { method: 'GET' })
   } catch (e) {
     throw new Error('下载请求失败（浏览器直连可能被 CORS 拦截，需在 OSS 控制台配置 CORS 规则）')
   }
   if (res.status === 404 || res.status === 403) throw new Error('云端还没有备份')
-  if (!res.ok) throw new Error(`OSS 下载失败 HTTP ${res.status}`)
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '')
+    throw new Error(parseOssError(res.status, txt))
+  }
   return res.blob()
 }
 
@@ -126,11 +221,10 @@ export async function ossTest(cfg) {
   const key = ossKeyOf(cfg, `_probe/${Date.now()}.txt`)
   try {
     const url = await ossUpload(cfg, new Blob(['eunoia oss probe'], { type: 'text/plain' }), `_probe/${Date.now()}.txt`)
-    // 上传成功：尝试删除探测文件（DELETE 也走 V1 签名）
+    // 上传成功：尝试删除探测文件
     try {
-      const contentType = ''
-      const { ossHeaders, authorization } = await authHeader(cfg, 'DELETE', key, contentType)
-      await fetch(url, { method: 'DELETE', headers: { Authorization: authorization, ...ossHeaders } })
+      const delUrl = await signedUrlOf(cfg, 'DELETE', key, null, '', 600)
+      await fetch(delUrl, { method: 'DELETE' })
       return { ok: true, level: 'ok', message: '连接正常：上传与删除均成功' }
     } catch (e) {
       return { ok: true, level: 'write', message: '可上传，但删除失败（Bucket 可能未授权 DeleteObject）' }
@@ -138,7 +232,7 @@ export async function ossTest(cfg) {
   } catch (e) {
     const msg = String(e.message || e)
     if (/CORS|Failed to fetch|NetworkError/i.test(msg)) {
-      return { ok: false, level: 'cors', message: '请求被拦截：请在 OSS 控制台为 Bucket 配置 CORS（允许来源=当前站点，方法=PUT/DELETE/GET）' }
+      return { ok: false, level: 'cors', message: '请求被拦截：请在 OSS 控制台为 Bucket 配置 CORS（允许来源=当前站点，方法=PUT/DELETE/GET，允许 Headers=*）' }
     }
     return { ok: false, level: 'fail', message: msg }
   }
