@@ -1297,13 +1297,16 @@ export function validateBackupFile(payload) {
 
 const OSS_BACKUP_PATH = 'backup/eunoia.json'
 
-/* 备份当前全部数据到 OSS（全量 JSON，保存并连接成功后自动触发） */
+/* 备份当前全部数据到 OSS（全量 JSON，保存并连接成功后自动触发）。
+   成功后记录 oss_last_backup_at（OssView 显示「刚刚同步 / 几时几分同步」） */
 export async function backupToOss() {
   const cfg = readOssCfg(readGlobalSettings())
   if (!ossReady(cfg)) throw new Error('请先填写并保存 OSS 配置')
   const payload = backupService.buildBackup({ type: 'full' })
   const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' })
-  return ossUpload(cfg, blob, OSS_BACKUP_PATH)
+  const r = await ossUpload(cfg, blob, OSS_BACKUP_PATH)
+  settingsRepo.setGlobal('oss_last_backup_at', Date.now())
+  return r
 }
 
 /* 从云端恢复梦角数据到本浏览器（下载备份 JSON → 覆盖导入）。

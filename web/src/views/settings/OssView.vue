@@ -37,6 +37,8 @@
       <button class="btn-block" type="button" :disabled="migrating || !configured" @click="doMigrate">
         {{ migrating ? `迁移中…（已完成 ${migDone}）` : '迁移本地图片到云端（省空间）' }}
       </button>
+      <!-- 最近一次同步时间 -->
+      <p v-if="lastSyncText" class="sync-time">{{ lastSyncText }}</p>
 
       <p v-if="msg" class="msg" :class="{ err: isErr }">{{ msg }}</p>
     </div>
@@ -51,7 +53,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed } from 'vue'
+import { ref, reactive, computed, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import { getSettings, saveSettings, migrateImagesToOss, backupToOss, restoreFromOss } from '@/api/settings'
@@ -94,6 +96,33 @@ const configured = computed(() => ossReady({
   bucket: form.bucket, endpoint: form.endpoint
 }))
 
+/* ── 最近同步时间（oss_last_backup_at 由 backupToOss 成功后写入全局设置） ── */
+const lastSyncText = ref('')
+let syncTimer = null
+
+function fmtSyncTime(t) {
+  const diff = Date.now() - t
+  const d = new Date(t)
+  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+  if (diff < 60 * 1000) return '刚刚同步'
+  if (diff < 60 * 60 * 1000) return `${Math.floor(diff / 60000)} 分钟前同步`
+  const startToday = new Date().setHours(0, 0, 0, 0)
+  if (t >= startToday) return `今天 ${hm} 同步`
+  if (t >= startToday - 24 * 60 * 60 * 1000) return `昨天 ${hm} 同步`
+  return `${d.getMonth() + 1}月${d.getDate()}日 ${hm} 同步`
+}
+
+async function loadSyncTime() {
+  try {
+    const s = await getSettings()
+    const t = Number(s.oss_last_backup_at) || 0
+    lastSyncText.value = t ? fmtSyncTime(t) : ''
+  } catch (e) { /* ignore */ }
+}
+loadSyncTime()
+syncTimer = setInterval(loadSyncTime, 30 * 1000)
+onBeforeUnmount(() => clearInterval(syncTimer))
+
 async function fill() {
   try {
     const s = await getSettings()
@@ -133,6 +162,7 @@ async function doSave() {
     /* 保存成功 → 自动把当前全部数据备份到云端（供「从云端恢复梦角到本浏览器」使用） */
     try {
       await backupToOss()
+      loadSyncTime()
       notify('已自动备份当前数据到云端')
     } catch (be) {
       isErr.value = true
@@ -240,7 +270,6 @@ async function doMigrate() {
   text-decoration: none;
   margin-bottom: 14px;
 }
-.help-link::before { content: '? '; }
 .field-label { display: block; font-size: 13px; color: var(--text); margin: 14px 0 8px; }
 .field-label:first-of-type { margin-top: 0; }
 .field {
@@ -274,6 +303,7 @@ select.field {
 .btn-block.danger { background: rgba(192, 87, 107, 0.12); color: #c0576b; }
 .msg { font-size: 12px; color: var(--text-soft); margin: 14px 0 0; }
 .msg.err { color: #c0576b; }
+.sync-time { font-size: 11px; color: var(--text-soft); margin: 8px 2px 0; }
 /* 底部按钮栏：取消 / 测试连接 / 保存并连接 */
 .oss-footer {
   display: flex;

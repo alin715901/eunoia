@@ -10,6 +10,8 @@
 import db from './db'
 import * as notification from './services/notification.service'
 import { proactiveTick, redpacketTick, upgradeAllPseudoVoices } from './services/chat.service'
+import { backupToOss, getSettings } from './api'
+import { readOssCfg, ossReady } from '../utils/oss'
 import { periodCareTick } from './services/period.service'
 import { momentTick, flushPendingMoments } from './services/moment.service'
 import { letterTick, replyTick } from './services/letter.service'
@@ -73,6 +75,11 @@ function runMinuteTicks() {
   }
   try {
     redpacketTick()
+  } catch (e) {
+    /* ignore */
+  }
+  try {
+    ossAutoBackupTick()
   } catch (e) {
     /* ignore */
   }
@@ -156,6 +163,32 @@ function runAll() {
   maybeRunCallInviteCheck()
 }
 
+/* ── OSS 自动同步：配置就绪时自动把全量数据备份到云端 ──
+ *   开站 15 秒后补一次；页面开着每 30 分钟一次（同一节流窗口内不重复上传，
+ *   失败也不 Hammering——无论成败，两次尝试至少间隔 30 分钟）。
+ *   手动「保存并连接」的备份不受此节流限制，成功后同样刷新同步时间。 */
+const OSS_SYNC_MS = 30 * 60 * 1000
+let ossSyncBusy = false
+let ossLastAttempt = 0
+
+async function ossAutoBackupTick() {
+  if (ossSyncBusy) return
+  const now = Date.now()
+  if (now - ossLastAttempt < OSS_SYNC_MS) return
+  ossLastAttempt = now
+  try {
+    const s = await getSettings()
+    if (!ossReady(readOssCfg(s))) return
+    if (now - (Number(s.oss_last_backup_at) || 0) < OSS_SYNC_MS) return
+    ossSyncBusy = true
+    await backupToOss()
+  } catch (e) {
+    /* 静默失败，下个周期再试 */
+  } finally {
+    ossSyncBusy = false
+  }
+}
+
 // —— 启动：延迟几秒首跑（等应用挂载、事件监听就绪），之后 60s 循环；前台恢复立即补跑 ——
 export function startTicks() {
   if (started) return
@@ -165,6 +198,9 @@ export function startTicks() {
 
   /* 启动后一次性补齐：此前「未配置 MiniMax 时」遗留的伪语音，配置就绪后转成真实语音 */
   setTimeout(() => { upgradeAllPseudoVoices().catch(() => {}) }, 4000)
+
+  /* OSS 自动同步：开站 15 秒后先试一次（30 分钟节流），之后随每分钟 tick 巡检 */
+  setTimeout(() => { ossAutoBackupTick().catch(() => {}) }, 15000)
 
   timer = setInterval(runAll, TICK_MS)
 
