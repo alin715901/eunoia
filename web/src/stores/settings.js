@@ -14,8 +14,8 @@ export const FONTS = [
   { k: 'kai', n: '楷体', css: "'Kaiti SC', KaiTi, STKaiti, 'Noto Serif CJK SC', serif" },
   { k: 'hei', n: '黑体', css: "'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif" },
   { k: 'round', n: '圆体', css: "'Yuanti SC', 'Hiragino Sans GB', 'Quicksand', 'PingFang SC', sans-serif" },
-  /* 手写：马善政手写体（Google Fonts，选中时按需加载；字形偏小，
-     配 0.5px 字距增加呼吸感；无网络时回退行楷/楷体） */
+  /* 手写：马善政手写体（自托管分片打包在 public/fonts/mashanzheng，选中时按需加载，
+     不依赖 Google；字形偏小，配 0.5px 字距增加呼吸感；极端情况回退行楷/楷体） */
   { k: 'hand', n: '手写', css: "'Ma Shan Zheng', 'Xingkai SC', STXingkai, 'Kaiti SC', cursive", wf: 'Ma+Shan+Zheng', extra: 'html,body{letter-spacing:.5px}' }
 ]
 
@@ -136,14 +136,22 @@ export function applyFont(fontKey, fontCss) {
   tag.textContent = (preset.extra || '') + (fontCss || '')
 }
 
-/* 按需加载 Google Fonts 的字体族（幂等；display=swap 保证加载前用回退字体渲染） */
+/* 自托管的 webfont：Google Fonts 的分片已打包进 public/fonts/（马善政为 OFL 许可证，
+   见 public/fonts/mashanzheng/OFL.txt）。走自己的域名：不依赖 Google（国内访问稳）、
+   可被 Service Worker 缓存，离线也能正常显示 */
+const LOCAL_WEBFONTS = { 'Ma+Shan+Zheng': 'fonts/mashanzheng/mashanzheng.css' }
+/* 按需加载 webfont（幂等；font-display:swap 保证加载前用回退字体渲染） */
 const webfontLoaded = new Set()
 function ensureWebfont(family) {
   if (typeof document === 'undefined' || webfontLoaded.has(family)) return
   webfontLoaded.add(family)
   const link = document.createElement('link')
   link.rel = 'stylesheet'
-  link.href = `https://fonts.googleapis.com/css2?family=${family}&display=swap`
+  const local = LOCAL_WEBFONTS[family]
+  /* 自托管优先（BASE_URL 本地为 /、Pages 上为 /eunoia/）；未登记的字体族暂时回退 Google */
+  link.href = local
+    ? `${import.meta.env.BASE_URL}${local}`
+    : `https://fonts.googleapis.com/css2?family=${family}&display=swap`
   document.head.appendChild(link)
 }
 
