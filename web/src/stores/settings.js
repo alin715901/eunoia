@@ -217,7 +217,9 @@ export const useSettingsStore = defineStore('settings', {
           keepAlive: data.keepAlive === true,
           appearance,
           /* 阿里云 OSS 配置（对象，未配置为 null） */
-          oss_config: data.oss_config || null
+          oss_config: data.oss_config || null,
+          /* 最近一次云端备份时间戳（设置页 OSS 行显示同步时间） */
+          oss_last_backup_at: Number(data.oss_last_backup_at) || 0
         }
       } catch (e) {
         this.global = JSON.parse(JSON.stringify(DEFAULT))
@@ -237,7 +239,8 @@ export const useSettingsStore = defineStore('settings', {
           moments: { ...DEFAULT.moments, ...(data.moments || {}) },
           keepAlive: data.keepAlive === true,
           appearance: data.appearance === 'dark' || data.appearance === 'system' ? data.appearance : 'light',
-          oss_config: data.oss_config || null
+          oss_config: data.oss_config || null,
+          oss_last_backup_at: Number(data.oss_last_backup_at) || 0
         }
       }
       this.applyTheme()

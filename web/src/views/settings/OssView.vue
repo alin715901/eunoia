@@ -2,6 +2,10 @@
   <div class="sp-view">
     <AppHeader title="云端同步设置" back />
     <div class="sp-body">
+      <!-- 顶部状态区：成功/错误提示与最近同步时间（放在最上方，避免被底部按钮挤出屏幕看不到） -->
+      <p v-if="msg" class="msg" :class="{ err: isErr, ok: msgOk && !isErr }">{{ msg }}</p>
+      <p v-if="lastSyncText" class="sync-time">{{ lastSyncText }}</p>
+
       <!-- 帮助链接 -->
       <a class="help-link" href="https://help.aliyun.com/zh/ram/user-guide/create-an-accesskey-pair" target="_blank" rel="noopener">如何申请阿里云密钥？</a>
 
@@ -38,9 +42,6 @@
         {{ migrating ? `迁移中…（已完成 ${migDone}）` : '迁移本地图片到云端（省空间）' }}
       </button>
       <!-- 最近一次同步时间 -->
-      <p v-if="lastSyncText" class="sync-time">{{ lastSyncText }}</p>
-
-      <p v-if="msg" class="msg" :class="{ err: isErr, ok: msgOk && !isErr }">{{ msg }}</p>
     </div>
 
     <!-- 底部按钮栏：取消 / 测试连接 / 保存并连接 -->
@@ -58,6 +59,7 @@ import { useRouter } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import { getSettings, saveSettings, migrateImagesToOss, backupToOss, restoreFromOss } from '@/api/settings'
 import { readOssCfg, ossReady, ossTest } from '@/utils/oss'
+import { fmtSyncTime } from '@/utils/syncTime'
 import { notify, confirmDialog } from '@/utils/dialog'
 
 const router = useRouter()
@@ -100,18 +102,6 @@ const configured = computed(() => ossReady({
 /* ── 最近同步时间（oss_last_backup_at 由 backupToOss 成功后写入全局设置） ── */
 const lastSyncText = ref('')
 let syncTimer = null
-
-function fmtSyncTime(t) {
-  const diff = Date.now() - t
-  const d = new Date(t)
-  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-  if (diff < 60 * 1000) return '刚刚同步'
-  if (diff < 60 * 60 * 1000) return `${Math.floor(diff / 60000)} 分钟前同步`
-  const startToday = new Date().setHours(0, 0, 0, 0)
-  if (t >= startToday) return `今天 ${hm} 同步`
-  if (t >= startToday - 24 * 60 * 60 * 1000) return `昨天 ${hm} 同步`
-  return `${d.getMonth() + 1}月${d.getDate()}日 ${hm} 同步`
-}
 
 async function loadSyncTime() {
   try {
@@ -279,6 +269,9 @@ async function doMigrate() {
   text-decoration: none;
   margin-bottom: 14px;
 }
+/* 顶部状态区样式：提示与同步时间固定在页首可见 */
+.sp-body > .msg { margin: 0 0 10px; }
+.sp-body > .sync-time { margin: 0 2px 10px; }
 .field-label { display: block; font-size: 13px; color: var(--text); margin: 14px 0 8px; }
 .field-label:first-of-type { margin-top: 0; }
 .field {

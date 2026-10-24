@@ -64,7 +64,7 @@
           <span class="ri-icon"><AppIcon name="cloud" :size="18" /></span>
           <span class="ri-label">阿里云 OSS</span>
           <span class="spacer"></span>
-          <span class="ri-value">{{ ossOn ? '已配置' : '未配置' }}</span>
+          <span class="ri-value">{{ ossValue }}</span>
           <AppIcon name="chevron-right" :size="16" color="var(--text-soft)" />
         </button>
         <button class="row-item" @click="goStorage">
@@ -130,6 +130,7 @@ import { useContactsStore } from '@/stores/contacts'
 import { useDesktopStore } from '@/stores/desktop'
 import { useSettingsStore, FONTS, APPEARANCES } from '@/stores/settings'
 import { useKeepAlive } from '@/composables/useKeepAlive'
+import { fmtSyncTime } from '@/utils/syncTime'
 
 const router = useRouter()
 const toast = useNotificationsStore()
@@ -214,6 +215,13 @@ function goOss() {
 const ossOn = computed(() => {
   const c = settings.global.oss_config || {}
   return !!(c.accessKeyId && c.accessKeySecret && c.bucket && c.endpoint)
+})
+
+/* OSS 行右侧状态：已配置时附带最近一次云端同步时间 */
+const ossValue = computed(() => {
+  if (!ossOn.value) return '未配置'
+  const t = Number(settings.global.oss_last_backup_at) || 0
+  return t ? `已配置 · ${fmtSyncTime(t)}` : '已配置'
 })
 
 /* 通知开关：全局 */
