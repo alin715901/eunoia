@@ -60,16 +60,16 @@ async function hmacSha1(secret, content) {
 }
 
 async function authHeader(cfg, method, key, contentType, extraOssHeaders = {}) {
-  const date = new Date().toUTCString()
-  /* 浏览器 fetch 禁止设置 Date 头（forbidden header），改用 x-oss-date 代替；
-   * 所有 x-oss-* 头需按字典序加入 CanonicalizedOSSHeaders 参与签名，
-   * 同时签名字符串中的 Date 字段留空（未发送 Date 头）。 */
+  /* 浏览器 fetch 禁止设置 Date 头（forbidden header），改用 x-oss-date（ISO8601 格式）。
+   * 按官方 SDK 规则：x-oss-date 在签名字符串中出现两次——
+   * 既作为 Date 字段，也按字典序进入 CanonicalizedOSSHeaders。 */
+  const date = new Date().toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
   const ossHeaders = { 'x-oss-date': date, ...extraOssHeaders }
   const canon = Object.keys(ossHeaders).sort()
     .map((k) => `${k.toLowerCase()}:${String(ossHeaders[k]).trim()}\n`)
     .join('')
   const resource = `/${cfg.bucket}/${key}`
-  const stringToSign = [method, '', contentType || '', '', canon, resource].join('\n')
+  const stringToSign = [method, '', contentType || '', date, canon, resource].join('\n')
   const sign = await hmacSha1(cfg.accessKeySecret, stringToSign)
   return { ossHeaders, authorization: `OSS ${cfg.accessKeyId}:${sign}` }
 }
