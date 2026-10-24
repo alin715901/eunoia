@@ -64,3 +64,67 @@ export function cssTextToStyle(css) {
   }
   return out
 }
+
+/* ── 规则式自定义 CSS（selector { declaration } 形式） ──
+   用户在设置页可能直接写完整 CSS 规则（如 .message-sent { … }），
+   这里把常见类名别名映射到本站真实气泡类名后作为 <style> 注入，
+   用户写的 !important 声明按层叠规则自然盖过预设颜色/圆角。 */
+
+// 是否「规则式」CSS：含有 { … } 规则块即视为规则式
+export function isRuleCss(text) {
+  return /\{[^{}]*\}/.test(String(text || ''))
+}
+
+/* 选择器别名（用户常见写法 → 真实结构）：
+   .message            双方气泡通用
+   .message-sent       我的气泡
+   .message-received   对方气泡
+   （本站真实类名 .bubble / .bubble-me / .bubble-contact 也原样支持） */
+function rewriteSelectors(css, sent, received, base) {
+  return String(css || '')
+    .replace(/\.message-sent\b/g, sent)
+    .replace(/\.message-received\b/g, received)
+    .replace(/\.message\b/g, base)
+}
+
+/* 变量别名：把用户可能写错的常见变量名接到本站主题变量上，
+   例如 --accent-color → var(--accent)，--text-primary → var(--text) */
+const VAR_ALIAS = [
+  ['--accent-color', 'var(--accent, #c0956a)'],
+  ['--text-primary', 'var(--text, #3a3a3a)'],
+  ['--text-secondary', 'var(--text-soft, #8a8a8a)'],
+  ['--bg-primary', 'var(--bg-screen, #ffffff)'],
+  ['--bg-secondary', 'var(--bg-soft, #f2f2f2)']
+]
+
+// :root 变量别名块（聊天与预览注入都需要，保证 --accent-color 等名字开箱即用）
+const VAR_ALIAS_BLOCK = `:root{${VAR_ALIAS.map(([k, v]) => `${k}:${v};`).join('')}}`
+
+// 图片/表情/红包等「无气泡底」卡片（.bubble.bare）排除在气泡规则外，
+// 避免自定义边框/背景在卡片外面多套一层框
+function excludeBare(selector) {
+  const s = selector.trim()
+  if (s === '.bubble' || s === '.bubble.bubble-me' || s === '.bubble.bubble-contact') {
+    return s + ':not(.bare)'
+  }
+  return s
+}
+
+// 聊天内注入：别名 + :not(.bare) 排除 + 变量别名
+export function ruleCssForChat(css) {
+  if (!isRuleCss(css)) return ''
+  let text = rewriteSelectors(css, '.bubble.bubble-me', '.bubble.bubble-contact', '.bubble')
+  // 对每条规则的选择器列表逐个处理（只处理不含后代/伪类的简单选择器）
+  text = text.replace(/([^{}]+)\{([^{}]*)\}/g, (_m, sels, decls) => {
+    const next = sels.split(',').map(excludeBare).join(',')
+    return `${next}{${decls}}`
+  })
+  const vars = VAR_ALIAS_BLOCK
+  return vars + text
+}
+
+// 预览注入：把气泡类名换成预览区类名（mock-bubble + mock-me / mock-contact）
+export function ruleCssForPreview(css) {
+  if (!isRuleCss(css)) return ''
+  return VAR_ALIAS_BLOCK + rewriteSelectors(css, '.mock-bubble.mock-me', '.mock-bubble.mock-contact', '.mock-bubble')
+}

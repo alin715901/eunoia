@@ -224,10 +224,11 @@
 </template>
 
 <script setup>
-import { computed, ref, onMounted, onBeforeUnmount } from 'vue'
+import { computed, ref, watch, onMounted, onBeforeUnmount } from 'vue'
 import AppAvatar from '@/components/common/AppAvatar.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
-import { cssTextToStyle } from '@/utils/bubbleStyle'
+import { cssTextToStyle, isRuleCss } from '@/utils/bubbleStyle'
+import { applyChatBubbleRuleCss } from '@/utils/bubbleRuleCss'
 import { useChatStore } from '@/stores/chat'
 import { useCompanionStore } from '@/stores/companion'
 import { useMusicStore } from '@/stores/music'
@@ -236,6 +237,10 @@ import { respondGameInvite } from '@/api/games'
 import router from '@/router'
 
 const emit = defineEmits(['long-press', 'quote-tap', 'image-tap', 'open-redpacket', 'avatar-dblclick'])
+
+/* 规则式自定义 CSS：注入 <style>（别名映射到真实气泡类名，聊天页全局生效）。
+   声明式写法走内联（见 bubbleStyleCss），此处注入空内容即自动移除标签。 */
+watch(() => props.bubbleStyle?.css, (v) => applyChatBubbleRuleCss(v), { immediate: true })
 
 const props = defineProps({
   message: { type: Object, required: true },
@@ -613,7 +618,11 @@ const bubbleStyleCss = computed(() => {
   }
   s['--bubble-radius'] = bubbleRadius.value + 'px'
   // 自定义气泡 CSS（用户在设置页填写的声明式样式，优先级最高，对我/对方气泡统一生效）
-  const custom = scaledCustomCss(cssTextToStyle(props.bubbleStyle?.css))
+  // 规则式 CSS（含 selector { … }）不走内联，改由 bubbleRuleCss 注入 <style>，
+  // 别名映射到真实气泡类名，用户 !important 声明按层叠规则盖过预设颜色/圆角
+  const custom = isRuleCss(props.bubbleStyle?.css)
+    ? {}
+    : scaledCustomCss(cssTextToStyle(props.bubbleStyle?.css))
   /* bare 消息（图片/表情包/红包/各类邀请卡片）是无气泡底的独立卡片：
      自定义 CSS 的视觉声明（背景/边框/阴影/文字色/内边距）是内联样式，会盖掉
      .bubble.bare 的 transparent + padding:0，让卡片外面多套一层气泡底/虚线框 —— 全部剥离 */

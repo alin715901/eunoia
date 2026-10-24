@@ -9,13 +9,13 @@
         <div class="mock-row">
           <span class="mock-ava"></span>
           <span
-            class="mock-bubble"
+            class="mock-bubble mock-contact"
             :style="mockContactStyle"
           >在忙什么呀？</span>
         </div>
         <div class="mock-row right">
           <span
-            class="mock-bubble"
+            class="mock-bubble mock-me"
             :style="mockMyStyle"
           >在想你怎么还不找我 (¬‿¬)</span>
         </div>
@@ -48,18 +48,25 @@
         <input class="blur-range" type="range" min="45" max="90" step="1" v-model.number="bs.size" @input="queueSave" />
       </div>
 
-      <!-- 自定义气泡 CSS（统一作用于我/对方气泡） -->
+      <!-- 自定义气泡 CSS（声明式统一生效 / 规则式可分别设置双方） -->
       <div class="panel sec">
         <div class="sec-head">
           <div class="sec-title">自定义气泡 CSS</div>
           <button class="ta-clear" type="button" @click="clearBubbleCss">清空</button>
         </div>
-        <p class="css-tip">填写声明式样式，一行一条（如 background / color / font-size / padding），统一作用于双方气泡，优先级高于上面的颜色与圆角。</p>
+        <p class="css-tip">
+          支持两种写法，自动识别（含 {"{ }"} 即按规则式）：<br />
+          ① 声明式：一行一条声明，双方气泡统一生效，如
+          <code>background:#fde9c8; color:#5a4632; font-size:15px;</code><br />
+          ② 规则式：写完整 CSS 规则，可分别设置双方气泡，类名用
+          <code>.message</code>（双方通用）/ <code>.message-sent</code>（我的）/ <code>.message-received</code>（对方），
+          变量可用 <code>--accent-color</code>、<code>--text-primary</code>。带 !important 的声明会盖过上面的颜色与圆角。
+        </p>
         <textarea
           class="css-area"
           v-model="bs.css"
           rows="6"
-          placeholder="例：background: linear-gradient(135deg,#fde9c8,#f6d5a7); color:#5a4632; font-size:15px;"
+          placeholder="例：.message-sent { background: transparent; border: 2px solid var(--accent-color); color: var(--accent-color); border-radius: 20px; } .message-received { background: transparent; border: 2px solid #ccc; color: var(--text-primary); border-radius: 20px; }"
           @change="queueSave"
         ></textarea>
         <p class="hint">留空则使用上面选择的颜色；改完自动保存。</p>
@@ -90,10 +97,11 @@
 </template>
 
 <script setup>
-import { reactive, computed, onMounted } from 'vue'
+import { reactive, computed, watch, onMounted } from 'vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import { useContactSettingsPage } from '@/composables/useContactSettingsPage'
-import { BUBBLE_PRESETS, parseBubbleStyle, bubblePresetName, cssTextToStyle } from '@/utils/bubbleStyle'
+import { BUBBLE_PRESETS, parseBubbleStyle, bubblePresetName, cssTextToStyle, isRuleCss } from '@/utils/bubbleStyle'
+import { applyPreviewBubbleRuleCss } from '@/utils/bubbleRuleCss'
 import { notify } from '@/utils/dialog'
 
 const props = defineProps({ id: { type: [String, Number], required: true } })
@@ -129,7 +137,8 @@ function bubblePreviewStyle(hex) {
     fontSize: (15 * k).toFixed(1) + 'px',
     padding: `${(10 * k).toFixed(1)}px ${(14 * k).toFixed(1)}px`,
     maxWidth: Math.min(92, 68 * k).toFixed(0) + '%',
-    ...scaledByK(cssTextToStyle(bs.css), k)
+    // 规则式 CSS 不走内联（改注入预览 <style>），否则解析出的垃圾声明会污染内联
+    ...(isRuleCss(bs.css) ? {} : scaledByK(cssTextToStyle(bs.css), k))
   }
 }
 /* 对方气泡预览 */
@@ -191,6 +200,10 @@ onMounted(async () => {
   if (!s) return
   Object.assign(bs, parseBubbleStyle(s.bubble_style))
 })
+
+/* 规则式 CSS：实时注入预览 <style>（只影响本页 mock 气泡），
+   聊天内注入由 MessageBubble 负责 */
+watch(() => bs.css, (v) => applyPreviewBubbleRuleCss(v), { immediate: true })
 </script>
 
 <style scoped>
