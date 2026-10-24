@@ -21,26 +21,23 @@
         </section>
       </template>
 
-      <!-- 使用教程：可展开手风琴 -->
+      <!-- 使用教程：普通卡片，点击展开/收起 -->
       <template v-else>
         <div
           v-for="(g, gi) in GUIDE_SECTIONS"
           :key="gi"
           class="acc panel"
           :class="{ open: openSet[gi] }"
+          @click="toggle(gi)"
         >
-          <button class="acc-head" @click="toggle(gi)">
+          <div class="acc-head">
             <span class="acc-title">{{ g.title }}</span>
-            <span class="acc-arrow" :class="{ flip: openSet[gi] }">
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9" /></svg>
-            </span>
-          </button>
-          <div v-show="openSet[gi]" class="acc-body">
+            <span class="acc-arrow">{{ openSet[gi] ? '▲' : '▼' }}</span>
+          </div>
+          <div v-if="openSet[gi]" class="acc-body" @click.stop>
             <template v-for="(b, bi) in g.blocks" :key="bi">
-              <h4 v-if="b.head" class="acc-sub">{{ b.head }}</h4>
-              <ul v-if="b.lines" class="acc-ul">
-                <li v-for="(ln, li) in b.lines" :key="li" :class="{ note: b.note }">{{ ln }}</li>
-              </ul>
+              <div v-if="b.head" class="acc-sub">{{ b.head }}</div>
+              <div v-for="(ln, li) in b.lines" :key="bi + '-' + li" class="acc-line" :class="{ note: b.note }">{{ ln }}</div>
             </template>
           </div>
         </div>
@@ -357,6 +354,8 @@ function toggle(i) { openSet[i] = !openSet[i] }
 <style scoped>
 .sp-view { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .sp-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 10px; }
+/* 关键：滚动容器内的卡片禁止被 flex 压缩，否则内容超一屏时全部裁字 */
+.sp-body > * { flex: 0 0 auto; }
 
 /* 页签 */
 .hp-tabs { display: flex; gap: 8px; }
@@ -374,25 +373,19 @@ function toggle(i) { openSet[i] = !openSet[i] }
 .h-item { margin: 0 0 8px; font-size: 13px; line-height: 1.75; color: var(--text-soft); }
 .h-item:last-child { margin-bottom: 0; }
 
-/* 手风琴 */
+/* 手风琴：普通 div 卡片，避免部分浏览器对 button 的渲染问题 */
 .acc { overflow: hidden; }
 .acc-head {
-  width: 100%; display: flex; align-items: center; justify-content: space-between;
-  gap: 10px; padding: 14px; background: transparent; border: none; cursor: pointer;
-  text-align: left;
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; padding: 14px; cursor: pointer;
 }
-.acc-title { font-size: 15px; font-weight: 700; color: var(--text); }
-.acc-arrow { width: 18px; height: 18px; color: var(--text-soft); flex: 0 0 auto; transition: transform .25s ease; }
-.acc-arrow svg { width: 100%; height: 100%; }
-.acc-arrow.flip { transform: rotate(180deg); }
-.acc-body { padding: 0 14px 14px; border-top: 1px solid var(--border); }
-.acc.open .acc-body { animation: accIn .2s ease; }
-@keyframes accIn { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
-.acc-sub { margin: 12px 0 6px; font-size: 13px; font-weight: 600; color: var(--accent); }
-.acc-sub:first-child { margin-top: 12px; }
-.acc-ul { margin: 0 0 4px; padding-left: 4px; list-style: none; }
-.acc-ul li { position: relative; padding-left: 12px; margin-bottom: 7px; font-size: 13px; line-height: 1.7; color: var(--text-soft); }
-.acc-ul li::before { content: ''; position: absolute; left: 0; top: 9px; width: 5px; height: 5px; border-radius: 50%; background: var(--text-soft); opacity: .6; }
-.acc-ul li.note { color: #c0956a; }
-.acc-ul li.note::before { background: #c0956a; }
+.acc-title { font-size: 15px; font-weight: 700; line-height: 1.5; color: var(--text); }
+.acc-arrow { font-size: 11px; color: var(--text-soft); flex: 0 0 auto; }
+.acc-body { padding: 2px 14px 14px; border-top: 1px solid var(--border); cursor: default; }
+.acc-sub { margin: 12px 0 6px; font-size: 13px; font-weight: 600; line-height: 1.6; color: var(--accent); }
+.acc-line { position: relative; padding-left: 12px; margin-bottom: 7px; font-size: 13px; line-height: 1.7; color: var(--text-soft); }
+.acc-line:last-child { margin-bottom: 0; }
+.acc-line::before { content: ''; position: absolute; left: 0; top: 9px; width: 5px; height: 5px; border-radius: 50%; background: var(--text-soft); opacity: .6; }
+.acc-line.note { color: #c0956a; }
+.acc-line.note::before { background: #c0956a; }
 </style>
