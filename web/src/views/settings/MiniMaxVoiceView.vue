@@ -7,7 +7,7 @@
         <div class="switch-row">
           <div class="row-main">
             <div class="row-title">启用 MiniMax 语音</div>
-            <p class="hint">开启后，文字字卡下方的播放条会用 MiniMax 生成真实语音；未开启时为无声的伪语音</p>
+            <p class="hint">开启后，对方回复的文字字卡有概率转为语音消息：配置齐全时为 MiniMax 真实语音，仅开启未配置时为无声的伪语音；未开启则不转换</p>
           </div>
           <ToggleSwitch v-model="enabled" @update:modelValue="saveEnabled" />
         </div>
@@ -30,7 +30,10 @@
 
       <!-- 声音设置 -->
       <div class="panel sec">
-        <div class="sec-title">声音设置</div>
+        <div class="sec-head">
+          <div class="sec-title">声音设置</div>
+          <button class="mini-btn" type="button" :disabled="testing" @click="doTest">{{ testing ? '生成中…' : '试听一句' }}</button>
+        </div>
         <label class="field-label">语音语言</label>
         <div class="chip-row">
           <button v-for="l in MM_LANGS" :key="l.k" class="chip" :class="{ on: form.lang === l.k }" type="button" @click="form.lang = l.k">{{ l.n }}</button>
@@ -42,13 +45,11 @@
         <input v-model="form.style" class="field" maxlength="50" />
       </div>
 
-      <!-- 操作 -->
+      <!-- 操作：清空配置 / 保存配置 -->
       <div class="panel sec btn-row">
-        <button class="mini-btn" type="button" :disabled="testing" @click="doTest">{{ testing ? '生成中…' : '试听一句' }}</button>
+        <button class="mini-btn" type="button" :disabled="saving" @click="doClear">清空配置</button>
         <button class="mini-btn primary" type="button" :disabled="saving" @click="doSave">{{ saving ? '保存中…' : '保存配置' }}</button>
       </div>
-      <!-- 保存状态条：灰底「已保存」+ 绿字确认（真实语音是否启用看总开关） -->
-      <div v-if="showSaved" class="saved-bar">已保存</div>
       <p v-if="showSaved" class="saved-ok">✓ 配置已保存，真实语音{{ enabled ? '已启用' : '未开启' }}</p>
       <p v-if="msg" class="msg" :class="{ err: isErr }">{{ msg }}</p>
       <p v-if="ttsUrl" class="tts-tip">
@@ -65,7 +66,7 @@ import AppHeader from '@/components/layout/AppHeader.vue'
 import ToggleSwitch from '@/components/common/ToggleSwitch.vue'
 import { useContactSettingsPage } from '@/composables/useContactSettingsPage'
 import { MM_LANGS, MM_MODELS, readCfg, cfgReady, minimaxTts } from '@/utils/minimax'
-import { notify } from '@/utils/dialog'
+import { notify, confirmDialog } from '@/utils/dialog'
 
 const props = defineProps({ id: { type: [String, Number], required: true } })
 const { settings, load, patch } = useContactSettingsPage(props.id)
@@ -119,6 +120,36 @@ async function doSave() {
   } catch (e) {
     isErr.value = true
     msg.value = '保存失败：' + e.message
+  } finally {
+    saving.value = false
+  }
+}
+
+/* 清空配置：抹掉 MiniMax 全部配置（密钥/声音设置），恢复到未配置状态 */
+async function doClear() {
+  const ok = await confirmDialog({
+    title: '清空 MiniMax 配置',
+    text: '将清除 MiniMax 的全部配置（API Key、Group ID、Voice ID 与声音设置），且无法撤销。确定继续吗？',
+    okText: '清空',
+    danger: true
+  })
+  if (!ok) return
+  saving.value = true
+  isErr.value = false
+  try {
+    await patch({
+      minimax_enabled: 0,
+      minimax_key: '', minimax_group: '', minimax_voice: '',
+      minimax_lang: 'auto', minimax_speed: 1, minimax_style: ''
+    })
+    enabled.value = false
+    Object.assign(form, { key: '', group: '', model: 'speech-02-turbo', voice: '', lang: 'auto', speed: 1, style: '' })
+    showSaved.value = false
+    msg.value = ''
+    notify('已清空 MiniMax 配置')
+  } catch (e) {
+    isErr.value = true
+    msg.value = '清空失败：' + e.message
   } finally {
     saving.value = false
   }
@@ -191,16 +222,11 @@ select.field { appearance: none; }
 .mini-btn:disabled { opacity: 0.5; cursor: default; }
 .msg { font-size: 12px; color: var(--text-soft); margin: 0 4px; }
 .msg.err { color: #c0576b; }
-/* 保存状态条：灰底「已保存」+ 绿色确认行（对齐参考图底部） */
-.saved-bar {
-  text-align: center;
-  font-size: 13px;
-  color: var(--text-soft);
-  background: var(--bg-soft);
-  border-radius: 999px;
-  padding: 8px 0;
-}
-.saved-ok { text-align: center; font-size: 12px; color: #3d9a6d; margin: 8px 0 0; }
+/* 声音设置卡片标题行：标题居左，试听按钮居右 */
+.sec-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
+.sec-head .sec-title { margin-bottom: 0; }
+.sec-head .mini-btn { padding: 6px 14px; font-size: 12px; }
+.saved-ok { text-align: center; font-size: 12px; color: #3d9a6d; margin: 0 4px; }
 .tts-tip { font-size: 12px; color: var(--accent); margin: 0 4px; }
 .link-btn { border: none; background: none; color: var(--accent); font-size: 12px; text-decoration: underline; cursor: pointer; padding: 0 2px; }
 </style>

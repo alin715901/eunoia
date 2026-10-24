@@ -65,8 +65,10 @@ const router = useRouter()
 const REGIONS = [
   { n: '华东 1（杭州）', endpoint: 'oss-cn-hangzhou.aliyuncs.com' },
   { n: '华东 2（上海）', endpoint: 'oss-cn-shanghai.aliyuncs.com' },
-  { n: '华北 1（北京）', endpoint: 'oss-cn-beijing.aliyuncs.com' },
-  { n: '华北 2（青岛）', endpoint: 'oss-cn-qingdao.aliyuncs.com' },
+  { n: '华东 5（南京）', endpoint: 'oss-cn-nanjing.aliyuncs.com' },
+  { n: '华东 6（福州）', endpoint: 'oss-cn-fuzhou.aliyuncs.com' },
+  { n: '华北 1（青岛）', endpoint: 'oss-cn-qingdao.aliyuncs.com' },
+  { n: '华北 2（北京）', endpoint: 'oss-cn-beijing.aliyuncs.com' },
   { n: '华北 3（张家口）', endpoint: 'oss-cn-zhangjiakou.aliyuncs.com' },
   { n: '华北 5（呼和浩特）', endpoint: 'oss-cn-huhehaote.aliyuncs.com' },
   { n: '华北 6（乌兰察布）', endpoint: 'oss-cn-wulanchabu.aliyuncs.com' },
@@ -74,10 +76,7 @@ const REGIONS = [
   { n: '华南 2（河源）', endpoint: 'oss-cn-heyuan.aliyuncs.com' },
   { n: '华南 3（广州）', endpoint: 'oss-cn-guangzhou.aliyuncs.com' },
   { n: '西南 1（成都）', endpoint: 'oss-cn-chengdu.aliyuncs.com' },
-  { n: '中国香港', endpoint: 'oss-cn-hongkong.aliyuncs.com' },
-  { n: '亚太东南 1（新加坡）', endpoint: 'oss-ap-southeast-1.aliyuncs.com' },
-  { n: '亚太东南 5（雅加达）', endpoint: 'oss-ap-southeast-5.aliyuncs.com' },
-  { n: '美国西部 1（硅谷）', endpoint: 'oss-us-west-1.aliyuncs.com' }
+  { n: '中国香港', endpoint: 'oss-cn-hongkong.aliyuncs.com' }
 ]
 
 const form = reactive({ accessKeyId: '', accessKeySecret: '', bucket: '', endpoint: '', prefix: 'eunoia' })
