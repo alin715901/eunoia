@@ -14,17 +14,17 @@ export const FONT_CATS = [
 export const FONTS = [
   /* ── 中文 ── */
   { key: 'sans', cat: 'zh', name: '系统默认', sample: '测试', css: '-apple-system, BlinkMacSystemFont, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif' },
-  { key: 'zh-yunchen', cat: 'zh', name: '点字云辰', sample: '测试', css: '"ZCOOL KuaiLe", "Comic Sans MS", cursive' },
-  { key: 'zh-shanghei', cat: 'zh', name: '点字尚黑', sample: '测试', w: 900, css: '"Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif' },
-  { key: 'zh-maobi', cat: 'zh', name: '鸿雷拙书简体', sample: '测试', css: '"Zhi Mang Xing", "Kaiti SC", "STKaiti", cursive' },
-  { key: 'zh-boldsong', cat: 'zh', name: '点字永胜粗宋', sample: '测试', w: 900, css: '"Noto Serif SC", "Songti SC", "SimSun", serif' },
-  { key: 'zh-guoguo', cat: 'zh', name: '字由果果体', sample: '测试', css: '"ZCOOL QingKe HuangYou", "Noto Sans SC", sans-serif' },
-  { key: 'zh-bangbang', cat: 'zh', name: '优设字由棒棒体', sample: '测试', w: 700, css: '"Noto Sans SC", "PingFang SC", sans-serif' },
-  { key: 'zh-manman', cat: 'zh', name: '点字漫漫体', sample: '测试', css: '"Long Cang", cursive' },
+  { key: 'zh-yunchen', cat: 'zh', name: '云辰', sample: '测试', css: '"ZCOOL KuaiLe", "Comic Sans MS", cursive' },
+  { key: 'zh-shanghei', cat: 'zh', name: '尚黑', sample: '测试', w: 900, css: '"Noto Sans SC", "PingFang SC", "Microsoft YaHei", sans-serif' },
+  { key: 'zh-maobi', cat: 'zh', name: '拙书', sample: '测试', css: '"Zhi Mang Xing", "Kaiti SC", "STKaiti", cursive' },
+  { key: 'zh-boldsong', cat: 'zh', name: '粗宋', sample: '测试', w: 900, css: '"Noto Serif SC", "Songti SC", "SimSun", serif' },
+  { key: 'zh-guoguo', cat: 'zh', name: '优雅体', sample: '测试', css: '"ZCOOL QingKe HuangYou", "Noto Sans SC", sans-serif' },
+  { key: 'zh-bangbang', cat: 'zh', name: '粗黑', sample: '测试', w: 700, css: '"Noto Sans SC", "PingFang SC", sans-serif' },
+  { key: 'zh-manman', cat: 'zh', name: '手写体', sample: '测试', css: '"Long Cang", cursive' },
   { key: 'zh-yunshu', cat: 'zh', name: '云舒体', sample: '测试', css: '"ZCOOL XiaoWei", "Kaiti SC", serif' },
-  { key: 'zh-xiaowei', cat: 'zh', name: '霞鹜文楷-Bold', sample: '测试', w: 700, css: '"LXGW WenKai TC", "Kaiti SC", "STKaiti", "KaiTi", serif' },
-  { key: 'zh-suiyi', cat: 'zh', name: '字由随意', sample: '测试', css: '"Liu Jian Mao Cao", cursive' },
-  { key: 'zh-fulu', cat: 'zh', name: '福芦大毛笔体', sample: '测试', css: '"Ma Shan Zheng", "Zhi Mang Xing", cursive' },
+  { key: 'zh-xiaowei', cat: 'zh', name: '文楷', sample: '测试', w: 700, css: '"LXGW WenKai TC", "Kaiti SC", "STKaiti", "KaiTi", serif' },
+  { key: 'zh-suiyi', cat: 'zh', name: '随意体', sample: '测试', css: '"Liu Jian Mao Cao", cursive' },
+  { key: 'zh-fulu', cat: 'zh', name: '毛笔体', sample: '测试', css: '"Ma Shan Zheng", "Zhi Mang Xing", cursive' },
 
   /* ── 英文 ── */
   { key: 'en-kallem', cat: 'en', name: 'Kallem', sample: 'Test', w: 600, css: '"Caveat", "Segoe Script", cursive' },

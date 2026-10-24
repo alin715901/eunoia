@@ -468,4 +468,37 @@ onMounted(load)
 .mm-btn.ghost { background: var(--bg-soft); color: var(--text); }
 .mm-btn.primary { background: var(--accent); color: #fff; }
 .mm-btn.danger { background: #fbe9e8; color: #d9534f; }
+
+/* ── 深色模式：米纸底翻深暖棕；便签卡的内联 pastel 底色无法用类规则覆盖
+   （inline 优先级高于一切非 !important 规则），用 ::after 暗色叠加层压深，
+   既保留每张便签的色相身份，又让浅色底变深；卡片文字整体翻亮 ── */
+html[data-theme='dark'] .mm-page {
+  background:
+    radial-gradient(circle at 20% 12%, rgba(214,196,160,.05), transparent 40%),
+    radial-gradient(circle at 82% 30%, rgba(201,160,150,.04), transparent 42%),
+    #1b1815;
+}
+html[data-theme='dark'] .mm-chip,
+html[data-theme='dark'] .mm-sort { background: rgba(255,255,255,.07); }
+/* isolation 建立层叠上下文，使 ::after 的 z-index:-1 压在卡片底色之上、文字之下 */
+html[data-theme='dark'] .mm-card { isolation: isolate; box-shadow: 0 1px 3px rgba(0,0,0,.35); }
+html[data-theme='dark'] .mm-card::after {
+  content: ''; position: absolute; inset: 0; z-index: -1;
+  border-radius: inherit; pointer-events: none;
+  background: rgba(20,17,22,.80);
+}
+/* 内联 SVG 的 stroke 是 presentation attribute，优先级低于 CSS，可直接覆盖 */
+html[data-theme='dark'] .mm-edit path { stroke: rgba(255,255,255,.45); }
+html[data-theme='dark'] .mm-pin path { stroke: rgba(255,255,255,.22); }
+html[data-theme='dark'] .mm-pin.on path { stroke: #d98a3d; }
+html[data-theme='dark'] .mm-type.note { color: #d9a0a8; border-color: rgba(217,160,168,.35); }
+html[data-theme='dark'] .mm-head,
+html[data-theme='dark'] .mm-todo,
+html[data-theme='dark'] .mm-note-text { color: #e8e1d5; }
+html[data-theme='dark'] .mm-todo.done .mm-todo-text { color: rgba(232,225,213,.45); }
+html[data-theme='dark'] .mm-box { border-color: rgba(232,225,213,.35); }
+html[data-theme='dark'] .mm-date { color: rgba(232,225,213,.45); }
+html[data-theme='dark'] .mm-due-date,
+html[data-theme='dark'] .mm-due-time { color: #dd9a78; }
+html[data-theme='dark'] .mm-btn.danger { background: rgba(217,83,79,.18); color: #e87b76; }
 </style>

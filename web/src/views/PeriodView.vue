@@ -54,9 +54,9 @@
         <span class="pr-lg-txt"><AppIcon name="drop" :size="8" color="#c98891" /> 少</span>
         <span class="pr-lg-txt"><AppIcon name="drop" :size="10" color="#c98891" /> 中</span>
         <span class="pr-lg-txt"><AppIcon name="drop" :size="12" color="#c98891" /> 多</span>
-        <span class="pr-lg-txt"><AppIcon name="bolt" :size="8" color="#a85b5b" /> 轻微</span>
-        <span class="pr-lg-txt"><AppIcon name="bolt" :size="10" color="#a85b5b" /> 中度</span>
-        <span class="pr-lg-txt"><AppIcon name="bolt" :size="12" color="#a85b5b" /> 严重</span>
+        <span class="pr-lg-txt pr-lg-pain"><AppIcon name="bolt" :size="8" color="#a85b5b" /> 轻微</span>
+        <span class="pr-lg-txt pr-lg-pain"><AppIcon name="bolt" :size="10" color="#a85b5b" /> 中度</span>
+        <span class="pr-lg-txt pr-lg-pain"><AppIcon name="bolt" :size="12" color="#a85b5b" /> 严重</span>
       </div>
 
       <!-- 未来日期：不能记录；预测经期的未来日多一行说明 -->
@@ -693,4 +693,26 @@ onMounted(load)
 /* 一键清空 */
 /* 清空：顶部导航栏右侧 */
 .pr-clear-top { border: none; background: transparent; color: var(--text-soft); font-size: 14px; padding: 4px 2px; }
+
+/* ── 深色模式：暖白底翻深暖棕黑，白卡翻深玫瑰灰，胭脂文字整体翻亮；
+   日历格的经期/排卵/预测底色是半透明 rgba，叠在深色格上依然清晰 ── */
+html[data-theme='dark'] .pr-page { background: #1a1519; }
+html[data-theme='dark'] .pr-status-main { color: #d9a3a8; }
+html[data-theme='dark'] .pr-today { background: rgba(255,255,255,.08); }
+html[data-theme='dark'] .pr-updating { background: rgba(0,0,0,.55); }
+html[data-theme='dark'] .pr-updating-card { background: #26222a; color: #e0aeb4; box-shadow: 0 8px 28px rgba(0,0,0,.5); }
+html[data-theme='dark'] .pr-spinner { border-color: rgba(255,255,255,.14); border-top-color: #c98891; }
+html[data-theme='dark'] .pr-cell { background: #26222a; color: #c9b6ba; }
+html[data-theme='dark'] .pr-future,
+html[data-theme='dark'] .pr-record { background: #26222a; box-shadow: 0 1px 3px rgba(0,0,0,.3); }
+html[data-theme='dark'] .pr-card-idx { color: #dd9aa2; }
+html[data-theme='dark'] .pr-row { border-bottom-color: rgba(255,255,255,.07); }
+html[data-theme='dark'] .pr-row-ic { background: rgba(201,136,145,.16); }
+html[data-theme='dark'] .pr-row-label { color: #d9a3a8; }
+/* 图例色块：半透明色在深色底上偏暗，提高不透明度 */
+html[data-theme='dark'] .pr-lg-cycle { background: rgba(201,136,145,.42); }
+html[data-theme='dark'] .pr-lg-ovu { background: rgba(150,120,200,.5); }
+/* 痛经闪电 #a85b5b 在深色底上偏暗，提亮一档（stroke 覆盖 AppIcon 的 presentation attribute） */
+html[data-theme='dark'] .pr-pain .app-icon,
+html[data-theme='dark'] .pr-lg-pain .app-icon { stroke: #d98a8a; }
 </style>
