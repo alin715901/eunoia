@@ -29,9 +29,9 @@
 
       <!-- 已配置：断开连接 -->
       <button v-if="configured" class="btn-block danger" type="button" :disabled="saving || testing" @click="doClear">断开连接</button>
-      <!-- 从云端恢复梦角到本浏览器 -->
+      <!-- 从云端恢复数据到本浏览器 -->
       <button class="btn-block" type="button" :disabled="restoring || !configured" @click="doRestore">
-        {{ restoring ? '恢复中…' : '从云端恢复梦角到本浏览器' }}
+        {{ restoring ? '恢复中…' : '从云端恢复数据到本浏览器' }}
       </button>
       <!-- 迁移本地图片到云端 -->
       <button class="btn-block" type="button" :disabled="migrating || !configured" @click="doMigrate">
