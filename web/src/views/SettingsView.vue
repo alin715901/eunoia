@@ -122,7 +122,7 @@ import Modal from '@/components/common/Modal.vue'
 import { useNotificationsStore } from '@/stores/notifications'
 import {
   useNotification,
-  notificationPermission,
+  notificationPermissionState,
   notificationSupported,
   requestNotificationPermission
 } from '@/composables/useNotification'
@@ -154,8 +154,11 @@ const accents = [
 ]
 
 const notifSupported = computed(() => notif.supported)
+/* 权限状态用响应式 ref 镜像（授权成功 / 切回前台自动刷新），
+   否则 computed 读非响应式的 Notification.permission 会永远缓存「未开启」 */
+const notifPerm = notificationPermissionState()
 const notifText = computed(() => {
-  const p = notificationPermission()
+  const p = notifPerm.value
   if (p === 'granted') return '已开启'
   if (p === 'denied') return '被拒绝'
   if (p === 'unsupported') return '不支持'
@@ -232,7 +235,7 @@ async function toggleNotify(e) {
   try {
     await settings.save()
     toast.pushToast({ title: on ? '已开启消息通知' : '已关闭消息通知' })
-    if (on && notificationPermission() === 'default') enableNotify()
+    if (on && notifPerm.value === 'default') enableNotify()
   } catch (err) {
     toast.pushToast({ title: '保存失败', text: err.message })
   }

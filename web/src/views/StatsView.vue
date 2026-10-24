@@ -747,7 +747,7 @@ onBeforeUnmount(() => {
 .st-mini-bar { margin-top: 8px; height: 5px; border-radius: 999px; background: var(--bg-soft); overflow: hidden; }
 .st-mini-bar i { display: block; height: 100%; border-radius: 999px; }
 .st-mini-bar-me { background: var(--accent); }
-.st-mini-bar-ta { background: #9aa3ad; }
+.st-mini-bar-ta { background: var(--accent); }
 .st-mini-sub { margin-top: 5px; font-size: 11px; color: var(--text-soft); font-variant-numeric: tabular-nums; }
 
 /* 初次相遇 / 最近联络 */

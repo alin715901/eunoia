@@ -77,7 +77,7 @@ const ICONS = {
   // 颜文字类：文本行
   kaomoji: '<path d="M4 7h16M4 12h10M4 17h13"/>',
   // 图片类：照片
-  image: '<rect x="3.6" y="5" width="16.8" height="14" rx="4.5"/><circle cx="9" cy="10" r="1.9"/><path d="M6.4 17.6c1.6-2.4 3.2-2.4 4.8 0s3.2 1.6 5.4-.8"/>',
+  image: '<rect x="3.6" y="5" width="16.8" height="14" rx="4.5"/><circle cx="9" cy="10" r="1.9"/><path d="M7.5 17.2c1.5-2.1 3-2.1 4.5 0s3 1.3 4.6-.6"/>',
   // 表情包类：方脸
   sticker: '<rect x="4" y="4" width="16" height="16" rx="5"/><path d="M9 10h.01M15 10h.01"/><path d="M8.8 14a4.5 4.5 0 0 0 6.4 0"/>',
   // 语音类：麦克风
