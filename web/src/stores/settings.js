@@ -14,7 +14,9 @@ export const FONTS = [
   { k: 'kai', n: '楷体', css: "'Kaiti SC', KaiTi, STKaiti, 'Noto Serif CJK SC', serif" },
   { k: 'hei', n: '黑体', css: "'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif" },
   { k: 'round', n: '圆体', css: "'Yuanti SC', 'Hiragino Sans GB', 'Quicksand', 'PingFang SC', sans-serif" },
-  { k: 'hand', n: '手写', css: "'Xingkai SC', STXingkai, 'Kaiti SC', cursive" }
+  /* 手写：马善政手写体（Google Fonts，选中时按需加载；字形偏小，
+     配 0.5px 字距增加呼吸感；无网络时回退行楷/楷体） */
+  { k: 'hand', n: '手写', css: "'Ma Shan Zheng', 'Xingkai SC', STXingkai, 'Kaiti SC', cursive", wf: 'Ma+Shan+Zheng', extra: 'html,body{letter-spacing:.5px}' }
 ]
 
 const DEFAULT = {
@@ -116,20 +118,33 @@ function applyAccent(accent) {
 }
 
 /* 字体：预设同时写进正文变量与衬线变量，标题/字卡/朋友圈等一起跟着变；
-   自定义 CSS 注入 <style id="zika-font-css"> */
+   自定义 CSS 注入 <style id="zika-font-css">（预设自带的 extra 在前，用户自定义在后，可覆盖） */
 export function applyFont(fontKey, fontCss) {
   if (typeof document === 'undefined') return
   const preset = FONTS.find((f) => f.k === fontKey) || FONTS[0]
   document.documentElement.style.setProperty('--font-sans', preset.css)
   /* 标题、字卡、朋友圈等用的是衬线变量，也一起换，才叫「全局生效」 */
   document.documentElement.style.setProperty('--font-serif', preset.css)
+  /* 预设依赖的 Google Fonts webfont（如手写·马善政）：按需注入一次 */
+  if (preset.wf) ensureWebfont(preset.wf)
   let tag = document.getElementById('zika-font-css')
   if (!tag) {
     tag = document.createElement('style')
     tag.id = 'zika-font-css'
     document.head.appendChild(tag)
   }
-  tag.textContent = fontCss || ''
+  tag.textContent = (preset.extra || '') + (fontCss || '')
+}
+
+/* 按需加载 Google Fonts 的字体族（幂等；display=swap 保证加载前用回退字体渲染） */
+const webfontLoaded = new Set()
+function ensureWebfont(family) {
+  if (typeof document === 'undefined' || webfontLoaded.has(family)) return
+  webfontLoaded.add(family)
+  const link = document.createElement('link')
+  link.rel = 'stylesheet'
+  link.href = `https://fonts.googleapis.com/css2?family=${family}&display=swap`
+  document.head.appendChild(link)
 }
 
 /* 卡片透明度：数值越低，主页卡片越透，主页背景图越清晰 */

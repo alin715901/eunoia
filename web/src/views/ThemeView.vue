@@ -61,6 +61,7 @@
           ></textarea>
           <div class="css-actions">
             <span class="css-tip">留空则只用上面的预设字体</span>
+            <button class="mini-btn" :disabled="saving" @click="clearFontCss">清空</button>
             <button class="mini-btn primary" :disabled="saving" @click="saveFontCss">应用</button>
           </div>
         </div>
@@ -310,6 +311,12 @@ async function pickFont(k) {
 async function saveFontCss() {
   settings.setTheme({ fontCss: fontCss.value })
   await persist('自定义字体已应用')
+}
+/* 清空：输入框与已生效的自定义 CSS 一起清掉，即时恢复预设字体 */
+async function clearFontCss() {
+  fontCss.value = ''
+  settings.setTheme({ fontCss: '' })
+  await persist('自定义字体已清空')
 }
 
 /* ── 卡片透明度 ── */
