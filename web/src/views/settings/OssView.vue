@@ -264,7 +264,7 @@ select.field {
   padding: 12px;
   border: none;
   border-radius: 12px;
-  background: var(--bg-soft);
+  background: color-mix(in srgb, var(--text) 8%, var(--bg-soft));
   color: var(--text);
   font-size: 14px;
   cursor: pointer;
@@ -285,7 +285,7 @@ select.field {
 .f-btn {
   flex: 1;
   padding: 11px 0;
-  border: 1.5px solid color-mix(in srgb, var(--text) 45%, transparent);
+  border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--bg-soft);
   color: var(--text);
