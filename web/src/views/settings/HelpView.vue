@@ -186,7 +186,7 @@ const GUIDE_SECTIONS = [
   {
     title: '心迹',
     blocks: [
-      { lines: ['工作台是做好的独立网站，再接入到字卡里，请单独导出或导入数据。'] },
+      { lines: ['工作台是做好的独立网站，再接入到字卡里，请单独导出或导入数据。'], note: true },
       { lines: ['① 用于记录和分析链接强弱和占卜记录。'] },
       { lines: ['② 工作栏：左侧工作栏可收，显示全部主体，搜索栏可搜索主体。'] },
       { lines: ['③ 设置：管理外观主题、字段开关和数据，外观主题可自定义或上传背景图，数据采用 json 和 csv 两种。'] },
@@ -383,9 +383,7 @@ function toggle(i) { openSet[i] = !openSet[i] }
 .acc-arrow { font-size: 11px; color: var(--text-soft); flex: 0 0 auto; }
 .acc-body { padding: 2px 14px 14px; border-top: 1px solid var(--border); cursor: default; }
 .acc-sub { margin: 12px 0 6px; font-size: 13px; font-weight: 600; line-height: 1.6; color: var(--accent); }
-.acc-line { position: relative; padding-left: 12px; margin-bottom: 7px; font-size: 13px; line-height: 1.7; color: var(--text-soft); }
+.acc-line { margin-bottom: 7px; font-size: 13px; line-height: 1.7; color: var(--text-soft); }
 .acc-line:last-child { margin-bottom: 0; }
-.acc-line::before { content: ''; position: absolute; left: 0; top: 9px; width: 5px; height: 5px; border-radius: 50%; background: var(--text-soft); opacity: .6; }
 .acc-line.note { color: #c0956a; }
-.acc-line.note::before { background: #c0956a; }
 </style>
