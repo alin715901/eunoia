@@ -2,6 +2,8 @@
   <div class="sp-view">
     <AppHeader title="云端同步设置" back />
     <div class="sp-body">
+      <p class="paid-note">该服务是付费功能，使用过程中会产生费用，费用直接支付给阿里云，与本站无关。</p>
+
       <!-- 帮助链接 -->
       <a class="help-link" href="https://help.aliyun.com/zh/ram/user-guide/create-an-accesskey-pair" target="_blank" rel="noopener">如何申请阿里云密钥？</a>
 
@@ -287,6 +289,7 @@ select.field {
 }
 .custom-ep { margin-top: 8px; }
 .sub { font-size: 11px; color: var(--text-soft); line-height: 1.6; margin: 6px 0 0; }
+.paid-note { font-size: 12px; line-height: 1.6; margin: 0; padding: 10px 12px; border-radius: var(--radius); background: rgba(192, 149, 106, 0.12); color: #c0956a; font-weight: 600; }
 .btn-block {
   margin-top: 14px;
   width: 100%;
