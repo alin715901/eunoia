@@ -87,11 +87,13 @@
             </div>
           </div>
 
-          <p v-if="!board.length" class="mm-empty">
-            {{ filter === 'done' ? '还没有已完成的事项' : '这里还很空' }}<br />
-            <span class="mm-empty-sub">{{ filter === 'done' ? '把待办都勾完，就会收进这里' : '点右上角「＋」写一张随手贴' }}</span>
-          </p>
         </div>
+
+        <!-- 空状态提示：必须放在瀑布流容器外，否则会被 column-count 分栏截成两半 -->
+        <p v-if="!board.length" class="mm-empty">
+          {{ filter === 'done' ? '还没有已完成的事项' : '这里还很空' }}<br />
+          <span class="mm-empty-sub">{{ filter === 'done' ? '把待办都勾完，就会收进这里' : '点右上角「＋」写一张随手贴' }}</span>
+        </p>
       </template>
     </div>
 

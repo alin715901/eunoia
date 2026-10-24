@@ -87,7 +87,9 @@ html, body {
 
 #app { height: 100%; }
 
-button { font-family: inherit; cursor: pointer; }
+/* iOS Safari 会把未显式设置 color 的按钮文字渲染成系统蓝色（桌面端为黑色），
+   统一继承正文色，保证所有浏览器观感一致 */
+button { font-family: inherit; cursor: pointer; color: inherit; }
 input, textarea, select { font-family: inherit; color: var(--text); }
 
 /* 通用按钮 */

@@ -40,7 +40,7 @@
       <!-- 最近一次同步时间 -->
       <p v-if="lastSyncText" class="sync-time">{{ lastSyncText }}</p>
 
-      <p v-if="msg" class="msg" :class="{ err: isErr }">{{ msg }}</p>
+      <p v-if="msg" class="msg" :class="{ err: isErr, ok: msgOk && !isErr }">{{ msg }}</p>
     </div>
 
     <!-- 底部按钮栏：取消 / 测试连接 / 保存并连接 -->
@@ -90,6 +90,7 @@ const migDone = ref(0)
 const restoring = ref(false)
 const msg = ref('')
 const isErr = ref(false)
+const msgOk = ref(false) /* 成功提示走绿色样式 */
 
 const configured = computed(() => ossReady({
   accessKeyId: form.accessKeyId, accessKeySecret: form.accessKeySecret,
@@ -146,8 +147,10 @@ function goBack() {
 async function doSave() {
   saving.value = true
   isErr.value = false
+  msgOk.value = false
   try {
     if (!form.bucket.trim() || !form.endpoint.trim()) throw new Error('请填写 Bucket 名称并选择地区')
+    msgOk.value = false
     await saveSettings({
       oss_config: {
         accessKeyId: form.accessKeyId.trim(),
@@ -158,6 +161,7 @@ async function doSave() {
       }
     })
     msg.value = '已保存并连接'
+    msgOk.value = true
     notify('云端同步配置已保存')
     /* 保存成功 → 自动把当前全部数据备份到云端（供「从云端恢复梦角到本浏览器」使用） */
     try {
@@ -179,6 +183,7 @@ async function doSave() {
 async function doClear() {
   saving.value = true
   isErr.value = false
+  msgOk.value = false
   try {
     await saveSettings({ oss_config: { accessKeyId: '', accessKeySecret: '', bucket: '', endpoint: '', prefix: '' } })
     Object.assign(form, { accessKeyId: '', accessKeySecret: '', bucket: '', endpoint: '', prefix: '' })
@@ -196,6 +201,7 @@ async function doTest() {
   testing.value = true
   isErr.value = false
   msg.value = ''
+  msgOk.value = false
   try {
     const r = await ossTest({
       accessKeyId: form.accessKeyId.trim(),
@@ -205,7 +211,8 @@ async function doTest() {
       prefix: form.prefix.trim()
     })
     isErr.value = !r.ok
-    msg.value = r.message
+    msgOk.value = r.ok && r.level === 'ok'
+    msg.value = r.ok && r.level === 'ok' ? '连接成功，密钥可用' : r.message
   } catch (e) {
     isErr.value = true
     msg.value = e.message || '测试失败'
@@ -225,6 +232,7 @@ async function doRestore() {
   if (!ok) return
   restoring.value = true
   isErr.value = false
+  msgOk.value = false
   msg.value = '正在从云端下载数据…'
   try {
     const r = await restoreFromOss()
@@ -244,6 +252,7 @@ async function doMigrate() {
   migrating.value = true
   migDone.value = 0
   isErr.value = false
+  msgOk.value = false
   msg.value = '正在扫描本地图片…'
   try {
     const r = await migrateImagesToOss()
@@ -303,6 +312,18 @@ select.field {
 .btn-block.danger { background: rgba(192, 87, 107, 0.12); color: #c0576b; }
 .msg { font-size: 12px; color: var(--text-soft); margin: 14px 0 0; }
 .msg.err { color: #c0576b; }
+/* 成功提示：参考 iOS 风格的绿色胶囊（✓ + 浅绿底） */
+.msg.ok {
+  display: inline-block;
+  align-self: flex-start;
+  background: rgba(76, 175, 120, 0.12);
+  color: #3d9a6c;
+  font-size: 13px;
+  font-weight: 600;
+  padding: 9px 16px;
+  border-radius: 10px;
+}
+.msg.ok::before { content: '✓ '; }
 .sync-time { font-size: 11px; color: var(--text-soft); margin: 8px 2px 0; }
 /* 底部按钮栏：取消 / 测试连接 / 保存并连接 */
 .oss-footer {
