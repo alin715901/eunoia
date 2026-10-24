@@ -55,18 +55,15 @@
           <button class="ta-clear" type="button" @click="clearBubbleCss">清空</button>
         </div>
         <p class="css-tip">
-          支持两种写法，自动识别（含 {"{ }"} 即按规则式）：<br />
-          ① 声明式：一行一条声明，双方气泡统一生效，如
-          <code>background:#fde9c8; color:#5a4632; font-size:15px;</code><br />
-          ② 规则式：写完整 CSS 规则，可分别设置双方气泡，类名用
-          <code>.message</code>（双方通用）/ <code>.message-sent</code>（我的）/ <code>.message-received</code>（对方），
-          变量可用 <code>--accent-color</code>、<code>--text-primary</code>。带 !important 的声明会盖过上面的颜色与圆角。
+          两种写法自动识别：① 声明式，一行一条、双方通用，如
+          <code>background:#fde9c8; color:#5a4632;</code>
+          ② 规则式，可分别设置双方：<code>.message-sent</code> 我的 / <code>.message-received</code> 对方 / <code>.message</code> 双方，变量可用 <code>--accent-color</code>。带 !important 会盖过上面的颜色与圆角。
         </p>
         <textarea
           class="css-area"
           v-model="bs.css"
           rows="6"
-          placeholder="例：.message-sent { background: transparent; border: 2px solid var(--accent-color); color: var(--accent-color); border-radius: 20px; } .message-received { background: transparent; border: 2px solid #ccc; color: var(--text-primary); border-radius: 20px; }"
+          placeholder="例：.message-sent { background: transparent; border: 2px solid var(--accent-color); color: var(--accent-color); }"
           @change="queueSave"
         ></textarea>
         <p class="hint">留空则使用上面选择的颜色；改完自动保存。</p>

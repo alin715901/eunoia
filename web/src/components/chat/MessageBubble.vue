@@ -238,10 +238,6 @@ import router from '@/router'
 
 const emit = defineEmits(['long-press', 'quote-tap', 'image-tap', 'open-redpacket', 'avatar-dblclick'])
 
-/* 规则式自定义 CSS：注入 <style>（别名映射到真实气泡类名，聊天页全局生效）。
-   声明式写法走内联（见 bubbleStyleCss），此处注入空内容即自动移除标签。 */
-watch(() => props.bubbleStyle?.css, (v) => applyChatBubbleRuleCss(v), { immediate: true })
-
 const props = defineProps({
   message: { type: Object, required: true },
   // 对方（单聊）
@@ -271,6 +267,11 @@ const props = defineProps({
   // 是否允许双击头像触发「拍一拍」（仅单聊、且仅对方头像；群聊传 false）
   enablePoke: { type: Boolean, default: false }
 })
+
+/* 规则式自定义 CSS：注入 <style>（别名映射到真实气泡类名，聊天页全局生效）。
+   声明式写法走内联（见 bubbleStyleCss），此处注入空内容即自动移除标签。
+   注意：必须放在 props 声明之后——immediate watcher 同步执行，提前引用 props 会 TDZ 报错 */
+watch(() => props.bubbleStyle?.css, (v) => applyChatBubbleRuleCss(v), { immediate: true })
 
 /* 双击 / 双触 对方头像 → 触发拍一拍弹窗（仅 enablePoke 且对方消息）
    桌面用 dblclick；移动端 dblclick 不可靠，这里手动做 320ms 内的双触判定 */
