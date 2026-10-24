@@ -6,17 +6,11 @@
         <div class="logo-row">
           <span class="logo-badge"><AppIcon name="cards" :size="26" color="var(--accent)" /></span>
           <div class="logo-main">
-            <span class="app-name">字卡</span>
+            <span class="app-name">Eunoia字卡</span>
             <span class="app-ver">v0.1.0</span>
           </div>
         </div>
         <p class="about-desc">情感陪伴 · 主页共用，各功能的聊天/朋友圈/信件/字卡按联系人独立。</p>
-      </div>
-
-      <div class="panel sec">
-        <div class="kv"><span>应用</span><span class="kv-v">字卡</span></div>
-        <div class="kv"><span>版本</span><span class="kv-v">v0.1.0</span></div>
-        <div class="kv"><span>类型</span><span class="kv-v">情感陪伴</span></div>
       </div>
     </div>
   </div>
@@ -43,11 +37,4 @@ import AppIcon from '@/components/common/AppIcon.vue'
 .app-name { font-size: 17px; font-weight: 700; color: var(--text); }
 .app-ver { font-size: 12px; color: var(--text-soft); }
 .about-desc { margin: 0; font-size: 12px; line-height: 1.7; color: var(--text-soft); }
-.kv {
-  display: flex; align-items: center; justify-content: space-between;
-  padding: 10px 2px; font-size: 14px; color: var(--text);
-  border-bottom: 1px solid var(--border);
-}
-.kv:last-child { border-bottom: none; }
-.kv-v { color: var(--text-soft); font-size: 13px; }
 </style>
