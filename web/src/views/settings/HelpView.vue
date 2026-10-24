@@ -17,6 +17,7 @@
       <template v-if="tab !== '使用教程'">
         <section v-for="s in currentSections" :key="s.title" class="panel sec">
           <h3 class="h-title">{{ s.title }}</h3>
+          <p v-if="s.note" class="h-item h-note">{{ s.note }}</p>
           <p v-for="(t, i) in s.items" :key="i" class="h-item">{{ t }}</p>
         </section>
       </template>
@@ -312,6 +313,7 @@ const QA_SECTIONS = [
   },
   {
     title: '云端同步（阿里云 OSS）',
+    note: '该服务是付费功能，使用过程中会产生费用，费用直接支付给阿里云，与本站无关。',
     items: [
       '在「阿里云 OSS」页填入 AccessKey、Bucket 并保存连接后，会把本浏览器全部数据备份为云端一个 JSON 文件。',
       '每次打开网站约 15 秒后自动同步一次（距上次成功同步不足 30 分钟则跳过）；页面常开时每 30 分钟同步一次；保存连接成功立即同步。',
@@ -328,6 +330,7 @@ const QA_SECTIONS = [
   },
   {
     title: '语音消息（MiniMax）',
+    note: '该服务是付费功能，使用过程中会产生费用，费用直接支付给 minimax，与本站无关。',
     items: [
       '在「MiniMax 语音」页开启并填入 API Key 等配置后，对方回复的文字字卡有概率（内置 20%）转为语音消息，配置齐全时是可播放的真实语音。',
       '开启但未配置时转出的是伪语音（能播动画但没有声音）；补齐配置后，历史伪语音会在后台自动升级为真实语音。',
@@ -372,6 +375,7 @@ function toggle(i) { openSet[i] = !openSet[i] }
 .h-title { margin: 0 0 8px; font-size: 15px; font-weight: 700; color: var(--text); }
 .h-item { margin: 0 0 8px; font-size: 13px; line-height: 1.75; color: var(--text-soft); }
 .h-item:last-child { margin-bottom: 0; }
+.h-note { padding: 9px 12px; border-radius: var(--radius); background: rgba(192, 149, 106, 0.12); color: #c0956a; font-weight: 600; }
 
 /* 手风琴：普通 div 卡片，避免部分浏览器对 button 的渲染问题 */
 .acc { overflow: hidden; }
