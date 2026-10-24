@@ -2,18 +2,94 @@
   <div class="sp-view">
     <AppHeader title="使用说明" back />
     <div class="sp-body">
-      <section v-for="s in SECTIONS" :key="s.title" class="panel sec">
+      <!-- 分类页签 -->
+      <div class="hp-tabs">
+        <button
+          v-for="t in TABS"
+          :key="t"
+          class="hp-tab"
+          :class="{ on: tab === t }"
+          @click="tab = t"
+        >{{ t }}</button>
+      </div>
+
+      <section v-for="s in currentSections" :key="s.title" class="panel sec">
         <h3 class="h-title">{{ s.title }}</h3>
-        <p v-for="(t, i) in s.items" :key="i" class="h-item">{{ t }}</p>
+        <p v-for="(t, i) in s.items" :key="i" class="h-item" :class="{ 'h-warn': s.warn && i === s.items.length - 1 }">{{ t }}</p>
       </section>
     </div>
   </div>
 </template>
 
 <script setup>
+import { ref, computed } from 'vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 
-const SECTIONS = [
+const TABS = ['使用须知', '使用教程', '使用问题']
+const tab = ref('使用须知')
+
+/* ── 使用须知：必须知道的几条底线 ── */
+const NOTICE_SECTIONS = [
+  {
+    title: '数据存在哪里',
+    items: [
+      '本应用没有账号体系，全部数据（联系人、聊天、字卡、音乐、相册等）都保存在你当前浏览器的本地数据库里。',
+      '数据隔离按网站划分：同一个浏览器里，不同网站的数据完全独立、互不可见；同一网站换浏览器 / 换设备也不会自动跟随。',
+      '清理浏览器缓存 / 无痕模式可能清掉本地数据，重要数据请养成备份习惯。'
+    ]
+  },
+  {
+    title: '云端同步规则',
+    items: [
+      '云端只保留最新一份备份，每次同步都会覆盖上一份（最后同步的设备内容为准）。',
+      '建议同一时间段只在一台设备上当主力使用；换设备时先「从云端恢复数据」再继续编辑，避免互相覆盖。',
+      '「保存并连接」成功会立即同步；打开网站约 15 秒后自动同步一次（30 分钟内不重复）；页面常开时每 30 分钟同步一次。'
+    ]
+  },
+  {
+    title: '隐私',
+    items: [
+      '所有数据都只存在你自己的浏览器和自己的阿里云 OSS 桶里，应用不收集、不上传任何数据到第三方。'
+    ]
+  }
+]
+
+/* ── 使用教程：一步步怎么做 ── */
+const GUIDE_SECTIONS = [
+  {
+    title: '配置阿里云 OSS（云端同步）',
+    items: [
+      '① 在阿里云开通对象存储 OSS，创建一个 Bucket，并创建 AccessKey（页面上有申请入口链接）。',
+      '② 在「设置 → 阿里云 OSS」填入 AccessKey ID / Secret、Bucket、地区 Endpoint，点「保存并连接」。',
+      '③ 连接成功会自动做第一次全量备份；之后按上面的节奏自动同步，也可在「存储用量」下方查看最近同步时间。'
+    ]
+  },
+  {
+    title: '换设备 / 换浏览器迁移数据',
+    items: [
+      '方式一（推荐，需已配置 OSS）：旧设备「保存并连接」完成一次同步 → 新设备填同一套 OSS 配置 → 点「从云端恢复数据到本浏览器」。',
+      '方式二（不用 OSS）：旧设备「内存数据 → 全部导出」得到 JSON 备份文件 → 发到新设备 → 「导入数据」选择该文件。'
+    ]
+  },
+  {
+    title: '配置 MiniMax 语音',
+    items: [
+      '① 在「设置 → MiniMax 语音」开启总开关，填入 API Key、Group、模型、音色并保存。',
+      '② 之后对方回复的文字字卡有内置 20% 概率自动转为语音消息；配置齐全时是可播放的真实语音。',
+      '③ 只开启未配置时转出的是伪语音（有动画无声音）；补齐配置后，历史伪语音会在后台自动升级为真实语音。'
+    ]
+  },
+  {
+    title: '导出 / 导入备份',
+    items: [
+      '「内存数据」页支持：全部导出 / 按板块导出 / 按联系人导出，得到 JSON 文件妥善保存。',
+      '导入时可选「合并」（同名联系人、歌曲自动归并，不覆盖本地已有）或「覆盖」（先清空对应范围再写入）。'
+    ]
+  }
+]
+
+/* ── 使用问题：原理与答疑 ── */
+const QA_SECTIONS = [
   {
     title: '数据存在哪里？',
     items: [
@@ -53,14 +129,25 @@ const SECTIONS = [
     ]
   }
 ]
+
+const TAB_MAP = { 使用须知: NOTICE_SECTIONS, 使用教程: GUIDE_SECTIONS, 使用问题: QA_SECTIONS }
+const currentSections = computed(() => TAB_MAP[tab.value] || [])
 </script>
 
 <style scoped>
 .sp-view { flex: 1; display: flex; flex-direction: column; min-height: 0; }
 .sp-body { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column; gap: 12px; }
+.hp-tabs { display: flex; gap: 8px; }
+.hp-tab {
+  flex: 1; border: 1px solid var(--border); background: var(--bg-screen);
+  border-radius: 999px; padding: 9px 0; font-size: 13px; color: var(--text-soft);
+  transition: all .2s ease;
+}
+.hp-tab.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 .panel { background: var(--bg-screen); border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); }
 .sec { padding: 14px; }
 .h-title { margin: 0 0 8px; font-size: 15px; font-weight: 700; color: var(--text); }
 .h-item { margin: 0 0 8px; font-size: 13px; line-height: 1.75; color: var(--text-soft); }
 .h-item:last-child { margin-bottom: 0; }
+.h-warn { color: #c0956a; }
 </style>

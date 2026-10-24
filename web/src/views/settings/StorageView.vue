@@ -13,10 +13,7 @@
             </svg>
             存储用量
           </span>
-          <span class="usage-total">
-            <b>{{ fmtSize(stats.dbSize) }}</b>
-            <i>/ {{ fmtSize(CAP) }} · {{ pct }}%</i>
-          </span>
+          <span class="usage-meta">{{ fmtSize(stats.dbSize) }} / {{ fmtSize(CAP) }} ({{ pct }}%)</span>
         </div>
 
         <!-- 三段式占用条：聊天 / 内容 / 设置 -->
@@ -434,9 +431,7 @@ onMounted(load)
 .usage-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
 .usage-title { display: inline-flex; align-items: center; gap: 7px; font-size: 15px; font-weight: 700; align-self: center; }
 .usage-ic { width: 18px; height: 18px; color: #9aa3ad; }
-.usage-total { display: inline-flex; align-items: baseline; gap: 6px; }
-.usage-total b { font-size: 20px; font-weight: 700; color: #c0956a; }
-.usage-total i { font-style: normal; font-size: 12px; color: var(--text-soft); }
+.usage-meta { font-size: 13px; font-weight: 600; color: #c0956a; white-space: nowrap; }
 .usage-track { height: 10px; border-radius: 999px; background: var(--bg-soft); overflow: hidden; margin: 14px 0 12px; }
 .usage-fill { height: 100%; border-radius: 999px; overflow: hidden; display: flex; background: linear-gradient(90deg, #c0956a, #d9b285); transition: width .3s ease; }
 .usage-fill .seg { display: block; height: 100%; }
