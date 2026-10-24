@@ -108,17 +108,34 @@ function scalePxValues(css) {
   return String(css || '').replace(/(-?\d+(?:\.\d+)?)px/g, 'calc($1px * var(--bubble-scale, 1))')
 }
 
-// 图片/表情/红包等「无气泡底」卡片（.bubble.bare）排除在气泡规则外，
-// 避免自定义边框/背景在卡片外面多套一层框
+/* bare 卡片（图片/表情包/红包/邀请卡）的保护规则：
+   用户 CSS 可能用后代选择器（.message img）、!important 或更高特异性
+   绕过 :not(.bare) 排除，给卡片套回气泡底/边框/内边距。
+   这段跟在用户规则后面注入，用 !important + 高特异性兜底压制。 */
+const BARE_GUARD = [
+  '.bubble.bare{background:transparent!important;padding:0!important;border:0!important;',
+  'border-radius:0!important;box-shadow:none!important;outline:none!important}',
+  '.bubble.bare .image-msg{background:var(--bg-soft,#f2f2f2)!important;border:0!important;',
+  'padding:0!important;border-radius:8px!important}'
+].join('')
+
+/* 选择器排除：用户规则只要落在气泡类名上（含后代选择器的末个复合选择器），
+   一律补 :not(.bare)，避免自定义背景/边框/内边距渗到无气泡底卡片上 */
 function excludeBare(selector) {
   const s = selector.trim()
-  if (s === '.bubble' || s === '.bubble.bubble-me' || s === '.bubble.bubble-contact') {
-    return s + ':not(.bare)'
+  if (!s) return s
+  // 取末个复合选择器（按空白拆，忽略 > + ~ 连接符）
+  const parts = s.split(/\s+/)
+  const last = parts[parts.length - 1].replace(/^[>+~]\s*/, '')
+  // .bubble / .bubble-me / .bubble-contact / .bubble.bubble-me（可再挂别的类）
+  if (/^\.bubble(-(me|contact))?(\.[\w-]+)*$/.test(last)) {
+    parts[parts.length - 1] = last + ':not(.bare)'
+    return parts.join(' ')
   }
   return s
 }
 
-// 聊天内注入：别名 + :not(.bare) 排除 + 变量别名 + px 缩放
+// 聊天内注入：别名 + :not(.bare) 排除 + 变量别名 + px 缩放 + bare 保护规则
 export function ruleCssForChat(css) {
   if (!isRuleCss(css)) return ''
   let text = rewriteSelectors(css, '.bubble.bubble-me', '.bubble.bubble-contact', '.bubble')
@@ -127,7 +144,7 @@ export function ruleCssForChat(css) {
     const next = sels.split(',').map(excludeBare).join(',')
     return `${next}{${decls}}`
   })
-  return VAR_ALIAS_BLOCK + scalePxValues(text)
+  return VAR_ALIAS_BLOCK + scalePxValues(text) + BARE_GUARD
 }
 
 // 预览注入：把气泡类名换成预览区类名（mock-bubble + mock-me / mock-contact）

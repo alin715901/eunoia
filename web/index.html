@@ -49,6 +49,10 @@
       </div>
     </div>
     <style>
+      /* 全部规则限定在 .boot-static 下：静态骨架与 Vue 骨架（App.vue/BootBrand.vue）
+         共用 .boot-brand/.boot-progress/.boot-progress-bar/.boot-text 类名，
+         若不隔离，这里的 width 关键帧动画（优先级高于内联样式）会劫持 Vue 骨架的
+         进度条 —— 表现为条子永远停在 52%、应用进了条才一半。 */
       .boot-static {
         position: fixed; inset: 0; z-index: 10;
         display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px;
@@ -56,34 +60,61 @@
         font-family: -apple-system, "PingFang SC", "Noto Sans SC", sans-serif;
       }
       [data-theme="dark"] .boot-static { background: #141416; }
-      .boot-brand {
+      .boot-static .boot-brand {
         position: relative;
         font-family: 'Songti SC', 'STSong', 'Noto Serif CJK SC', 'Noto Serif SC', 'SimSun', serif;
         font-size: 30px; font-weight: 700; letter-spacing: 0.12em; color: #c5a47e; line-height: 1;
       }
       /* 兔耳：透明底 PNG 切图，绝对定位于字母 a 上方探出（与 BootBrand.vue 相同参数） */
-      .boot-ears {
+      .boot-static .boot-ears {
         position: absolute; right: -5px; top: -20px; width: 28px; height: auto;
         pointer-events: none;
       }
-      .boot-progress {
+      .boot-static .boot-progress {
         width: 176px; height: 6px; border-radius: 999px;
         background: rgba(197, 164, 126, 0.15); overflow: hidden;
       }
-      .boot-progress-bar {
+      .boot-static .boot-progress-bar {
         display: block; width: 8%; height: 100%; border-radius: 999px;
         background: linear-gradient(90deg, rgba(197, 164, 126, 0.72), #c5a47e);
-        /* JS 下载期静态进度：单向缓推到 52% 后停住（forwards），
-           Vue 挂载后真实进度从 52% 起步继续涨 —— 全程不回缩、不重跑 */
-        animation: bootBarPulse 2.2s ease-out forwards;
+        /* JS 下载期静态进度：1.4s 内单向推到 52% 后停住（forwards），
+           Vue 挂载后真实进度从 52% 起步继续涨 —— 全程不回缩、不重跑。
+           推到 52% 后接一段极淡的呼吸（透明度），加载再慢也不像卡死 */
+        animation: bootBarPulse 1.4s ease-out forwards,
+                   bootBarBreathe 1.8s ease-in-out 1.4s infinite;
       }
       @keyframes bootBarPulse {
         0% { width: 8%; }
         100% { width: 52%; }
       }
-      .boot-text { font-size: 13px; color: #8e8e93; letter-spacing: 0.06em; }
-      [data-theme="dark"] .boot-text { color: #9b9ba3; }
+      @keyframes bootBarBreathe {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.45; }
+      }
+      .boot-static .boot-text { font-size: 13px; color: #8e8e93; letter-spacing: 0.06em; transition: opacity 0.32s ease; }
+      [data-theme="dark"] .boot-static .boot-text { color: #9b9ba3; }
+      /* 文字轮播与 Vue 骨架同款：JS 下载/解析期间也保持「活着」 */
+      .boot-static .boot-text.boot-text-fade { opacity: 0; }
     </style>
+    <script>
+      /* 静态骨架期的提示语轮播（Vue 挂载前也能看到文字在换） */
+      (function () {
+        var MSGS = ['正在恢复数据…', '本网站不收取任何费用', '建议定期导出数据 以免数据丢失', '心迹为独立网站 请单独导出或导入数据']
+        var el = document.querySelector('.boot-text')
+        if (!el) return
+        var i = 0
+        setInterval(function () {
+          if (!el.isConnected) return
+          el.classList.add('boot-text-fade')
+          setTimeout(function () {
+            if (!el.isConnected) return
+            i = (i + 1) % MSGS.length
+            el.textContent = MSGS[i]
+            el.classList.remove('boot-text-fade')
+          }, 320)
+        }, 2600)
+      })()
+    </script>
     <script type="module" src="/src/main.js"></script>
   </body>
 </html>

@@ -9,11 +9,12 @@
           class="boot-progress"
           role="progressbar"
           aria-label="加载进度"
+          :class="{ stalled: bootStalled }"
           :aria-valuenow="bootProgress"
           aria-valuemin="0"
           aria-valuemax="100"
         >
-          <span class="boot-progress-bar" :style="{ width: bootProgress + '%' }"></span>
+          <span ref="bootBar" class="boot-progress-bar" :style="{ width: bootProgress + '%' }"></span>
         </div>
         <!-- 提示语轮播：首次开屏时间较长，几条实用提示轮流显示 -->
         <Transition name="boot-fade" mode="out-in">
@@ -107,11 +108,39 @@ const dbErr = ref(false)
    起步值 52 = index.html 静态骨架动画的终点：挂载瞬间无缝衔接静态条，
    之后单调向右（Math.max 兜底），杜绝「跑到一半缩回去重跑」 */
 const bootProgress = ref(52)
+const bootBar = ref(null)
 let offDbProgress = null
+let firstProgress = true
 onMounted(() => {
-  offDbProgress = onDbProgress((p) => { bootProgress.value = Math.max(52, p) })
+  offDbProgress = onDbProgress((p) => {
+    /* 挂载即就绪（缓存命中/秒开）时，首次回报可能已是 100：先按 52% 渲染，
+       下一帧再放到真实进度 —— 用户看到的是条从静态骨架的 52% 平滑涨满，
+       而不是瞬间跳满（那一眼就会觉得「进度条造假/没满就进了」） */
+    if (firstProgress) {
+      firstProgress = false
+      bootProgress.value = Math.max(52, Math.min(p, 52))
+      requestAnimationFrame(() => { bootProgress.value = Math.max(52, p) })
+      return
+    }
+    bootProgress.value = Math.max(52, p)
+  })
 })
 onUnmounted(() => { if (offDbProgress) { offDbProgress(); offDbProgress = null } })
+
+/* 进度停滞感知：超过 1.2s 没有新进度（wasm/数据加载中）时给进度条加流光，
+   避免用户以为动画卡死（静态骨架与 Vue 骨架都靠它保持「活着」的观感） */
+const bootStalled = ref(false)
+let stallTimer = null
+function armStallWatch() {
+  bootStalled.value = false
+  if (stallTimer) clearTimeout(stallTimer)
+  stallTimer = setTimeout(() => {
+    if (!dbOk.value && !dbErr.value) bootStalled.value = true
+  }, 1200)
+}
+watch(bootProgress, armStallWatch)
+onMounted(armStallWatch)
+onUnmounted(() => { if (stallTimer) clearTimeout(stallTimer) })
 
 /* 开屏提示语轮播：骨架屏期间循环显示，db 就绪/失败即停 */
 const bootMsgs = [
@@ -136,24 +165,6 @@ watch(dbErr, (v) => { if (v) stopBootMsgs() })
 onMounted(startBootMsgs)
 onUnmounted(stopBootMsgs)
 
-dbReady
-  .then(() => {
-    /* 先让进度条平滑涨到 100%，满格瞬间即加载完成、进入应用 */
-    bootProgress.value = 100
-    setTimeout(() => {
-      dbOk.value = true
-      boot()
-      /* 首次进入：数据就绪后弹出使用须知（勾选同意才放行） */
-      try {
-        if (!localStorage.getItem(NOTICE_KEY)) showNotice.value = true
-      } catch (e) { /* 隐私模式等场景降级为每次弹出 */ showNotice.value = true }
-    }, 420)
-  })
-  .catch((e) => {
-    console.error('[app] 数据库初始化失败', e)
-    dbErr.value = true
-  })
-
 /* 使用须知：本机同意标记（key 带版本号，条款更新时可换 key 重新征集） */
 const NOTICE_KEY = 'eunoia-notice-acked-v1'
 const showNotice = ref(false)
@@ -162,9 +173,58 @@ function onNoticeEnter() {
   showNotice.value = false
 }
 
-function reload() {
-  location.reload()
+let bootEntered = false
+function enterApp() {
+  if (bootEntered) return
+  bootEntered = true
+  dbOk.value = true
+  boot()
+  /* 首次进入：数据就绪后弹出使用须知（勾选同意才放行） */
+  try {
+    if (!localStorage.getItem(NOTICE_KEY)) showNotice.value = true
+  } catch (e) { /* 隐私模式等场景降级为每次弹出 */ showNotice.value = true }
 }
+
+/* 进度条真正画满再进应用：宽度过渡 0.45s，若到点（420ms）就替换骨架屏，
+   用户会看到「条才涨到一半就进入网站」。这里等过渡动画自然结束
+   （transitionend）再进入；个别环境不触发该事件时用超时兜底。
+   挂载时数据已就绪（条无需过渡）则下一帧直接进入。 */
+function whenBarFull(cb) {
+  const bar = bootBar.value
+  const reduce =
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches
+  if (!bar || reduce) { cb(); return }
+  let done = false
+  const finish = () => {
+    if (done) return
+    done = true
+    clearTimeout(timer)
+    bar.removeEventListener('transitionend', onEnd)
+    cb()
+  }
+  const onEnd = (e) => { if (e.propertyName === 'width') finish() }
+  const timer = setTimeout(finish, 1200)
+  bar.addEventListener('transitionend', onEnd)
+  requestAnimationFrame(() =>
+    requestAnimationFrame(() => {
+      const bw = bar.getBoundingClientRect().width
+      const fw = bar.parentElement ? bar.parentElement.getBoundingClientRect().width : 0
+      if (fw > 0 && bw >= fw - 1) finish()
+    })
+  )
+}
+
+dbReady
+  .then(() => {
+    /* 先让进度条平滑涨到 100%，画满瞬间才进入应用 */
+    bootProgress.value = 100
+    whenBarFull(enterApp)
+  })
+  .catch((e) => {
+    console.error('[app] 数据库初始化失败', e)
+    dbErr.value = true
+  })
 
 /* 自动检测新版本并刷新：部署后无需手动清缓存/换链接即可生效 */
 useAutoUpdate()
@@ -206,7 +266,7 @@ const viewKey = computed(() =>
 )
 
 /* 开屏选择联系人的开关已从设置页移除，启动直接进入当前桌面。
-   db 就绪后调用（dbReady.then → boot）。 */
+   db 就绪后调用（dbReady.then → whenBarFull → enterApp → boot）。 */
 async function boot() {
   connect()
   // 尽早申请系统通知权限（部分浏览器要求用户交互后授权；失败静默忽略）
@@ -225,6 +285,11 @@ async function boot() {
   } catch (e) {
     /* 忽略 */
   }
+}
+
+/* 数据初始化失败页的「重新加载」按钮 */
+function reload() {
+  location.reload()
 }
 
 onMounted(() => {
@@ -373,11 +438,35 @@ html[data-theme='dark'] .boot-screen {
 }
 .boot-progress-bar {
   display: block;
+  position: relative;
+  overflow: hidden;
   width: 0;
   height: 100%;
   border-radius: 999px;
   background: linear-gradient(90deg, color-mix(in oklab, var(--accent) 72%, transparent), var(--accent));
   transition: width 0.45s ease;
+}
+/* 进度停滞（wasm/数据还在加载）时条上走一道流光：
+   静态骨架冻在 52%、Vue 骨架等下一个进度点时，观感上「还在动」，不是卡死 */
+.boot-progress-bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.55), transparent);
+  transform: translateX(-100%);
+  opacity: 0;
+}
+.boot-progress.stalled .boot-progress-bar::after {
+  opacity: 1;
+  animation: bootSheen 1.3s ease-in-out infinite;
+}
+@keyframes bootSheen {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .boot-progress.stalled .boot-progress-bar::after { animation: none; opacity: 0.5; }
 }
 /* 提示语轮播的淡入淡出 */
 .boot-fade-enter-active,

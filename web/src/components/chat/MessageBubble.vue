@@ -824,11 +824,23 @@ function onRedpacketTap() {
 .pt-r { margin-right: -0.5em; }
 .pt-l { margin-left: -0.5em; }
 
-/* 图片/红包：无气泡底的独立卡片（padding/背景/阴影全部去掉） */
+/* 图片/表情包/红包/各类邀请卡片：无气泡底的独立卡片（padding/背景/阴影/边框/圆角全部去掉）。
+   !important：用户自定义 CSS 即使用 !important 或后代选择器（.message img 等）绕过
+   :not(.bare) 排除，也不能给卡片套回气泡底 —— 照片/表情包必须跟红包、邀请卡一样光秃 */
 .bubble.bare {
-  padding: 0;
-  background: transparent;
-  box-shadow: none;
+  padding: 0 !important;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+/* 卡片内图片：保留统一的加载占位底色与自身圆角，不受用户气泡 CSS 影响 */
+.bubble.bare .image-msg {
+  background: var(--bg-soft) !important;
+  border: 0 !important;
+  padding: 0 !important;
+  border-radius: 8px !important;
 }
 
 /* ── 语音消息：语音是字卡消息，气泡外观（背景/圆角/边框/阴影）由 .bubble 承担，
