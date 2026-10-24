@@ -90,6 +90,66 @@ function insertConvertedVoice(d, contactId, conv, card, memberId = null, proacti
   return d.prepare('SELECT * FROM chat_messages WHERE id = ?').get(info.lastInsertRowid);
 }
 
+/* 把某个联系人此前因「未配置 MiniMax」而遗留的伪语音消息，用当前配置转成真实语音。
+ * 触发点：① 配置保存成功且该联系人配置就绪时；② 应用启动时全量扫一遍。
+ * 仅处理 voice_src='mm' 且 asset_path 为空的伪语音（真实语音与语音字卡均带 asset_path，不受影响）。 */
+async function upgradePseudoVoices(contactId) {
+  try {
+    const st = db.prepare('SELECT * FROM contact_settings WHERE contact_id = ?').get(contactId)
+    const cfg = st ? readCfg(st) : null
+    if (!cfg || !cfg.enabled || !cfgReady(cfg)) return 0
+    const rows = db
+      .prepare(
+        `SELECT * FROM chat_messages
+         WHERE contact_id = ? AND sender = 'contact' AND content_type = 'voice'
+           AND voice_src = 'mm' AND (asset_path IS NULL OR asset_path = '')
+         ORDER BY id ASC`
+      )
+      .all(contactId)
+    let upgraded = 0
+    for (const m of rows) {
+      const text = String(m.text || '').trim()
+      if (!text) continue
+      try {
+        const blob = await minimaxTtsBlob(cfg, text)
+        const dataUrl = await blobToDataUrl(blob)
+        const duration = await audioDurationOf(dataUrl, text)
+        db.prepare(
+          "UPDATE chat_messages SET asset_path = ?, duration = ?, voice_src = 'mm' WHERE id = ?"
+        ).run(dataUrl, duration, m.id)
+        notification.broadcast('message_update', {
+          contactId,
+          message: db.prepare('SELECT * FROM chat_messages WHERE id = ?').get(m.id)
+        })
+        upgraded++
+      } catch (e) {
+        console.error('[upgradePseudoVoices] skip one:', e.message)
+      }
+    }
+    if (upgraded) console.log(`[upgradePseudoVoices] contact=${contactId} 升级 ${upgraded} 条伪语音`)
+    return upgraded
+  } catch (e) {
+    console.error('[upgradePseudoVoices]', e.message)
+    return 0
+  }
+}
+
+/* 应用启动：把全站「配置就绪但仍有伪语音遗留」的联系人一次性补齐 */
+async function upgradeAllPseudoVoices() {
+  try {
+    const rows = db.prepare('SELECT contact_id FROM contact_settings WHERE minimax_enabled = 1').all()
+    for (const r of rows) {
+      try {
+        await upgradePseudoVoices(r.contact_id)
+      } catch (e) {
+        /* 单个联系人失败不影响其他 */
+      }
+    }
+  } catch (e) {
+    console.error('[upgradeAllPseudoVoices]', e.message)
+  }
+}
+
 function randInt(min, max) {
   const lo = Math.min(min, max);
   const hi = Math.max(min, max);
@@ -1649,4 +1709,6 @@ export {
   proactiveTick,
   sendCallRecord,
   sendQuestion,
+  upgradePseudoVoices,
+  upgradeAllPseudoVoices,
 };

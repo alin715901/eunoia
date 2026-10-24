@@ -66,6 +66,7 @@ import AppHeader from '@/components/layout/AppHeader.vue'
 import ToggleSwitch from '@/components/common/ToggleSwitch.vue'
 import { useContactSettingsPage } from '@/composables/useContactSettingsPage'
 import { MM_LANGS, MM_MODELS, readCfg, cfgReady, minimaxTts } from '@/utils/minimax'
+import { upgradePseudoVoices } from '@/local/services/chat.service'
 import { notify, confirmDialog } from '@/utils/dialog'
 
 const props = defineProps({ id: { type: [String, Number], required: true } })
@@ -99,6 +100,8 @@ function fill(s) {
 async function saveEnabled() {
   try {
     await patch({ minimax_enabled: enabled.value ? 1 : 0 })
+    /* 开启后：把此前遗留在本联系人的伪语音转成真实语音 */
+    if (enabled.value) upgradePseudoVoices(props.id).catch(() => {})
   } catch (e) { notify('保存失败：' + e.message) }
 }
 
@@ -116,6 +119,8 @@ async function doSave() {
       minimax_style: form.style.trim()
     })
     showSaved.value = !!(form.key.trim() && form.group.trim() && form.voice.trim())
+    /* 配置三要素齐全：把此前遗留在本联系人的伪语音转成真实语音 */
+    if (showSaved.value) upgradePseudoVoices(props.id).catch(() => {})
     msg.value = ''
   } catch (e) {
     isErr.value = true

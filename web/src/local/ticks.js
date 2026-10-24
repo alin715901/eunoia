@@ -9,7 +9,7 @@
 //      （后台标签页定时器会被浏览器节流，睡眠唤醒后定时器也会停摆）。
 import db from './db'
 import * as notification from './services/notification.service'
-import { proactiveTick, redpacketTick } from './services/chat.service'
+import { proactiveTick, redpacketTick, upgradeAllPseudoVoices } from './services/chat.service'
 import { periodCareTick } from './services/period.service'
 import { momentTick, flushPendingMoments } from './services/moment.service'
 import { letterTick, replyTick } from './services/letter.service'
@@ -162,6 +162,9 @@ export function startTicks() {
   started = true
 
   setTimeout(runAll, 3000)
+
+  /* 启动后一次性补齐：此前「未配置 MiniMax 时」遗留的伪语音，配置就绪后转成真实语音 */
+  setTimeout(() => { upgradeAllPseudoVoices().catch(() => {}) }, 4000)
 
   timer = setInterval(runAll, TICK_MS)
 

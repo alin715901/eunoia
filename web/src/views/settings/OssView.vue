@@ -3,7 +3,7 @@
     <AppHeader title="云端同步设置" back />
     <div class="sp-body">
       <!-- 帮助链接 -->
-      <a class="help-link" href="https://help.aliyun.com/zh/ram/user-guide/create-an-accesskey-pair" target="_blank" rel="noopener">如何申请阿里云密钥?</a>
+      <a class="help-link" href="https://help.aliyun.com/zh/ram/user-guide/create-an-accesskey-pair" target="_blank" rel="noopener">如何申请阿里云密钥？</a>
 
       <!-- Bucket 名称 -->
       <label class="field-label">Bucket 名称</label>
