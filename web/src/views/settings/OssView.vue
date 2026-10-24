@@ -155,15 +155,17 @@ async function doSave() {
     msg.value = '已保存并连接'
     msgOk.value = true
     notify('云端同步配置已保存')
-    /* 保存成功 → 自动把当前全部数据备份到云端（供「从云端恢复梦角到本浏览器」使用） */
-    try {
-      await backupToOss()
-      loadSyncTime()
-      notify('已自动备份当前数据到云端')
-    } catch (be) {
-      isErr.value = true
-      msg.value = `已保存，但自动备份失败：${be.message || '请检查 Bucket 权限'}`
-    }
+    /* 保存成功 → 后台自动把当前全部数据备份到云端（不阻塞按钮，
+       上传在后台继续，完成后刷新同步时间并通知） */
+    backupToOss()
+      .then(() => {
+        loadSyncTime()
+        notify('已自动备份当前数据到云端')
+      })
+      .catch((be) => {
+        isErr.value = true
+        msg.value = `已保存，但自动备份失败：${be.message || '请检查 Bucket 权限'}`
+      })
   } catch (e) {
     isErr.value = true
     msg.value = e.message || '保存失败'
