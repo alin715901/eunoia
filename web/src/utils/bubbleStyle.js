@@ -100,6 +100,14 @@ const VAR_ALIAS = [
 // :root 变量别名块（聊天与预览注入都需要，保证 --accent-color 等名字开箱即用）
 const VAR_ALIAS_BLOCK = `:root{${VAR_ALIAS.map(([k, v]) => `${k}:${v};`).join('')}}`
 
+/* 把 CSS 里的 px 数值包一层 calc(… * var(--bubble-scale, 1))：
+   「气泡大小」滑条通过 .msg-wrap 上的 --bubble-scale 缩放气泡，
+   自定义 CSS 的写死 px 值（字号/内边距/边框/圆角）原本不跟着滑条变，
+   包一层后滑条对自定义气泡同样生效（预览容器也会注入同名变量）。 */
+function scalePxValues(css) {
+  return String(css || '').replace(/(-?\d+(?:\.\d+)?)px/g, 'calc($1px * var(--bubble-scale, 1))')
+}
+
 // 图片/表情/红包等「无气泡底」卡片（.bubble.bare）排除在气泡规则外，
 // 避免自定义边框/背景在卡片外面多套一层框
 function excludeBare(selector) {
@@ -110,7 +118,7 @@ function excludeBare(selector) {
   return s
 }
 
-// 聊天内注入：别名 + :not(.bare) 排除 + 变量别名
+// 聊天内注入：别名 + :not(.bare) 排除 + 变量别名 + px 缩放
 export function ruleCssForChat(css) {
   if (!isRuleCss(css)) return ''
   let text = rewriteSelectors(css, '.bubble.bubble-me', '.bubble.bubble-contact', '.bubble')
@@ -119,12 +127,12 @@ export function ruleCssForChat(css) {
     const next = sels.split(',').map(excludeBare).join(',')
     return `${next}{${decls}}`
   })
-  const vars = VAR_ALIAS_BLOCK
-  return vars + text
+  return VAR_ALIAS_BLOCK + scalePxValues(text)
 }
 
 // 预览注入：把气泡类名换成预览区类名（mock-bubble + mock-me / mock-contact）
 export function ruleCssForPreview(css) {
   if (!isRuleCss(css)) return ''
-  return VAR_ALIAS_BLOCK + rewriteSelectors(css, '.mock-bubble.mock-me', '.mock-bubble.mock-contact', '.mock-bubble')
+  const text = rewriteSelectors(css, '.mock-bubble.mock-me', '.mock-bubble.mock-contact', '.mock-bubble')
+  return VAR_ALIAS_BLOCK + scalePxValues(text)
 }

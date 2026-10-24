@@ -5,7 +5,7 @@
       <!-- 实时预览 -->
       <div class="panel sec">
         <div class="sec-title">预览</div>
-        <div class="mock">
+        <div class="mock" :style="{ '--bubble-scale': scaleOf(bs.size) }">
         <div class="mock-row">
           <span class="mock-ava"></span>
           <span
