@@ -20,7 +20,7 @@ const fail = (msg) => {
  * _migrations  迁移标记（本地状态，无意义）
  * scheduler_log 调度运行日志（噪音）
  * deck_cards   塔罗牌库（种子数据，新库首次打开自动重建）
- * 其余 22 张表全部可备份。 */
+ * 其余 27 张表全部可备份。 */
 const EXPORT_TABLES = [
   'contacts', 'contact_members', 'contact_settings', 'contact_desktop',
   'card_groups', 'cards', 'chat_messages', 'favorites', 'wallets',
@@ -28,26 +28,34 @@ const EXPORT_TABLES = [
   'global_settings', 'proactive_jobs', 'group_member_settings',
   'anniversaries', 'songs', 'song_favs', 'companion_invites',
   'listen_together', 'cinema_together', 'app_items', 'red_packet_grabs',
-  'poke_library'
+  'poke_library', 'photo_walls', 'photo_wall_elements'
 ]
 
-/* 大板块 → 数据表（对齐桌面功能；感知 / 心迹为即时功能不落库，无需导出。
- * 红包（wallets）属于聊天的一部分，随聊天板块一起导出，不单列。） */
+/* 桌面大板块 → 数据表（对齐桌面功能；感知 / 心迹为即时功能不落库，无需导出）。
+ * mods: 该板块只取 app_items 里的部分 module 行（通用模块数据统一存 app_items）。
+ * 归属说明：
+ *  - 聊天含 红包（wallets / red_packet_grabs）、拍一拍（poke_library）等发进聊天的数据；
+ *  - 美化设置 = 主题全部设置（global_settings KV）+ 人物卡签名/背景等（contact_desktop）；
+ *  - 音乐含 一起听（listen_together）；影院含 影院站点/链接（app_items cinema*）；
+ *  - 相册 = 照片墙（photo_walls / photo_wall_elements）+ 相册模块记录（app_items album）；
+ *  - 统计 = 消息收藏 / 提问记录（favorites），统计数值本身由聊天记录派生。 */
 export const BACKUP_FEATURES = [
-  { key: 'chat', label: '聊天', tables: ['chat_messages', 'wallets', 'red_packet_grabs'] },
-  { key: 'music', label: '音乐', tables: ['songs', 'song_favs'] },
-  { key: 'cards', label: '字卡', tables: ['card_groups', 'cards'] },
-  { key: 'letters', label: '信件', tables: ['letters'] },
+  { key: 'cards', label: '字卡库', tables: ['card_groups', 'cards'] },
+  { key: 'beautify', label: '美化设置', tables: ['global_settings', 'contact_desktop'] },
+  { key: 'chat', label: '聊天', tables: ['chat_messages', 'wallets', 'red_packet_grabs', 'poke_library'] },
   { key: 'moments', label: '朋友圈', tables: ['moments', 'moment_interactions'] },
-  { key: 'favorites', label: '收藏', tables: ['favorites'] },
-  { key: 'anniversaries', label: '纪念日', tables: ['anniversaries'] },
+  { key: 'letters', label: '信件', tables: ['letters'] },
+  { key: 'anniversaries', label: '纪念', tables: ['anniversaries'] },
+  { key: 'companion', label: '陪伴', tables: ['companion_invites'] },
   { key: 'divinations', label: '占卜', tables: ['divinations'] },
-  { key: 'companion', label: '陪伴邀请', tables: ['companion_invites'] },
-  { key: 'listen', label: '一起听', tables: ['listen_together'] },
-  { key: 'cinema', label: '一起观影', tables: ['cinema_together'] },
-  { key: 'modules', label: '模块记录', tables: ['app_items'] },
-  { key: 'beautify', label: '桌面美化', tables: ['global_settings'] },
-  { key: 'poke', label: '拍一拍', tables: ['poke_library'] }
+  { key: 'music', label: '音乐', tables: ['songs', 'song_favs', 'listen_together'] },
+  { key: 'cinema', label: '影院', tables: ['cinema_together'], mods: { app_items: ['cinema', 'cinema_sites', 'cinema_links'] } },
+  { key: 'game', label: '游戏', tables: [], mods: { app_items: ['game'] } },
+  { key: 'mood', label: '心情', tables: [], mods: { app_items: ['mood'] } },
+  { key: 'memo', label: '备忘录', tables: [], mods: { app_items: ['memo'] } },
+  { key: 'period', label: '经期', tables: [], mods: { app_items: ['period'] } },
+  { key: 'album', label: '相册', tables: ['photo_walls', 'photo_wall_elements'], mods: { app_items: ['album'] } },
+  { key: 'stats', label: '统计', tables: ['favorites'] }
 ]
 
 /* 表 → 自增主键列（合并时重映射；无自增 id 的表不在此列） */
@@ -56,7 +64,7 @@ const ID_TABLES = {
   favorites: 'id', moments: 'id', moment_interactions: 'id', letters: 'id',
   divinations: 'id', proactive_jobs: 'id',   anniversaries: 'id', songs: 'id',
   companion_invites: 'id', listen_together: 'id', cinema_together: 'id', app_items: 'id',
-  red_packet_grabs: 'id', poke_library: 'id'
+  red_packet_grabs: 'id', poke_library: 'id', photo_walls: 'id', photo_wall_elements: 'id'
 }
 
 /* 表 → 外键列 → 目标表（导出时按此自动带入关联行，导入时按此重映射 / 断开） */
@@ -84,7 +92,9 @@ const REFS = {
   cinema_together: { contact_id: 'contacts', message_id: 'chat_messages' },
   red_packet_grabs: { message_id: 'chat_messages' },
   app_items: { contact_id: 'contacts' },
-  poke_library: {}
+  poke_library: {},
+  photo_walls: {},
+  photo_wall_elements: { wall_id: 'photo_walls' }
 }
 
 /* 可被自动带入的「叶子表」：它们自身的外键也只指向叶子表，不会无限展开 */
@@ -97,7 +107,8 @@ const LABELS = {
   global_settings: '全局设置', proactive_jobs: '主动消息任务', group_member_settings: '群成员设置',
   anniversaries: '纪念日', songs: '歌曲', song_favs: '歌曲收藏', companion_invites: '陪伴邀请',
   listen_together: '一起听', cinema_together: '一起观影', app_items: '模块记录',
-  red_packet_grabs: '红包领取记录', poke_library: '拍一拍'
+  red_packet_grabs: '红包领取记录', poke_library: '拍一拍',
+  photo_walls: '照片墙', photo_wall_elements: '照片墙元素'
 }
 
 /* 表名 → 中文名（设置页展示用） */
@@ -223,6 +234,9 @@ function autoInclude(tables, ref, partial) {
   }
 }
 
+/* app_items 按模块过滤时拼 IN 子句（值来自代码常量，防御性转义） */
+const modIN = (mods) => [...mods].map((s) => `'${String(s).replace(/'/g, "''")}'`).join(',')
+
 /* scope: { type: 'full' } | { type: 'feature', features: [key] } | { type: 'contacts', contacts: [id] } */
 export function buildBackup(scope) {
   const type = scope && scope.type
@@ -235,9 +249,20 @@ export function buildBackup(scope) {
     if (!keys.length) fail('请至少选择一个板块')
     scopeMeta.type = 'feature'
     scopeMeta.features = keys
+    const modSets = new Map() // 表 → 要导出的 module 集合（多个板块同表时合并）
     for (const k of keys) {
       const f = BACKUP_FEATURES.find((x) => x.key === k)
       for (const t of f.tables) if (tableExists(t)) tables[t] = allRows(t)
+      for (const [t, mods] of Object.entries(f.mods || {})) {
+        if (!tableExists(t)) continue
+        if (!modSets.has(t)) modSets.set(t, new Set())
+        for (const m of mods) modSets.get(t).add(m)
+      }
+    }
+    for (const [t, mods] of modSets) {
+      if (tables[t]) continue // 该表已被某板块整表导出
+      tables[t] = db.prepare(`SELECT * FROM ${t} WHERE module IN (${modIN(mods)})`).all()
+      partial.add(t) // 部分行导出，autoInclude 按部分表处理
     }
   } else if (type === 'contacts') {
     const ids = [...new Set((scope.contacts || []).map(Number).filter((n) => Number.isFinite(n) && n > 0))]
@@ -305,12 +330,21 @@ function applyOverwrite(tables, known, refTables, scope) {
   if (type === 'full') {
     for (const t of known) db.prepare(`DELETE FROM ${t}`).run()
   } else if (type === 'feature') {
-    const fks = new Set()
+    const plain = new Set()
+    const modSets = new Map()
     for (const k of scope.features || []) {
       const f = BACKUP_FEATURES.find((x) => x.key === k)
-      if (f) f.tables.forEach((t) => fks.add(t))
+      if (!f) continue
+      f.tables.forEach((t) => plain.add(t))
+      for (const [t, mods] of Object.entries(f.mods || {})) {
+        if (!modSets.has(t)) modSets.set(t, new Set())
+        for (const m of mods) modSets.get(t).add(m)
+      }
     }
-    for (const t of known) if (fks.has(t)) db.prepare(`DELETE FROM ${t}`).run()
+    for (const t of known) {
+      if (plain.has(t)) db.prepare(`DELETE FROM ${t}`).run()
+      else if (modSets.has(t)) db.prepare(`DELETE FROM ${t} WHERE module IN (${modIN(modSets.get(t))})`).run()
+    }
   } else if (type === 'contacts') {
     const ids = (scope.contacts || []).map(Number).filter((n) => Number.isFinite(n) && n > 0)
     if (ids.length) scopedDelete(ids)
@@ -531,8 +565,13 @@ export function backupOverview() {
   const count = (t) => {
     try { return db.prepare(`SELECT COUNT(*) c FROM ${t}`).get().c } catch (e) { return 0 }
   }
-  const features = BACKUP_FEATURES
-    .map((f) => ({ key: f.key, label: f.label, count: f.tables.reduce((s, t) => s + count(t), 0) }))
+  const features = BACKUP_FEATURES.map((f) => {
+    let c = f.tables.reduce((s, t) => s + count(t), 0)
+    for (const [t, mods] of Object.entries(f.mods || {})) {
+      try { c += db.prepare(`SELECT COUNT(*) c FROM ${t} WHERE module IN (${modIN(mods)})`).get().c } catch (e) { /* 表不存在 */ }
+    }
+    return { key: f.key, label: f.label, count: c }
+  })
   const counts = contactCounts()
   const contacts = db
     .prepare('SELECT id, kind, name, avatar FROM contacts ORDER BY CASE WHEN kind = \'group\' THEN 1 ELSE 0 END, sort_order, id')
