@@ -59,12 +59,19 @@ async function hmacSha1(secret, content) {
   return btoa(bin)
 }
 
-async function authHeader(cfg, method, key, contentType) {
+async function authHeader(cfg, method, key, contentType, extraOssHeaders = {}) {
   const date = new Date().toUTCString()
+  /* 浏览器 fetch 禁止设置 Date 头（forbidden header），改用 x-oss-date 代替；
+   * 所有 x-oss-* 头需按字典序加入 CanonicalizedOSSHeaders 参与签名，
+   * 同时签名字符串中的 Date 字段留空（未发送 Date 头）。 */
+  const ossHeaders = { 'x-oss-date': date, ...extraOssHeaders }
+  const canon = Object.keys(ossHeaders).sort()
+    .map((k) => `${k.toLowerCase()}:${String(ossHeaders[k]).trim()}\n`)
+    .join('')
   const resource = `/${cfg.bucket}/${key}`
-  const stringToSign = [method, '', contentType || '', date, '', resource].join('\n')
+  const stringToSign = [method, '', contentType || '', '', canon, resource].join('\n')
   const sign = await hmacSha1(cfg.accessKeySecret, stringToSign)
-  return { date, authorization: `OSS ${cfg.accessKeyId}:${sign}` }
+  return { ossHeaders, authorization: `OSS ${cfg.accessKeyId}:${sign}` }
 }
 
 /**
@@ -75,12 +82,12 @@ export async function ossUpload(cfg, blob, path) {
   if (!ossReady(cfg)) throw new Error('阿里云 OSS 配置不完整（AccessKey / Bucket / 地域节点）')
   const key = ossKeyOf(cfg, path)
   const contentType = blob.type || 'application/octet-stream'
-  const { date, authorization } = await authHeader(cfg, 'PUT', key, contentType)
+  const { ossHeaders, authorization } = await authHeader(cfg, 'PUT', key, contentType, { 'x-oss-object-acl': 'public-read' })
   let res
   try {
     res = await fetch(ossUrlOf(cfg, key), {
       method: 'PUT',
-      headers: { Authorization: authorization, Date: date, 'Content-Type': contentType, 'x-oss-object-acl': 'public-read' },
+      headers: { Authorization: authorization, 'Content-Type': contentType, ...ossHeaders },
       body: blob
     })
   } catch (e) {
@@ -122,8 +129,8 @@ export async function ossTest(cfg) {
     // 上传成功：尝试删除探测文件（DELETE 也走 V1 签名）
     try {
       const contentType = ''
-      const { date, authorization } = await authHeader(cfg, 'DELETE', key, contentType)
-      await fetch(url, { method: 'DELETE', headers: { Authorization: authorization, Date: date } })
+      const { ossHeaders, authorization } = await authHeader(cfg, 'DELETE', key, contentType)
+      await fetch(url, { method: 'DELETE', headers: { Authorization: authorization, ...ossHeaders } })
       return { ok: true, level: 'ok', message: '连接正常：上传与删除均成功' }
     } catch (e) {
       return { ok: true, level: 'write', message: '可上传，但删除失败（Bucket 可能未授权 DeleteObject）' }
