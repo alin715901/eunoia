@@ -7,7 +7,7 @@
         <div class="switch-row">
           <div class="row-main">
             <div class="row-title">启用 MiniMax 语音</div>
-            <p class="hint">开启后，对方回复的文字字卡有概率转为语音消息：配置齐全时为 MiniMax 真实语音，仅开启未配置时为无声的伪语音；未开启则不转换</p>
+            <p class="hint">开启后对方有概率发送语音</p>
           </div>
           <ToggleSwitch v-model="enabled" @update:modelValue="saveEnabled" />
         </div>
