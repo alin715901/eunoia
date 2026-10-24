@@ -21,6 +21,31 @@ function bundleVersion() {
   return m ? m.getAttribute('content') || '' : ''
 }
 
+/* 手动检查更新：返回 'updated'（已触发刷新）| 'latest'（已是最新）| 'error'（网络异常）。
+ * 供「关于」页【检查更新】按钮使用，逻辑与生产环境自动轮询复用同一套。 */
+export async function checkForUpdate() {
+  try {
+    const res = await fetch('version.json', { cache: 'no-store' })
+    if (!res.ok) return 'error'
+    const data = await res.json()
+    const server = data && data.v
+    const mine = bundleVersion()
+    if (!server || !mine) return 'error'
+    if (server !== mine) {
+      try {
+        const reg = await navigator.serviceWorker?.getRegistration()
+        if (reg) await reg.update()
+      } catch (e) { /* 忽略 */ }
+      try { await fetch(location.href, { cache: 'reload' }) } catch (e) { /* 忽略 */ }
+      location.reload()
+      return 'updated'
+    }
+    return 'latest'
+  } catch (e) {
+    return 'error'
+  }
+}
+
 export function useAutoUpdate() {
   let timer = null
 
