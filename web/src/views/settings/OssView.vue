@@ -27,8 +27,8 @@
       <input v-model="form.accessKeySecret" class="field" type="password" autocomplete="off" />
       <p class="sub">密钥仅保存在你的浏览器本地，不会上传到任何服务器（除了阿里云本身）。</p>
 
-      <!-- 断开连接：始终显示（未配置时点击即清空表单） -->
-      <button class="btn-block danger" type="button" :disabled="saving || testing" @click="doClear">断开连接</button>
+      <!-- 已配置：断开连接 -->
+      <button v-if="configured" class="btn-block danger" type="button" :disabled="saving || testing" @click="doClear">断开连接</button>
       <!-- 从云端恢复梦角到本浏览器 -->
       <button class="btn-block" type="button" :disabled="restoring || !configured" @click="doRestore">
         {{ restoring ? '恢复中…' : '从云端恢复梦角到本浏览器' }}
