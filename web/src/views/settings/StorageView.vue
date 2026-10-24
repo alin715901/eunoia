@@ -4,7 +4,7 @@
     <div class="sp-body">
       <!-- 存储用量 -->
       <div class="panel sec">
-        <div class="usage-top">
+        <div class="usage-head">
           <span class="usage-title">
             <svg class="usage-ic" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <ellipse cx="12" cy="5" rx="8" ry="3" />
@@ -13,37 +13,29 @@
             </svg>
             存储用量
           </span>
-          <span class="usage-meta">{{ fmtSize(stats.dbSize) }} / {{ fmtSize(CAP) }} ({{ pct }}%)</span>
+          <span class="usage-total">
+            <b>{{ fmtSize(stats.dbSize) }}</b>
+            <i>/ {{ fmtSize(CAP) }} · {{ pct }}%</i>
+          </span>
         </div>
-        <div class="usage-tiles">
-          <div class="tile">
-            <svg class="tile-ic ic-tan" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
-            </svg>
-            <b class="tile-val">{{ fmtSize(groups.chat.bytes) }}</b>
-            <span class="tile-lab">聊天记录</span>
-          </div>
-          <div class="tile">
-            <svg class="tile-ic ic-purple" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <polygon points="12 2 2 7 12 12 22 7 12 2" />
-              <polyline points="2 17 12 22 22 17" />
-              <polyline points="2 12 12 17 22 12" />
-            </svg>
-            <b class="tile-val">{{ fmtSize(groups.content.bytes) }}</b>
-            <span class="tile-lab">内容数据</span>
-          </div>
-          <div class="tile">
-            <svg class="tile-ic ic-green" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <line x1="4" y1="21" x2="4" y2="14" /><line x1="4" y1="10" x2="4" y2="3" />
-              <line x1="12" y1="21" x2="12" y2="12" /><line x1="12" y1="8" x2="12" y2="3" />
-              <line x1="20" y1="21" x2="20" y2="16" /><line x1="20" y1="12" x2="20" y2="3" />
-              <line x1="1" y1="14" x2="7" y2="14" /><line x1="9" y1="8" x2="15" y2="8" /><line x1="17" y1="16" x2="23" y2="16" />
-            </svg>
-            <b class="tile-val">{{ fmtSize(groups.settings.bytes) }}</b>
-            <span class="tile-lab">联系人设置</span>
+
+        <!-- 三段式占用条：聊天 / 内容 / 设置 -->
+        <div class="usage-track">
+          <div class="usage-fill" :style="{ width: pct + '%' }">
+            <i v-for="g in legend" :key="g.key" class="seg" :class="'seg-' + g.key" :style="{ width: g.share + '%' }"></i>
           </div>
         </div>
-        <div class="usage-bar"><i :style="{ width: pct + '%' }"></i></div>
+
+        <!-- 图例明细 -->
+        <div class="usage-legend">
+          <div v-for="g in legend" :key="g.key" class="lg-row">
+            <i class="lg-dot" :class="'dot-' + g.key"></i>
+            <span class="lg-name">{{ g.label }}</span>
+            <span class="lg-share">{{ g.shareText }}</span>
+            <span class="lg-val">{{ fmtSize(g.bytes) }}</span>
+          </div>
+        </div>
+        <p class="usage-foot">容量上限为展示值；图片 / 语音等附件随数据库一起存储，可用「迁移本地图片到云端」减小占用。</p>
       </div>
 
       <!-- 数据备份 -->
@@ -173,6 +165,20 @@ const groups = computed(() => stats.value.groups || { chat: {}, content: {}, set
 const pct = computed(() => {
   const v = Number(stats.value.dbSize) || 0
   return Math.min(100, Math.round((v / CAP) * 1000) / 10)
+})
+
+/* 占用条三段：按各分组占总用量的比例分配 */
+const legend = computed(() => {
+  const g = stats.value.groups || { chat: {}, content: {}, settings: {} }
+  const total = Number(stats.value.dbSize) || 0
+  return [
+    { key: 'chat', label: '聊天记录', bytes: Number(g.chat?.bytes) || 0 },
+    { key: 'content', label: '内容数据', bytes: Number(g.content?.bytes) || 0 },
+    { key: 'settings', label: '联系人设置', bytes: Number(g.settings?.bytes) || 0 }
+  ].map((x) => {
+    const share = total > 0 ? Math.round((x.bytes / total) * 1000) / 10 : 0
+    return { ...x, share, shareText: total > 0 ? `${share}%` : '—' }
+  })
 })
 
 function fmtSize(n) {
@@ -424,24 +430,30 @@ onMounted(load)
 .bk-file { display: none; }
 
 /* 存储用量 */
-.usage-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.usage-title { display: inline-flex; align-items: center; gap: 7px; font-size: 15px; font-weight: 700; }
+/* ── 存储用量：总览数字 + 三段式占用条 + 图例明细 ── */
+.usage-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.usage-title { display: inline-flex; align-items: center; gap: 7px; font-size: 15px; font-weight: 700; align-self: center; }
 .usage-ic { width: 18px; height: 18px; color: #9aa3ad; }
-.usage-meta { font-size: 13px; font-weight: 600; color: #c0956a; }
-.usage-tiles { display: flex; gap: 10px; margin: 14px 0; }
-.tile {
-  flex: 1; background: var(--bg-soft); border-radius: var(--radius);
-  padding: 14px 6px; text-align: center;
-  display: flex; flex-direction: column; align-items: center; gap: 6px;
-}
-.tile-ic { width: 22px; height: 22px; }
-.ic-tan { color: #c0956a; }
-.ic-purple { color: #9b6cff; }
-.ic-green { color: #35b57c; }
-.tile-val { font-size: 16px; font-weight: 700; color: var(--text); }
-.tile-lab { font-size: 12px; color: var(--text-soft); }
-.usage-bar { height: 6px; border-radius: 999px; background: var(--bg-soft); overflow: hidden; }
-.usage-bar i { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, #c0956a, #d9b285); transition: width .3s ease; }
+.usage-total { display: inline-flex; align-items: baseline; gap: 6px; }
+.usage-total b { font-size: 20px; font-weight: 700; color: #c0956a; }
+.usage-total i { font-style: normal; font-size: 12px; color: var(--text-soft); }
+.usage-track { height: 10px; border-radius: 999px; background: var(--bg-soft); overflow: hidden; margin: 14px 0 12px; }
+.usage-fill { height: 100%; border-radius: 999px; overflow: hidden; display: flex; background: linear-gradient(90deg, #c0956a, #d9b285); transition: width .3s ease; }
+.usage-fill .seg { display: block; height: 100%; }
+.seg-chat { background: transparent; }               /* 底色即聊天（渐变） */
+.seg-content { background: rgba(155, 108, 255, 0.85); }
+.seg-settings { background: rgba(53, 181, 124, 0.8); }
+.usage-legend { display: flex; flex-direction: column; }
+.lg-row { display: flex; align-items: center; gap: 9px; padding: 9px 2px; border-bottom: 1px solid var(--border); font-size: 13px; }
+.lg-row:last-child { border-bottom: none; }
+.lg-dot { width: 9px; height: 9px; border-radius: 50%; flex: 0 0 auto; }
+.dot-chat { background: linear-gradient(90deg, #c0956a, #d9b285); }
+.dot-content { background: rgba(155, 108, 255, 0.85); }
+.dot-settings { background: rgba(53, 181, 124, 0.8); }
+.lg-name { color: var(--text); }
+.lg-share { flex: 1 1 auto; font-size: 12px; color: var(--text-soft); padding-left: 4px; }
+.lg-val { font-size: 13px; font-weight: 600; color: var(--text); }
+.usage-foot { margin: 10px 0 0; font-size: 11px; line-height: 1.6; color: var(--text-soft); }
 
 /* 导出弹窗 */
 .exp-desc { font-size: 12px; color: var(--text-soft); line-height: 1.6; margin: 0 0 8px; }

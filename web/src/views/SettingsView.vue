@@ -16,27 +16,18 @@
         </button>
       </div>
 
-      <!-- 外观：浅色 / 深色 / 跟随系统 -->
+      <!-- 外观：深色模式（点击弹窗选择） -->
       <div class="panel sec">
-        <div class="row-item static">
-          <span class="ri-icon"><AppIcon name="image" :size="18" /></span>
+        <button class="row-item" @click="appearanceOpen = true">
+          <span class="ri-icon"><AppIcon name="moon" :size="18" /></span>
           <span class="ri-label">
             深色模式
             <span class="scope-tag global">全局</span>
           </span>
-        </div>
-        <div class="chips">
-          <button
-            v-for="a in APPEARANCES"
-            :key="a.k"
-            class="chip"
-            :class="{ on: appearance === a.k }"
-            @click="pickAppearance(a.k)"
-          >{{ a.n }}</button>
-        </div>
-        <p class="sub mode-sub">
-          {{ appearanceHint }}
-        </p>
+          <span class="spacer"></span>
+          <span class="ri-value">{{ appearanceLabel }}</span>
+          <AppIcon name="chevron-right" :size="16" color="var(--text-soft)" />
+        </button>
       </div>
 
       <!-- 后台保活 / 消息通知 -->
@@ -67,10 +58,10 @@
         </p>
       </div>
 
-      <!-- 分组：阿里云 OSS / 内存数据 / 关于 -->
+      <!-- 分组：阿里云 OSS / 内存数据 -->
       <div class="panel sec">
         <button class="row-item" @click="goOss">
-          <span class="ri-icon"><AppIcon name="upload" :size="18" /></span>
+          <span class="ri-icon"><AppIcon name="cloud" :size="18" /></span>
           <span class="ri-label">阿里云 OSS</span>
           <span class="spacer"></span>
           <span class="ri-value">{{ ossOn ? '已配置' : '未配置' }}</span>
@@ -79,6 +70,16 @@
         <button class="row-item" @click="goStorage">
           <span class="ri-icon"><AppIcon name="archive" :size="18" /></span>
           <span class="ri-label">内存数据</span>
+          <span class="spacer"></span>
+          <AppIcon name="chevron-right" :size="16" color="var(--text-soft)" />
+        </button>
+      </div>
+
+      <!-- 分组：使用说明 / 关于 -->
+      <div class="panel sec">
+        <button class="row-item" @click="goHelp">
+          <span class="ri-icon"><AppIcon name="help" :size="18" /></span>
+          <span class="ri-label">使用说明</span>
           <span class="spacer"></span>
           <AppIcon name="chevron-right" :size="16" color="var(--text-soft)" />
         </button>
@@ -92,6 +93,23 @@
       </div>
     </div>
 
+    <!-- 深色模式选择弹窗 -->
+    <Modal :show="appearanceOpen" title="深色模式" width="320px" @close="appearanceOpen = false">
+      <div class="ap-list">
+        <button
+          v-for="a in APPEARANCES"
+          :key="a.k"
+          class="ap-row"
+          :class="{ on: appearance === a.k }"
+          @click="chooseAppearance(a.k)"
+        >
+          <span class="ap-name">{{ a.n }}</span>
+          <AppIcon v-if="appearance === a.k" name="check" :size="18" color="var(--accent)" />
+        </button>
+      </div>
+      <p class="ap-hint">{{ appearanceHint }}</p>
+    </Modal>
+
   </div>
 </template>
 
@@ -100,6 +118,7 @@ import { onMounted, onActivated, computed, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
+import Modal from '@/components/common/Modal.vue'
 import { useNotificationsStore } from '@/stores/notifications'
 import {
   useNotification,
@@ -154,6 +173,8 @@ const curFontName = computed(() => {
 })
 /* 外观：浅色 / 深色 / 跟随系统，切换即时生效并保存 */
 const appearance = computed(() => settings.appearance)
+const appearanceOpen = ref(false)
+const appearanceLabel = computed(() => (APPEARANCES.find((a) => a.k === appearance.value) || APPEARANCES[0]).n)
 const appearanceHint = computed(() => {
   const cur = appearance.value
   if (cur === 'dark') return '当前：深色'
@@ -161,6 +182,10 @@ const appearanceHint = computed(() => {
   return '当前：浅色'
 })
 const sysDark = ref(false)
+async function chooseAppearance(mode) {
+  await pickAppearance(mode)
+  appearanceOpen.value = false
+}
 async function pickAppearance(mode) {
   settings.setAppearance(mode)
   try {
@@ -171,6 +196,9 @@ async function pickAppearance(mode) {
 }
 function goTheme() {
   router.push('/theme')
+}
+function goHelp() {
+  router.push('/help')
 }
 function goAbout() {
   router.push('/about')
@@ -296,18 +324,17 @@ onActivated(refresh)
 .swatch.on { outline: 3px solid var(--text); outline-offset: 2px; transform: scale(1.08); }
 .swatch-name { margin: 6px 12px 12px; }
 .notif-sub { margin: 0; padding: 0 12px 12px; display: flex; align-items: center; gap: 8px; }
-.chips { display: flex; gap: 8px; padding: 4px 12px; }
-.chip {
-  border: 1px solid var(--border);
-  background: var(--bg-soft);
-  border-radius: 999px;
-  padding: 6px 14px;
-  font-size: 12px;
-  color: var(--text);
+/* 深色模式弹窗选项 */
+.ap-list { display: flex; flex-direction: column; }
+.ap-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 13px 4px; border: none; background: transparent;
+  border-bottom: 1px solid var(--border);
+  font-size: 15px; color: var(--text); text-align: left;
 }
-.chip.on { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
-.mode-sub { margin: 0; padding: 8px 12px 12px; }
-.about-sub { margin: 0; padding: 0 12px 12px; }
+.ap-row:last-child { border-bottom: none; }
+.ap-row.on { color: var(--accent); font-weight: 600; }
+.ap-hint { margin: 10px 4px 0; font-size: 12px; color: var(--text-soft); }
 .link-btn { border: none; background: transparent; color: var(--accent); font-size: 12px; padding: 0; }
 
 .spacer { flex: 1 1 auto; }

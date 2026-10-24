@@ -57,6 +57,7 @@ const routes = [
   { path: '/settings/care-texts', name: 'care-texts', component: () => import('@/views/settings/CareTextsView.vue') },
   { path: '/theme', name: 'theme', component: () => import('@/views/ThemeView.vue') },
   { path: '/about', name: 'about', component: () => import('@/views/settings/AboutView.vue') },
+  { path: '/help', name: 'help', component: () => import('@/views/settings/HelpView.vue') },
   { path: '/storage', name: 'storage', component: () => import('@/views/settings/StorageView.vue') },
   { path: '/settings/oss', name: 'oss-settings', component: () => import('@/views/settings/OssView.vue') },
   { path: '/home-card-settings', name: 'home-card-settings', component: HomeCardSettingsView },
