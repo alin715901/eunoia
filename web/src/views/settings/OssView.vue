@@ -285,7 +285,7 @@ select.field {
 .f-btn {
   flex: 1;
   padding: 11px 0;
-  border: 1px solid var(--border);
+  border: 1.5px solid color-mix(in srgb, var(--text) 45%, transparent);
   border-radius: 12px;
   background: var(--bg-soft);
   color: var(--text);
