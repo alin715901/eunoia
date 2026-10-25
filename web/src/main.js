@@ -42,9 +42,11 @@ if (import.meta.env.DEV) {
 
 // Service Worker：缓存同源静态资源，二次访问瞬间打开（GitHub Pages 链路慢的对策）。
 // 直接注册（不等 load 事件：慢链路上 load 可能迟迟不来或时机不可靠）。
-// 相对路径注册，GitHub Pages /<仓库名>/ 子路径部署同样有效。
+// 用 BASE_URL 拼绝对路径：相对路径在深链接（如 /settings/oss）下会解析到
+// /settings/sw.js 而注册失败，SW 就接管不了缓存与通知跳转。
 if ('serviceWorker' in navigator) {
-  navigator.serviceWorker.register('./sw.js')
+  const swUrl = `${import.meta.env.BASE_URL}sw.js`.replace(/\/{2,}/g, '/')
+  navigator.serviceWorker.register(swUrl)
     .then(() => console.log('[sw] 注册成功'))
     .catch((e) => console.warn('[sw] 注册失败（不影响使用）:', e && e.message))
 

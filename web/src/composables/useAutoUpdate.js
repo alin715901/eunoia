@@ -4,6 +4,10 @@ import { onMounted, onUnmounted } from 'vue'
    且部署不是分钟级敏感事，60s 足够及时 */
 const CHECK_MS = 60 * 1000
 
+/* version.json 必须用 BASE_URL 拼绝对路径：相对路径在深链接（如 /settings/oss）
+   下会解析到 /settings/version.json 而 404，自动更新静默失效。 */
+const VERSION_URL = `${import.meta.env.BASE_URL}version.json`.replace(/\/{2,}/g, '/')
+
 /**
  * 自动检测新版本：定期拉取 version.json（构建时由 scripts/version.mjs 写入 dist），
  * 与「当前页面文档自带的构建版本号」（构建时注入 index.html 的 meta）比较，
@@ -25,7 +29,7 @@ function bundleVersion() {
  * 供「关于」页【检查更新】按钮使用，逻辑与生产环境自动轮询复用同一套。 */
 export async function checkForUpdate() {
   try {
-    const res = await fetch('version.json', { cache: 'no-store' })
+    const res = await fetch(VERSION_URL, { cache: 'no-store' })
     if (!res.ok) return 'error'
     const data = await res.json()
     const server = data && data.v
@@ -51,7 +55,7 @@ export function useAutoUpdate() {
 
   async function check() {
     try {
-      const res = await fetch('version.json', { cache: 'no-store' })
+      const res = await fetch(VERSION_URL, { cache: 'no-store' })
       if (!res.ok) return
       const data = await res.json()
       const server = data && data.v

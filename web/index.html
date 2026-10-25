@@ -6,10 +6,10 @@
     <title>Eunoia</title>
     <!-- PWA：可「添加到主屏幕」，独立窗口中后台播放音乐更稳定。
          相对路径：GitHub Pages /<仓库名>/ 子路径部署同样有效 -->
-    <link rel="manifest" href="./manifest.webmanifest" />
-    <link rel="icon" type="image/x-icon" href="./favicon.ico?v=6" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/x-icon" href="/favicon.ico?v=6" />
     <!-- iOS 添加到主屏幕的图标（不透明方形，iOS 自动裁圆角） -->
-    <link rel="apple-touch-icon" href="./apple-touch-icon.png?v=6" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png?v=6" />
     <meta name="theme-color" content="#c5a47e" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="Eunoia" />
@@ -33,7 +33,7 @@
     </script>
     <!-- 运行时配置（public/config.js）：用相对路径，GitHub Pages 子路径部署同样有效。
          module 脚本是延迟执行的，本标签先于它跑完，main.js 里即可同步读 window.__EUNOIA_CONFIG__ -->
-    <script src="./config.js"></script>
+    <script src="/config.js"></script>
   </head>
   <body>
     <div id="app">
@@ -44,7 +44,7 @@
       <div class="boot-static">
         <div class="boot-brand">
           Eunoia
-          <img class="boot-ears" src="./boot-ears.png" alt="" aria-hidden="true" />
+          <img class="boot-ears" src="/boot-ears.png" alt="" aria-hidden="true" />
         </div>
         <div class="boot-progress"><span class="boot-progress-bar"></span></div>
         <div class="boot-text">正在恢复数据…</div>

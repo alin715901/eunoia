@@ -18,7 +18,15 @@
    index.html 带 max-age=600，SW 里默认模式的 fetch 会命中浏览器 HTTP
    缓存返回旧 HTML（旧 bundle → 旧样式/旧逻辑，用户侧表现为「改了没生效」）。
    reload 模式绕过 HTTP 缓存真正联网，HTML 只占一次请求，代价可忽略。 */
-const CACHE = 'eunoia-sw-v8'
+const CACHE = 'eunoia-sw-v9'
+
+/* SW 作用域根（如 https://xxx.github.io/eunoia/）——
+   兜底取 index.html 必须用它拼相对路径：绝对 '/index.html' 指向站点根目录，
+   缓存里根本没有这个键，深链接断网时会连兜底都失效。 */
+const SCOPE_ROOT = self.registration && self.registration.scope
+  ? self.registration.scope.replace(/\/*$/, '/')
+  : './'
+const INDEX_URL = SCOPE_ROOT + 'index.html'
 
 self.addEventListener('install', () => {
   self.skipWaiting()
@@ -54,7 +62,7 @@ self.addEventListener('fetch', (event) => {
           }
           return res
         })
-        .catch(() => caches.match(req).then((c) => c || caches.match('/index.html')))
+        .catch(() => caches.match(req).then((c) => c || caches.match(INDEX_URL)))
     )
     return
   }
@@ -87,7 +95,7 @@ self.addEventListener('fetch', (event) => {
           }
           return res
         })
-        .catch(() => cached || caches.match('/index.html'))
+        .catch(() => cached || caches.match(INDEX_URL))
       return cached || network
     })
   )
@@ -123,8 +131,8 @@ self.addEventListener('push', (event) => {
   try { payload = event.data ? event.data.json() : {} } catch (e) { /* ignore */ }
   const options = {
     body: payload.body || '',
-    icon: './icon-192.png',
-    badge: './icon-192.png',
+    icon: SCOPE_ROOT + 'icon-192.png',
+    badge: SCOPE_ROOT + 'icon-192.png',
     tag: payload.tag || 'eunoia-push',
     data: payload.data || {}
   }

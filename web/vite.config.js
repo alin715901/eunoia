@@ -32,8 +32,10 @@ function wasmInlinePlugin() {
 // 注入 index.html：HTML 解析时即开始并行下载，与主 bundle 时间重叠，
 // 不必等主 JS 执行到动态 import 才发起。
 function wasmPreloadPlugin() {
+  let resolvedConfig = null
   return {
     name: 'eunoia:wasm-preload',
+    configResolved(c) { resolvedConfig = c },
     closeBundle() {
       const distDir = fileURLToPath(new URL('./dist', import.meta.url))
       const assetsDir = join(distDir, 'assets')
@@ -47,7 +49,11 @@ function wasmPreloadPlugin() {
       const htmlPath = join(distDir, 'index.html')
       let html = readFileSync(htmlPath, 'utf8')
       if (html.includes('wasm-data-')) return
-      const link = `<link rel="modulepreload" href="./assets/${wasmChunk}">`
+      /* 必须用 base 拼绝对路径：GitHub Pages 用 404.html 做 SPA 回退，
+         回退页在 /子路径/ 下被打开时，相对路径会解析到 /子路径/assets/… 而 404，
+         表现为「深链接刷新后卡在启动屏」。 */
+      const base = ((resolvedConfig && resolvedConfig.base) || '/').replace(/\/*$/, '/')
+      const link = `<link rel="modulepreload" href="${base}assets/${wasmChunk}">`
       html = html.replace('</head>', `  ${link}\n  </head>`)
       writeFileSync(htmlPath, html)
       console.log('[wasm-preload] 已注入:', link)

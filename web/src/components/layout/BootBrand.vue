@@ -2,9 +2,15 @@
   <div class="boot-brand">
     <span class="boot-brand-text">Eunoia</span>
     <!-- 兔耳朵：透明底 PNG 切图，绝对定位于「a」上方探出，带轻柔摇摆 -->
-    <img src="/boot-ears.png" class="boot-ears-img" alt="" aria-hidden="true" />
+    <img :src="`${base}boot-ears.png`" class="boot-ears-img" alt="" aria-hidden="true" />
   </div>
 </template>
+
+<script setup>
+/* 资源在 GitHub Pages 部署在 /<仓库名>/ 子路径下，硬编码 '/boot-ears.png'
+   会指向站点根目录而 404，用 BASE_URL 拼出正确的绝对路径 */
+const base = import.meta.env.BASE_URL
+</script>
 
 <style scoped>
 .boot-brand {
