@@ -136,7 +136,10 @@
           </div>
           <div class="mm-fld">
             <span class="mm-fld-label">截止日期（可选，可精确到时间）</span>
-            <input v-model="form.due" class="mm-input" type="datetime-local" />
+            <!-- 外包一层：datetime-local 在老内核下盒模型/边框渲染有缺陷，同 textarea 方案根治 -->
+            <div class="mm-input-box">
+              <input v-model="form.due" class="mm-input" type="datetime-local" />
+            </div>
           </div>
           <!-- 提醒：填了截止日期 → 到点 / 提前 N 分钟（含自定义）；没填 → 自选提醒时间。提醒人可选「无」或联系人 -->
           <div class="mm-fld">
@@ -159,7 +162,9 @@
               <!-- 没填截止日期：自选提醒时间 -->
               <div v-else class="mm-fld">
                 <span class="mm-fld-label">提醒时间</span>
-                <input v-model="form.remindAt" class="mm-input mm-remind-at" type="datetime-local" />
+                <div class="mm-input-box">
+                  <input v-model="form.remindAt" class="mm-input mm-remind-at" type="datetime-local" />
+                </div>
               </div>
               <div class="mm-remind-to">
                 <span class="mm-fld-label">提醒人</span>
@@ -668,6 +673,19 @@ onMounted(() => {
   padding: 10px; overflow: hidden;
 }
 .mm-ta-box:focus-within { border-color: var(--accent); }
+/* datetime-local 等同理：这类控件在老内核下盒模型/边框渲染有缺陷，
+   外包一层由 div 画边框，内层 input 零边距撑满（原生日历图标保留） */
+.mm-input-box {
+  display: block; position: relative;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--bg-soft);
+  padding: 10px; overflow: hidden;
+}
+.mm-input-box:focus-within { border-color: var(--accent); }
+.mm-input-box .mm-input {
+  display: block; width: 100%; padding: 0; border: none; border-radius: 0;
+  background: transparent; outline: none; line-height: 20px;
+  -webkit-box-sizing: border-box; box-sizing: border-box;
+}
 .mm-ta-box .mm-ta, .mm-ta-box .mm-textarea {
   display: block; width: 100%; padding: 0; border: none; border-radius: 0;
   background: transparent; outline: none; resize: none;
