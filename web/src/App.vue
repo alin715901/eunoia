@@ -358,6 +358,13 @@ onUnmounted(() => {
   align-items: center;
   justify-content: center;
   padding: 16px;
+  /* 电脑端桌面壁纸：同色系（奶茶驼 + 奶油）柔和渐变 + 两团很淡的柔光，
+     手机框悬浮其上；手机端（≤500px）被填满、背景不可见，无需处理 */
+  background:
+    radial-gradient(620px 520px at 10% 12%, rgba(197, 164, 126, 0.12), transparent 78%),
+    radial-gradient(720px 580px at 92% 90%, rgba(197, 164, 126, 0.10), transparent 78%),
+    linear-gradient(135deg, #fbfaf7 0%, #f4f0ea 52%, #efe8de 100%);
+  background-attachment: fixed;
 }
 
 .phone-frame {
