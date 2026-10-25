@@ -129,7 +129,7 @@
             <span class="mm-fld-label">截止日期（可选，可精确到时间）</span>
             <input v-model="form.due" class="mm-input" type="datetime-local" />
           </div>
-          <!-- 提醒：到点 / 提前 N 分钟；提醒人「无」= 屏幕中间弹窗，选联系人 = 到点由对方发消息提醒我 -->
+          <!-- 提醒：到点 / 提前 N 分钟；提醒人选「无」= 弹窗提醒我，选联系人 = 弹窗文案前缀加上对方名字 -->
           <div class="mm-fld">
             <div class="mm-remind-head">
               <span class="mm-fld-label">提醒</span>

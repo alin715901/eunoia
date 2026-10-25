@@ -1,14 +1,11 @@
-// 备忘录待办提醒：到点（或提前 N 分钟）触发。按提醒人配置分两路：
-//   ① 选了联系人 → 以对方身份往聊天里发一条「提醒你{标题}」（无标题发「提醒你该完成待办事项了」），
-//      走 chat_messages 落库 + 事件广播（typing/new_messages/badge_update），
-//      界面呈现为「对方发来一条消息」的自然消息提示，不再额外弹站内提示；
-//   ② 选「无」→ 广播 memo_reminder 站内事件，由 MemoReminderDialog 弹屏幕中间的系统级弹窗
-//      （不是顶部 toast）；页面在后台时改发浏览器通知，回到前台再补弹。
+// 备忘录待办提醒：到点（或提前 N 分钟）触发。统一走屏幕中间的系统弹窗：
+//   广播 memo_reminder 站内事件 → MemoReminderDialog 弹窗呈现（不是顶部 toast）；
+//   选了联系人时文案前缀加上对方名字（「XX 提醒你{标题}」）；
+//   页面在后台时改发浏览器通知，回到前台再补弹。
 // 触发后写 extra.remind.fired 防重复；用户在备忘里改存（save）会重置 fired 重新装弹。
 // 由 ticks.js 的 60s 轮询驱动：关页期间到期的事件在下次开页时立即补发（时间戳天然支持离线补偿）。
 import db from '../db'
 import * as notification from './notification.service'
-import { sendContactText } from './chat.service'
 
 /* due: 'YYYY-MM-DD' 或 'YYYY-MM-DDTHH:mm' → 毫秒时间戳；只给了日期时按当天 09:00 算 */
 export function dueToMs(s) {
@@ -54,36 +51,20 @@ function fireReminder(row, ex, rm) {
   const subject = String(row.title || '').trim()
   const text = subject ? `提醒你${subject}` : '提醒你该完成待办事项了'
 
+  /* 选了联系人：弹窗文案前缀加上对方名字（「XX 提醒你{标题}」）；联系人已删则退化为无前缀 */
+  let contactName = ''
   const cid = Number(rm.contactId) || 0
   if (cid) {
-    const c = db.prepare('SELECT id, name, avatar FROM contacts WHERE id = ?').get(cid)
-    if (c) {
-      const m = sendContactText(cid, text, { proactive: true })
-      if (m) {
-        const cid2 = cid
-        notification.broadcast('typing', { contactId: cid2, typing: true })
-        notification.broadcast('new_messages', {
-          contactId: cid2,
-          messages: [m],
-          avatar: c.avatar || '',
-          name: c.name || '对方'
-        })
-        notification.broadcast('badge_update', {})
-        setTimeout(() => notification.broadcast('typing', { contactId: cid2, typing: false }), 2500)
-      }
-      /* 选了提醒人：由对方发消息提醒我（界面已是自然消息提示），不再弹站内提示 */
-      markFired(row, ex, rm)
-      return
-    }
-    /* 联系人已不存在：降级为站内弹窗提醒 */
+    const c = db.prepare('SELECT id, name FROM contacts WHERE id = ?').get(cid)
+    if (c) contactName = c.name || ''
   }
 
-  /* 选「无」（或联系人失效）：广播站内事件 → MemoReminderDialog 弹屏幕中间的系统弹窗 */
+  /* 站内事件：MemoReminderDialog 接住 → 弹屏幕中间的系统弹窗 */
   notification.broadcast('memo_reminder', {
     id: row.id,
-    title: String(row.title || '').trim() || '待办事项',
+    title: subject || '待办事项',
     text,
-    contactName: ''
+    contactName
   })
 
   markFired(row, ex, rm)

@@ -265,9 +265,8 @@ export function connect() {
     }
   })
 
-  /* 备忘录待办提醒（提醒人选「无」）不再走这里：
-     中间弹窗由全局组件 MemoReminderDialog 直接监听 eunoia:memo_reminder 呈现；
-     选了联系人时对方发来的消息即自然消息提示（new_messages 链路），无需额外弹窗 */
+  /* 备忘录待办提醒不再走这里：无论提醒人选「无」还是联系人，
+     统一由全局组件 MemoReminderDialog 监听 eunoia:memo_reminder 弹中间系统弹窗呈现 */
 
   source.addEventListener('call_invite', (e) => {
     try {

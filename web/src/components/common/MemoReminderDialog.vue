@@ -1,6 +1,7 @@
 <template>
-  <!-- 备忘录待办提醒（提醒人选「无」）：屏幕中间的系统弹窗。
-       事件源：memoReminder.service 广播的 eunoia:memo_reminder。
+  <!-- 备忘录待办提醒：屏幕中间的系统弹窗（提醒人无论选「无」还是联系人都走这里）。
+       事件源：memoReminder.service 广播的 eunoia:memo_reminder；
+       选了联系人时文案前缀加上对方名字（「XX 提醒你{标题}」）。
        页面在后台时先发浏览器通知，弹窗挂起，回到前台再逐个补弹。 -->
   <Modal :show="!!current" title="待办提醒" width="320px" @close="dismiss">
     <div class="mrd-body">
@@ -10,7 +11,7 @@
             fill="currentColor" />
         </svg>
       </div>
-      <p class="mrd-text">{{ current ? current.text : '' }}</p>
+      <p class="mrd-text">{{ displayText }}</p>
       <p class="mrd-sub">到点啦，去备忘录看看吧</p>
     </div>
     <template #footer>
@@ -21,7 +22,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
 import Modal from './Modal.vue'
 import { notify, notificationPermission } from '@/composables/useNotification'
@@ -34,6 +35,13 @@ const queue = ref([])
 const current = ref(null)
 const pendingHidden = ref([])
 
+/* 展示文案：选了联系人时前缀加上对方名字（「XX 提醒你{标题}」） */
+const displayText = computed(() => {
+  const c = current.value
+  if (!c) return ''
+  return c.contactName ? `${c.contactName} ${c.text}` : c.text
+})
+
 function pushEvent(detail) {
   if (!detail || !detail.text) return
   if (typeof document !== 'undefined' && document.hidden) {
@@ -43,7 +51,7 @@ function pushEvent(detail) {
     const settings = useSettingsStore()
     const notifyOn = settings.global?.notifications?.browser !== false
     if (notifyOn && notificationPermission() === 'granted') {
-      notify('待办提醒', { body: detail.text, tag: `memo-reminder-${detail.id || Date.now()}` })
+      notify('待办提醒', { body: detail.contactName ? `${detail.contactName} ${detail.text}` : detail.text, tag: `memo-reminder-${detail.id || Date.now()}` })
     }
     return
   }
@@ -98,7 +106,7 @@ onUnmounted(() => {
 .mrd-bell { color: var(--accent); display: flex; justify-content: center; margin-bottom: 10px; }
 .mrd-text { font-size: 15px; font-weight: 600; color: var(--text); margin: 0 0 6px; line-height: 1.6; word-break: break-word; }
 .mrd-sub { font-size: 12px; color: var(--text-soft); margin: 0; }
-.mrd-btn { border: none; border-radius: 10px; padding: 10px 18px; font-size: 14px; }
+.mrd-btn { flex: 1; border: none; border-radius: 10px; padding: 12px 8px; font-size: 14px; }
 .mrd-btn.ghost { background: var(--bg-soft); color: var(--text); }
 .mrd-btn.primary { background: var(--accent); color: #fff; }
 </style>
