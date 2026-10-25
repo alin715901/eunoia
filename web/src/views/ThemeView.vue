@@ -191,7 +191,7 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import ImageCropper from '@/components/common/ImageCropper.vue'
-import { useSettingsStore, FONTS } from '@/stores/settings'
+import { useSettingsStore, FONTS, ensurePresetWebfonts } from '@/stores/settings'
 import { useNotificationsStore } from '@/stores/notifications'
 import { uploadFile } from '@/api/settings'
 import { compressImage } from '@/utils/image'
@@ -432,6 +432,9 @@ function presetDesc(p) {
 }
 
 onMounted(async () => {
+  /* 预热手写·马善政等自托管 webfont：chip 预览各自字体栈，
+     未选中前也按真实字形渲染，而不是回退字体 */
+  ensurePresetWebfonts()
   await settings.load().catch(() => {})
   fontCss.value = theme.value.fontCss || ''
   hexDraft.value = theme.value.accent || ''

@@ -46,7 +46,7 @@
 import { ref, computed, onMounted } from 'vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import { useContactSettingsPage } from '@/composables/useContactSettingsPage'
-import { FONTS } from '@/stores/settings'
+import { FONTS, ensurePresetWebfonts } from '@/stores/settings'
 import { fontCssToStyle } from '@/utils/fontCss'
 import { notify } from '@/utils/dialog'
 
@@ -87,6 +87,9 @@ function clearFontCss() {
 }
 
 onMounted(async () => {
+  /* 预热手写·马善政等自托管 webfont：chip 预览各自字体栈，
+     未选中前也按真实字形渲染，而不是回退字体 */
+  ensurePresetWebfonts()
   const s = await load()
   if (!s) return
   chatFont.value = s.chat_font || ''

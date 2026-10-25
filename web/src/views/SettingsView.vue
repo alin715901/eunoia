@@ -309,7 +309,6 @@ onActivated(refresh)
 }
 .row-item:last-child { border-bottom: none; }
 .row-item.no-divide { border-bottom: none; }
-.row-item:not(.static):active { background: var(--bg-soft); }
 .ri-icon { color: var(--text); display: inline-flex; }
 .ri-label { display: flex; align-items: center; gap: 6px; flex: 0 1 auto; }
 .ri-value { font-size: 13px; color: var(--text-soft); max-width: 130px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

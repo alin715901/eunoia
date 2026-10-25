@@ -155,6 +155,13 @@ function ensureWebfont(family) {
   document.head.appendChild(link)
 }
 
+/* 预热：把带 wf 的预设依赖的自托管 webfont 提前加载（如手写·马善政）。
+   字体选择页的预览 chip 各自按自己的字体栈渲染，若不预热，未选中的 chip
+   会显示回退字体而非真实字形。幂等，可重复调用。 */
+export function ensurePresetWebfonts() {
+  FONTS.forEach((f) => f.wf && ensureWebfont(f.wf))
+}
+
 /* 卡片透明度：数值越低，主页卡片越透，主页背景图越清晰 */
 export function applyCardAlpha(alpha) {
   if (typeof document === 'undefined') return
