@@ -138,6 +138,8 @@ export function connect() {
         // 不在该会话内接收：累加未读角标（列表红点实时更新），并弹窗
         const inc = (messages || []).filter((m) => m.sender === 'contact').length
         if (inc && contact) contact.unread = (Number(contact.unread) || 0) + inc
+        /* inc 为 0 表示这批消息全是「我」自己发的（如从游戏大厅发出的游戏邀请卡片）：
+           不弹窗、不发系统通知——没必要提醒自己「你刚发了条消息」，只更新列表预览与角标 */
         // 非当前会话且未免打扰 → 消息弹窗（头像 + 名称 + 内容）
         const notifications = useNotificationsStore()
         const last = (messages || []).slice(-1)[0]
@@ -156,7 +158,7 @@ export function connect() {
         const preview = last ? previewOf(last) : ''
         /* 影院播放器打开中：消息已在播放器聊天室里实时可见，
            不再从屏幕顶部弹消息提示（浅色弹条会盖住视频顶部，即"白带"） */
-        if (!useCinemaStore().playerOpen) {
+        if (inc > 0 && !useCinemaStore().playerOpen) {
           notifications.pushToast({
             title,
             text: preview,
@@ -173,7 +175,7 @@ export function connect() {
         // 页面非聚焦、全局通知开启、未免打扰、且浏览器已授权 → 系统通知
         const settings = useSettingsStore()
         const notifyOn = settings.global?.notifications?.browser !== false
-        if (!isPageFocused() && notifyOn && notificationPermission() === 'granted') {
+        if (inc > 0 && !isPageFocused() && notifyOn && notificationPermission() === 'granted') {
           notify(title, { body: preview, route: `/contacts/${contactId}/chat` })
         }
 

@@ -178,6 +178,19 @@ function sendInvite(contactId, gameKind = 'memory') {
     .run(contactId, metaOf(inv), seq, Math.floor(Date.now() / 1000));
   db.prepare('UPDATE game_invites SET message_id = ? WHERE id = ?').run(Number(mi.lastInsertRowid), invId);
 
+  /* 广播新消息：让正开着该会话的聊天页立即出现邀请卡片，聊天列表预览/角标同步刷新。
+     之前只有「TA 邀我」广播、「我邀 TA」不广播——从游戏大厅发完邀请回到聊天，
+     keep-alive 缓存的聊天页不会重新加载，邀请卡片就死活不出现（列表预览却有，对不上）。
+     与 TA 邀我 / 一起听 / 一起观影 / 陪伴邀请的处理保持一致。 */
+  const info2 = effectiveContactInfo(db, contactId);
+  notification.broadcast('new_messages', {
+    contactId,
+    messages: [db.prepare('SELECT * FROM chat_messages WHERE id = ?').get(Number(mi.lastInsertRowid))],
+    avatar: info2.avatar,
+    name: info2.name
+  });
+  notification.broadcast('badge_update', settingsRepo.getBadges());
+
   setTimeout(() => respondAsContact(invId), randInt(4000, 10000));
   return { id: invId };
 }

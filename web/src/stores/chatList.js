@@ -45,6 +45,17 @@ export const useChatListStore = defineStore('chatList', {
       ) {
         text = '（一条卡片消息）'
       }
+      /* 邀请/通话/提问等 text 是 JSON 元数据的卡片消息：映射成可读摘要，
+         与 getChatList 的预览口径一致——否则列表会直接露出原始 JSON。
+         游戏邀请从大厅发出时也会走这里（我发出的邀请同样要广播） */
+      else if (msg.content_type === 'game_invite') text = '[游戏邀请]'
+      else if (msg.content_type === 'listen_invite') text = '[一起听歌]'
+      else if (msg.content_type === 'cinema_invite') text = '[一起观影]'
+      else if (msg.content_type === 'companion_invite') text = '[陪伴邀请]'
+      else if (msg.content_type === 'call') text = '[通话]'
+      else if (msg.content_type === 'question') {
+        try { text = '[提问] ' + (JSON.parse(msg.text || '{}').question || '') } catch (e) { text = '[提问]' }
+      } else if (msg.content_type === 'poke') text = msg.text || '拍了拍你'
       row.lastText = text
       row.lastSender = msg.sender
       row.lastAuthorMember = msg.author_member_id ?? null

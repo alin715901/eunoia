@@ -166,6 +166,9 @@ onActivated(async () => {
   /* keep-alive 复用：再次进入同一聊天（从列表重进 / 从设置返回）时
      onMounted 不会重新执行，必须在这里补标已读，
      否则"列表有角标 → 进聊天 → 返回列表角标还在" */
+  /* 离开期间别处写入的消息不会广播进本 store（如从游戏大厅发出的游戏邀请卡片），
+     先补拉一次最新消息再标已读——否则「聊天列表有预览、点进聊天却看不到」 */
+  try { await chat.syncFromServer(props.id) } catch (e) { /* 补拉失败不阻断进入 */ }
   await chat.markRead(props.id)
 })
 </script>
