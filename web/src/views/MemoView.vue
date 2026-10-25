@@ -79,16 +79,19 @@
               <!-- 卡片底部：创建日期（待办另显截止日期，时间在日期下面） -->
               <div class="mm-foot">
                 <span class="mm-date">{{ fmtCreated(m) }}</span>
-                <span v-if="m.type === 'todo' && m.due" class="mm-due">
-                  <!-- 设了提醒：截止日期前挂个小铃铛 -->
+                <!-- 设了提醒就挂小铃铛；有截止日期显截止日期，没有则显自选的提醒时间 -->
+                <span v-if="m.type === 'todo' && (m.due || (m.remind && Number(m.remind.on)))" class="mm-due">
                   <span class="mm-due-line">
                     <svg v-if="m.remind && Number(m.remind.on)" class="mm-remind-ico" viewBox="0 0 24 24" width="12" height="12" aria-label="已设提醒">
                       <path d="M12 3a5.5 5.5 0 0 0-5.5 5.5c0 4.2-1.6 5.6-2.3 6.1-.4.3-.2 1 .3 1h15c.5 0 .7-.7.3-1-.7-.5-2.3-1.9-2.3-6.1A5.5 5.5 0 0 0 12 3zM10 17.5a2 2 0 0 0 4 0h-4z"
                         fill="#c0724f" />
                     </svg>
-                    <span class="mm-due-date">{{ fmtDue(m.due) }}</span>
+                    <span v-if="m.due" class="mm-due-date">{{ fmtDue(m.due) }}</span>
+                    <span v-else-if="m.remind && m.remind.at" class="mm-due-date">{{ fmtDue(m.remind.at) }}</span>
+                    <span v-else class="mm-due-date">已设提醒</span>
                   </span>
                   <span v-if="dueTimeOf(m.due)" class="mm-due-time">{{ dueTimeOf(m.due) }}</span>
+                  <span v-else-if="m.remind && m.remind.at && dueTimeOf(m.remind.at)" class="mm-due-time">{{ dueTimeOf(m.remind.at) }}</span>
                 </span>
               </div>
             </div>
@@ -129,19 +132,28 @@
             <span class="mm-fld-label">截止日期（可选，可精确到时间）</span>
             <input v-model="form.due" class="mm-input" type="datetime-local" />
           </div>
-          <!-- 提醒：到点 / 提前 N 分钟；提醒人选「无」= 弹窗提醒我，选联系人 = 弹窗文案前缀加上对方名字 -->
+          <!-- 提醒：填了截止日期 → 到点 / 提前 N 分钟（含自定义）；没填 → 自选提醒时间。提醒人可选「无」或联系人 -->
           <div class="mm-fld">
             <div class="mm-remind-head">
               <span class="mm-fld-label">提醒</span>
-              <ToggleSwitch v-model="form.remindOn" :disabled="!form.due" />
+              <ToggleSwitch v-model="form.remindOn" />
             </div>
-            <template v-if="form.remindOn && form.due">
-              <div class="mm-rm-chips">
-                <button class="mm-rm-chip" :class="{ on: form.remindOffset === 0 }" @click="form.remindOffset = 0">到点提醒</button>
-                <button class="mm-rm-chip" :class="{ on: form.remindOffset > 0 }" @click="form.remindOffset = form.remindOffset > 0 ? form.remindOffset : 15">提前提醒</button>
-              </div>
-              <div v-if="form.remindOffset > 0" class="mm-rm-chips">
-                <button v-for="o in REMIND_OFFSETS" :key="o.v" class="mm-rm-chip sm" :class="{ on: form.remindOffset === o.v }" @click="form.remindOffset = o.v">{{ o.n }}</button>
+            <template v-if="form.remindOn">
+              <!-- 有截止日期：到点 / 提前 -->
+              <template v-if="form.due">
+                <div class="mm-rm-chips">
+                  <button class="mm-rm-chip" :class="{ on: form.remindOffset === 0 }" @click="form.remindOffset = 0">到点提醒</button>
+                  <button class="mm-rm-chip" :class="{ on: form.remindOffset > 0 }" @click="form.remindOffset = form.remindOffset > 0 ? form.remindOffset : 15">提前提醒</button>
+                </div>
+                <div v-if="form.remindOffset > 0" class="mm-rm-chips">
+                  <button v-for="o in REMIND_OFFSETS" :key="o.v" class="mm-rm-chip sm" :class="{ on: form.remindOffset === o.v }" @click="form.remindOffset = o.v">{{ o.n }}</button>
+                  <button class="mm-rm-chip sm" :class="{ on: isCustomOffset }" @click="openCustomOffset">{{ customOffsetLabel }}</button>
+                </div>
+              </template>
+              <!-- 没填截止日期：自选提醒时间 -->
+              <div v-else class="mm-fld">
+                <span class="mm-fld-label">提醒时间</span>
+                <input v-model="form.remindAt" class="mm-input mm-remind-at" type="datetime-local" />
               </div>
               <div class="mm-remind-to">
                 <span class="mm-fld-label">提醒人</span>
@@ -154,8 +166,8 @@
                 </button>
               </div>
               <p v-if="remindHint" class="mm-remind-hint">{{ remindHint }}</p>
+              <p v-else-if="!form.due && !form.remindAt" class="mm-remind-hint">请选择提醒时间</p>
             </template>
-            <p v-else-if="!form.due" class="mm-remind-hint">先设置截止日期，才能开启提醒</p>
           </div>
         </template>
         <template v-else>
@@ -206,11 +218,24 @@
         </button>
       </div>
     </Modal>
+
+    <!-- 自定义提前时间：按分钟输入 -->
+    <Modal :show="customOffsetOpen" title="自定义提前时间" width="300px" @close="customOffsetOpen = false">
+      <div class="mm-co-row">
+        <input v-model.number="customOffsetMin" class="mm-input" type="number" min="1" max="525600" placeholder="分钟" />
+        <span class="mm-co-unit">分钟前</span>
+      </div>
+      <p class="mm-co-tip">按分钟填写：90 = 1 小时 30 分钟前，1440 = 1 天前</p>
+      <template #footer>
+        <button class="mm-btn ghost" @click="customOffsetOpen = false">取消</button>
+        <button class="mm-btn primary" @click="confirmCustomOffset">确定</button>
+      </template>
+    </Modal>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, watch } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import Modal from '@/components/common/Modal.vue'
@@ -219,7 +244,7 @@ import { useItems } from '@/composables/useItems'
 import { useNotificationsStore } from '@/stores/notifications'
 import { useContactsStore } from '@/stores/contacts'
 import { confirmDialog } from '@/utils/dialog'
-import { remindAtMs } from '@/local/services/memoReminder.service'
+import { remindAtMs, dueToMs } from '@/local/services/memoReminder.service'
 
 const { items, loading, load, add, update, remove: removeItem } = useItems('memo')
 const toast = useNotificationsStore()
@@ -385,9 +410,9 @@ async function confirmDelete(m) {
 /* ═══ 新建 / 编辑 ═══ */
 const show = ref(false)
 const editing = ref(null)
-const form = reactive({ id: null, type: 'todo', title: '', todos: [], note: '', color: PALETTE[0], pinned: false, due: '', remindOn: false, remindOffset: 0, remindContact: 0 })
+const form = reactive({ id: null, type: 'todo', title: '', todos: [], note: '', color: PALETTE[0], pinned: false, due: '', remindOn: false, remindOffset: 0, remindContact: 0, remindAt: '' })
 
-/* 提醒人候选：「无」= 屏幕中间弹窗提醒我；其余为联系人（排除群聊与已拉黑） */
+/* 提醒人候选：「无」= 弹窗提醒我；其余为联系人（排除群聊与已拉黑） */
 const contactPicker = ref(false)
 const remindContactOptions = computed(() => [
   { id: 0, name: '无' },
@@ -402,25 +427,49 @@ function pickContact(id) {
   contactPicker.value = false
 }
 
-/* 提醒时间预览：「将于 10月26日 09:00 由「XX」提醒你」/「弹窗提醒你」 */
+/* 自定义提前时间（分钟）：与预设值都不同时高亮「自定义」chip */
+const customOffsetOpen = ref(false)
+const customOffsetMin = ref(15)
+const isCustomOffset = computed(() => form.remindOffset > 0 && !REMIND_OFFSETS.some((o) => o.v === form.remindOffset))
+const customOffsetLabel = computed(() => (isCustomOffset.value ? `自定义 ${fmtOffset(form.remindOffset)}` : '自定义'))
+function openCustomOffset() {
+  customOffsetMin.value = isCustomOffset.value ? form.remindOffset : 15
+  customOffsetOpen.value = true
+}
+function confirmCustomOffset() {
+  const min = Math.round(Number(customOffsetMin.value) || 0)
+  if (!min || min < 1) {
+    toast.pushToast({ title: '请填写至少 1 分钟' })
+    return
+  }
+  form.remindOffset = Math.min(min, 525600) /* 上限一年 */
+  customOffsetOpen.value = false
+}
+/* 分钟数 → 可读文案：90 → 「1 小时 30 分钟」，1440 → 「1 天」 */
+function fmtOffset(min) {
+  const m = Math.max(1, Math.round(Number(min) || 0))
+  if (m < 60) return `${m} 分钟`
+  if (m % 1440 === 0) return `${m / 1440} 天`
+  if (m % 60 === 0) return `${m / 60} 小时`
+  const d = Math.floor(m / 1440)
+  const h = Math.floor((m % 1440) / 60)
+  const mm = m % 60
+  return [d ? `${d} 天` : '', h ? `${h} 小时` : '', mm ? `${mm} 分钟` : ''].filter(Boolean).join(' ')
+}
+
+/* 提醒时间预览：
+   填了截止日期 → 「将于 10月26日 09:00 由「XX」提醒你 / 弹窗提醒你」（截止 ± 提前量）；
+   没填截止日期 → 按自选的提醒时间预览 */
 const remindHint = computed(() => {
-  if (!form.due || !form.remindOn) return ''
-  const at = remindAtMs(form.due, form.remindOffset)
-  if (!at) return ''
-  const d = new Date(at)
+  if (!form.remindOn) return ''
+  const atMs = form.due ? remindAtMs(form.due, form.remindOffset) : dueToMs(form.remindAt)
+  if (!atMs) return ''
+  const d = new Date(atMs)
   const pad = (n) => String(n).padStart(2, '0')
   const when = `${d.getMonth() + 1}月${d.getDate()}日 ${pad(d.getHours())}:${pad(d.getMinutes())}`
   const c = remindContactOptions.value.find((x) => x.id === form.remindContact)
   return c && c.id > 0 ? `将于 ${when} 由「${c.name}」提醒你` : `将于 ${when} 弹窗提醒你`
 })
-
-/* 截止日期被清空时自动关闭提醒（提醒依赖截止时间） */
-watch(
-  () => form.due,
-  (v) => {
-    if (!v && form.remindOn) form.remindOn = false
-  }
-)
 
 /* 自动增高的多行输入：随内容换行拉高，长文本不再被横向截断。
    scrollLeft 归零是兜底：任何情况下输入内容左对齐显示，绝不出现「左边被截」。
@@ -457,7 +506,7 @@ function onItemKey(e) {
 
 function openAdd() {
   editing.value = null
-  Object.assign(form, { id: null, type: 'todo', title: '', todos: [{ text: '', done: false }], note: '', color: PALETTE[0], pinned: false, due: '', remindOn: false, remindOffset: 0, remindContact: 0 })
+  Object.assign(form, { id: null, type: 'todo', title: '', todos: [{ text: '', done: false }], note: '', color: PALETTE[0], pinned: false, due: '', remindOn: false, remindOffset: 0, remindContact: 0, remindAt: '' })
   openId.value = null
   show.value = true
 }
@@ -473,9 +522,10 @@ function openEdit(m) {
     color: m.color,
     pinned: m.pinned,
     due: m.due || '',
-    remindOn: !!(rm && Number(rm.on) && m.due),
+    remindOn: !!(rm && Number(rm.on)),
     remindOffset: rm && Number(rm.offset) > 0 ? Number(rm.offset) : 0,
-    remindContact: rm && Number(rm.contactId) ? Number(rm.contactId) : 0
+    remindContact: rm && Number(rm.contactId) ? Number(rm.contactId) : 0,
+    remindAt: rm && rm.at ? rm.at : ''
   })
   show.value = true
 }
@@ -502,9 +552,16 @@ async function save() {
     form.type === 'todo'
       ? { title: form.title.trim(), body: '', extra: { type: 'todo', color: form.color, pinned: form.pinned ? 1 : 0, todos: form.todos, due: form.due || '' } }
       : { title: '', body: form.note.trim(), extra: { type: 'note', color: form.color, pinned: form.pinned ? 1 : 0, todos: [] } }
-  /* 提醒配置（仅待办 + 填了截止日期才落库）；fired 每次保存重置——改存即重新装弹 */
-  if (form.type === 'todo' && form.remindOn && form.due) {
-    payload.extra.remind = { on: 1, offset: form.remindOffset, contactId: form.remindContact, fired: 0 }
+  /* 提醒配置（仅待办）：fired 每次保存重置——改存即重新装弹。
+     填了截止日期 → 按截止 ± 提前量；没填 → 必须自选提醒时间 */
+  if (form.type === 'todo' && form.remindOn) {
+    if (!form.due && !form.remindAt) {
+      toast.pushToast({ title: '请选择提醒时间' })
+      return
+    }
+    const rm = { on: 1, offset: form.remindOffset, contactId: form.remindContact, fired: 0 }
+    if (!form.due) rm.at = form.remindAt
+    payload.extra.remind = rm
   }
   const id = editing.value
   close()
@@ -632,6 +689,11 @@ onMounted(() => {
 .mr-pick-item.on { color: var(--accent); font-weight: 600; }
 .mr-pick-item.on .mr-pick-name { color: var(--accent); }
 .mr-pick-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 自定义提前时间弹窗 */
+.mm-co-row { display: flex; align-items: center; gap: 10px; }
+.mm-co-row .mm-input { flex: 1; min-width: 0; }
+.mm-co-unit { font-size: 14px; color: var(--text-soft); flex: 0 0 auto; }
+.mm-co-tip { font-size: 11.5px; color: var(--text-soft); margin: 10px 0 0; line-height: 1.6; }
 .mm-due-line { display: flex; align-items: center; gap: 3px; }
 .mm-remind-ico { flex: 0 0 auto; }
 .mm-fld { margin-top: 12px; }

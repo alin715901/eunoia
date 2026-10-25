@@ -1,7 +1,8 @@
-// 备忘录待办提醒：到点（或提前 N 分钟）触发。统一走屏幕中间的系统弹窗：
+// 备忘录待办提醒：到点（或提前 N 分钟、或自选的提醒时间）触发。统一走屏幕中间的系统弹窗：
 //   广播 memo_reminder 站内事件 → MemoReminderDialog 弹窗呈现（不是顶部 toast）；
 //   选了联系人时文案前缀加上对方名字（「XX 提醒你{标题}」）；
 //   页面在后台时改发浏览器通知，回到前台再补弹。
+// 提醒时间：填了截止日期 = 截止 ± 提前量；没填截止日期 = 用户自选的提醒时间（extra.remind.at）。
 // 触发后写 extra.remind.fired 防重复；用户在备忘里改存（save）会重置 fired 重新装弹。
 // 由 ticks.js 的 60s 轮询驱动：关页期间到期的事件在下次开页时立即补发（时间戳天然支持离线补偿）。
 import db from '../db'
@@ -16,11 +17,13 @@ export function dueToMs(s) {
   return Number.isFinite(t) ? t : 0
 }
 
-/* 提醒时间（毫秒）= 截止时间 - 提前分钟数 */
-export function remindAtMs(due, offsetMin) {
+/* 提醒时间（毫秒）：
+   填了截止日期 → 截止时间 - 提前分钟数（到点提醒 offset=0）；
+   没填截止日期 → 用自选的提醒时间 at（'YYYY-MM-DD' | 'YYYY-MM-DDTHH:mm'） */
+export function remindAtMs(due, offsetMin, at) {
   const dueMs = dueToMs(due)
-  if (!dueMs) return 0
-  return dueMs - Math.max(0, Number(offsetMin) || 0) * 60000
+  if (dueMs) return dueMs - Math.max(0, Number(offsetMin) || 0) * 60000
+  return dueToMs(at)
 }
 
 export function memoReminderTick() {
@@ -40,7 +43,7 @@ export function memoReminderTick() {
     }
     const rm = ex && ex.remind
     if (!rm || !Number(rm.on) || Number(rm.fired)) continue
-    const at = remindAtMs(ex.due, rm.offset)
+    const at = remindAtMs(ex.due, rm.offset, rm.at)
     if (!at || now < at) continue
     fireReminder(r, ex, rm)
   }
