@@ -265,6 +265,29 @@ export function connect() {
     }
   })
 
+  /* 备忘录待办提醒：到点（或提前）触发。选了联系人的话消息已同时发进聊天，
+     这里负责「提醒我」这一路：站内弹窗（可点进备忘录）+ 页面在后台时的系统通知 */
+  source.addEventListener('memo_reminder', (e) => {
+    try {
+      const d = JSON.parse(e.data)
+      const notifications = useNotificationsStore()
+      notifications.pushToast({
+        title: '待办提醒',
+        text: d.contactName ? `${d.text}（已提醒${d.contactName}）` : d.text,
+        type: 'message',
+        duration: 5000,
+        route: '/memo'
+      })
+      const settings = useSettingsStore()
+      const notifyOn = settings.global?.notifications?.browser !== false
+      if (!isPageFocused() && notifyOn && notificationPermission() === 'granted') {
+        notify('待办提醒', { body: d.text })
+      }
+    } catch (err) {
+      /* ignore */
+    }
+  })
+
   source.addEventListener('call_invite', (e) => {
     try {
       const { groupId, contactId, name, avatar, memberName, isGroup } = JSON.parse(e.data)

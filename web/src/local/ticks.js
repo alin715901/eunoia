@@ -20,6 +20,7 @@ import { contactInviteTick as listenInviteTick } from './services/listen.service
 import { contactInviteTick as cinemaInviteTick } from './services/cinema-together.service'
 import { contactInviteTick as gameInviteTick } from './services/games.service'
 import { contactFavTick } from './services/music.service'
+import { memoReminderTick } from './services/memoReminder.service'
 
 const TICK_MS = 60 * 1000
 const CALL_CHECK_MS = 60 * 60 * 1000
@@ -75,6 +76,11 @@ function runMinuteTicks() {
   }
   try {
     redpacketTick()
+  } catch (e) {
+    /* ignore */
+  }
+  try {
+    memoReminderTick()
   } catch (e) {
     /* ignore */
   }
@@ -214,6 +220,7 @@ export function startTicks() {
   /* 仅开发环境：把经期关怀 tick 暴露到 window，供自动化验证手动触发（生产构建不含） */
   if (import.meta.env.DEV) {
     window.__periodCareTick = periodCareTick
+    window.__memoReminderTick = memoReminderTick
   }
 }
 

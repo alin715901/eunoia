@@ -80,7 +80,14 @@
               <div class="mm-foot">
                 <span class="mm-date">{{ fmtCreated(m) }}</span>
                 <span v-if="m.type === 'todo' && m.due" class="mm-due">
-                  <span class="mm-due-date">{{ fmtDue(m.due) }}</span>
+                  <!-- 设了提醒：截止日期前挂个小铃铛 -->
+                  <span class="mm-due-line">
+                    <svg v-if="m.remind && Number(m.remind.on)" class="mm-remind-ico" viewBox="0 0 24 24" width="12" height="12" aria-label="已设提醒">
+                      <path d="M12 3a5.5 5.5 0 0 0-5.5 5.5c0 4.2-1.6 5.6-2.3 6.1-.4.3-.2 1 .3 1h15c.5 0 .7-.7.3-1-.7-.5-2.3-1.9-2.3-6.1A5.5 5.5 0 0 0 12 3zM10 17.5a2 2 0 0 0 4 0h-4z"
+                        fill="#c0724f" />
+                    </svg>
+                    <span class="mm-due-date">{{ fmtDue(m.due) }}</span>
+                  </span>
                   <span v-if="dueTimeOf(m.due)" class="mm-due-time">{{ dueTimeOf(m.due) }}</span>
                 </span>
               </div>
@@ -109,10 +116,11 @@
         </div>
 
         <template v-if="form.type === 'todo'">
-          <input v-model="form.title" class="mm-input" placeholder="标题（可选）" maxlength="40" />
+          <!-- 标题 / 待办项用自动增高的多行输入：长文本换行展示，不会被横向截断 -->
+          <textarea v-model="form.title" v-grow class="mm-input mm-ta" placeholder="标题（可选）" maxlength="40" rows="1"></textarea>
           <div class="mm-todo-edit">
             <div v-for="(t, i) in form.todos" :key="i" class="mm-te-row">
-              <input v-model="t.text" class="mm-te-input" :placeholder="`第 ${i + 1} 项`" maxlength="60" @keyup.enter="addTodo" />
+              <textarea v-model="t.text" v-grow class="mm-te-input mm-ta" rows="1" :placeholder="`第 ${i + 1} 项`" maxlength="60" @keydown="onItemKey($event)"></textarea>
               <button class="mm-te-del" @click="form.todos.splice(i, 1)" aria-label="删除该项">×</button>
             </div>
             <button class="mm-te-add" @click="addTodo">＋ 添加一项</button>
@@ -120,6 +128,31 @@
           <div class="mm-fld">
             <span class="mm-fld-label">截止日期（可选，可精确到时间）</span>
             <input v-model="form.due" class="mm-input" type="datetime-local" />
+          </div>
+          <!-- 提醒：到点 / 提前 N 分钟；可选联系人——到点以对方身份往聊天里发「提醒你{标题}」 -->
+          <div class="mm-fld">
+            <div class="mm-remind-head">
+              <span class="mm-fld-label">提醒</span>
+              <ToggleSwitch v-model="form.remindOn" :disabled="!form.due" />
+            </div>
+            <template v-if="form.remindOn && form.due">
+              <div class="mm-rm-chips">
+                <button class="mm-rm-chip" :class="{ on: form.remindOffset === 0 }" @click="form.remindOffset = 0">到点提醒</button>
+                <button class="mm-rm-chip" :class="{ on: form.remindOffset > 0 }" @click="form.remindOffset = form.remindOffset > 0 ? form.remindOffset : 15">提前提醒</button>
+              </div>
+              <div v-if="form.remindOffset > 0" class="mm-rm-chips">
+                <button v-for="o in REMIND_OFFSETS" :key="o.v" class="mm-rm-chip sm" :class="{ on: form.remindOffset === o.v }" @click="form.remindOffset = o.v">{{ o.n }}</button>
+              </div>
+              <div class="mm-remind-to">
+                <span class="mm-fld-label">提醒人</span>
+                <select v-model.number="form.remindContact" class="mm-input mm-select">
+                  <option :value="0">只提醒我</option>
+                  <option v-for="c in contactOptions" :key="c.id" :value="c.id">{{ c.name }}</option>
+                </select>
+              </div>
+              <p v-if="remindHint" class="mm-remind-hint">{{ remindHint }}</p>
+            </template>
+            <p v-else-if="!form.due" class="mm-remind-hint">先设置截止日期，才能开启提醒</p>
           </div>
         </template>
         <template v-else>
@@ -156,20 +189,32 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted, watch } from 'vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import ToggleSwitch from '@/components/common/ToggleSwitch.vue'
 import { useItems } from '@/composables/useItems'
 import { useNotificationsStore } from '@/stores/notifications'
+import { useContactsStore } from '@/stores/contacts'
 import { confirmDialog } from '@/utils/dialog'
+import { remindAtMs } from '@/local/services/memoReminder.service'
 
 const { items, loading, load, add, update, remove: removeItem } = useItems('memo')
 const toast = useNotificationsStore()
+const contactsStore = useContactsStore()
 const filter = ref('all')
 const sortAsc = ref(false) /* false：最新在上（默认）；true：最早在上 */
 
 const PALETTE = ['#fff7e6', '#fdeef0', '#eef4fb', '#eaf5ee', '#f3eefb', '#fdf3e3', '#eef7f6', '#f6eef4']
+
+/* 提前提醒的预设（分钟） */
+const REMIND_OFFSETS = [
+  { v: 5, n: '5 分钟' },
+  { v: 15, n: '15 分钟' },
+  { v: 30, n: '30 分钟' },
+  { v: 60, n: '1 小时' },
+  { v: 1440, n: '1 天' }
+]
 
 /* 旧数据（无 type）兼容：归一成 待办，标题作为唯一子任务 */
 function normalize(it) {
@@ -182,7 +227,7 @@ function normalize(it) {
     type = 'todo'
     todos = it.title ? [{ text: it.title, done: !!Number(it.done) }] : []
   }
-  return { ...it, type, todos, color, pinned, due: ex.due || '', note: it.body || '' }
+  return { ...it, type, todos, color, pinned, due: ex.due || '', note: it.body || '', remind: ex.remind || null }
 }
 
 const all = computed(() => items.value.map(normalize))
@@ -318,16 +363,63 @@ async function confirmDelete(m) {
 /* ═══ 新建 / 编辑 ═══ */
 const show = ref(false)
 const editing = ref(null)
-const form = reactive({ id: null, type: 'todo', title: '', todos: [], note: '', color: PALETTE[0], pinned: false, due: '' })
+const form = reactive({ id: null, type: 'todo', title: '', todos: [], note: '', color: PALETTE[0], pinned: false, due: '', remindOn: false, remindOffset: 0, remindContact: 0 })
+
+/* 提醒人候选：排除群聊（群聊里以「对方」身份发言没有具体成员，观感突兀）与已拉黑 */
+const contactOptions = computed(() =>
+  (contactsStore.list || []).filter((c) => c.kind !== 'group' && !Number(c.blocked))
+)
+
+/* 提醒时间预览：「将于 10月26日 09:00 提醒你 / 并给「XX」发消息」 */
+const remindHint = computed(() => {
+  if (!form.due || !form.remindOn) return ''
+  const at = remindAtMs(form.due, form.remindOffset)
+  if (!at) return ''
+  const d = new Date(at)
+  const pad = (n) => String(n).padStart(2, '0')
+  const when = `${d.getMonth() + 1}月${d.getDate()}日 ${pad(d.getHours())}:${pad(d.getMinutes())}`
+  const c = contactOptions.value.find((x) => x.id === form.remindContact)
+  return c ? `将于 ${when} 提醒，并给「${c.name}」发消息` : `将于 ${when} 提醒你`
+})
+
+/* 截止日期被清空时自动关闭提醒（提醒依赖截止时间） */
+watch(
+  () => form.due,
+  (v) => {
+    if (!v && form.remindOn) form.remindOn = false
+  }
+)
+
+/* 自动增高的多行输入：随内容换行拉高，长文本不再被横向截断 */
+const vGrow = {
+  mounted(el) {
+    growTa(el)
+  },
+  updated(el) {
+    growTa(el)
+  }
+}
+function growTa(el) {
+  el.style.height = 'auto'
+  el.style.height = `${Math.min(el.scrollHeight, 120)}px`
+}
+/* 回车（不加 Shift）快速添加下一项；Shift+回车 换行 */
+function onItemKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault()
+    addTodo()
+  }
+}
 
 function openAdd() {
   editing.value = null
-  Object.assign(form, { id: null, type: 'todo', title: '', todos: [{ text: '', done: false }], note: '', color: PALETTE[0], pinned: false, due: '' })
+  Object.assign(form, { id: null, type: 'todo', title: '', todos: [{ text: '', done: false }], note: '', color: PALETTE[0], pinned: false, due: '', remindOn: false, remindOffset: 0, remindContact: 0 })
   openId.value = null
   show.value = true
 }
 function openEdit(m) {
   editing.value = m.id
+  const rm = m.remind
   Object.assign(form, {
     id: m.id,
     type: m.type,
@@ -336,7 +428,10 @@ function openEdit(m) {
     note: m.note || '',
     color: m.color,
     pinned: m.pinned,
-    due: m.due || ''
+    due: m.due || '',
+    remindOn: !!(rm && Number(rm.on) && m.due),
+    remindOffset: rm && Number(rm.offset) > 0 ? Number(rm.offset) : 0,
+    remindContact: rm && Number(rm.contactId) ? Number(rm.contactId) : 0
   })
   show.value = true
 }
@@ -363,6 +458,10 @@ async function save() {
     form.type === 'todo'
       ? { title: form.title.trim(), body: '', extra: { type: 'todo', color: form.color, pinned: form.pinned ? 1 : 0, todos: form.todos, due: form.due || '' } }
       : { title: '', body: form.note.trim(), extra: { type: 'note', color: form.color, pinned: form.pinned ? 1 : 0, todos: [] } }
+  /* 提醒配置（仅待办 + 填了截止日期才落库）；fired 每次保存重置——改存即重新装弹 */
+  if (form.type === 'todo' && form.remindOn && form.due) {
+    payload.extra.remind = { on: 1, offset: form.remindOffset, contactId: form.remindContact, fired: 0 }
+  }
   const id = editing.value
   close()
   try {
@@ -380,7 +479,11 @@ async function removeEditing() {
   toast.pushToast({ title: '已删除' })
 }
 
-onMounted(load)
+onMounted(() => {
+  load()
+  /* 提醒人下拉要用；列表空时拉一次（App 启动时通常已加载） */
+  if (!contactsStore.list.length) contactsStore.load().catch(() => {})
+})
 </script>
 
 <style scoped>
@@ -452,6 +555,19 @@ onMounted(load)
 .mm-te-row { display: flex; gap: 8px; align-items: center; }
 .mm-te-del { width: 30px; height: 36px; border: none; background: transparent; color: #d9534f; font-size: 20px; }
 .mm-te-add { align-self: flex-start; border: 1px dashed var(--border); background: transparent; color: var(--text-soft); border-radius: 10px; padding: 8px 14px; font-size: 13px; }
+/* 自动增高的多行输入（标题 / 待办项）：随内容换行拉高，长文本不再被横向截断 */
+.mm-ta { overflow: hidden; resize: none; line-height: 1.5; }
+/* 提醒区块 */
+.mm-remind-head { display: flex; align-items: center; justify-content: space-between; }
+.mm-remind-head .mm-fld-label { margin-bottom: 0; }
+.mm-rm-chips { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 10px; }
+.mm-rm-chip { border: 1px solid var(--border); background: var(--bg-soft); color: var(--text-soft); border-radius: 999px; padding: 6px 13px; font-size: 12.5px; }
+.mm-rm-chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.mm-rm-chip.sm { padding: 5px 11px; font-size: 12px; }
+.mm-remind-to { margin-top: 12px; }
+.mm-remind-hint { font-size: 11.5px; color: var(--text-soft); margin: 8px 0 0; line-height: 1.6; }
+.mm-due-line { display: flex; align-items: center; gap: 3px; }
+.mm-remind-ico { flex: 0 0 auto; }
 .mm-fld { margin-top: 12px; }
 .mm-fld-label { display: block; font-size: 12.5px; color: var(--text-soft); margin-bottom: 6px; }
 .mm-color-row { display: flex; align-items: center; gap: 8px; margin: 14px 0; flex-wrap: wrap; }
