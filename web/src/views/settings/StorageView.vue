@@ -145,10 +145,9 @@ import {
   buildBackup,
   importBackup,
   validateBackupFile,
-  resetDb,
-  BACKUP_FEATURES,
-  BACKUP_TABLE_LABELS
+  resetDb
 } from '@/api/settings'
+import { fmtBackupTime, backupScopeText, backupTotalRows, backupTablesText } from '@/utils/backupInfo'
 import { BACKUP_FORMAT } from '@/local/services/backup.service'
 import { confirmDialog } from '@/utils/dialog'
 import { useNotificationsStore } from '@/stores/notifications'
@@ -314,33 +313,13 @@ async function onFilePicked(e) {
   importOpen.value = true
 }
 
-function fmtTime(ts) {
-  const d = new Date(Number(ts) || 0)
-  if (!d.getTime()) return '未知'
-  const pad = (n) => String(n).padStart(2, '0')
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`
-}
+function fmtTime(ts) { return fmtBackupTime(ts) }
 
-function scopeText(s) {
-  if (!s) return '未知范围'
-  if (s.type === 'feature') {
-    const labels = (s.features || []).map((k) => (BACKUP_FEATURES.find((f) => f.key === k) || {}).label).filter(Boolean)
-    return labels.length ? `板块：${labels.join('、')}` : '板块数据'
-  }
-  if (s.type === 'contacts') return `联系人 × ${(s.contacts || []).length}（含关联数据）`
-  return '全部数据'
-}
+function scopeText(s) { return backupScopeText(s) }
 
-function totalRows(data) {
-  return Object.values(data.tables || {}).reduce((s, rows) => s + (Array.isArray(rows) ? rows.length : 0), 0)
-}
+function totalRows(data) { return backupTotalRows(data) }
 
-function tablesText(data) {
-  const parts = Object.entries(data.tables || {})
-    .filter(([, rows]) => Array.isArray(rows) && rows.length)
-    .map(([t, rows]) => `${BACKUP_TABLE_LABELS[t] || t} ${rows.length}`)
-  return parts.length ? parts.join(' · ') : '（空备份）'
-}
+function tablesText(data) { return backupTablesText(data) }
 
 async function doImport(mode) {
   if (!pending.value || importing.value) return

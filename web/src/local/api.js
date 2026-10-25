@@ -1309,9 +1309,9 @@ export async function backupToOss() {
   return r
 }
 
-/* 从云端恢复梦角数据到本浏览器（下载备份 JSON → 覆盖导入）。
-   成功后调用方需整页刷新，让全部 store/服务基于新数据重新初始化 */
-export async function restoreFromOss() {
+/* 从云端下载备份 JSON 并校验（只下载，不导入）。
+   供恢复弹窗先展示备份信息（时间 / 范围 / 条数），再由用户选合并 / 覆盖 */
+export async function downloadOssBackup() {
   const cfg = readOssCfg(readGlobalSettings())
   if (!ossReady(cfg)) throw new Error('请先填写并保存 OSS 配置')
   const blob = await ossDownload(cfg, OSS_BACKUP_PATH)
@@ -1320,7 +1320,15 @@ export async function restoreFromOss() {
   try { payload = JSON.parse(text) } catch (e) { throw new Error('云端备份文件格式不正确') }
   const err = backupService.validateBackup(payload)
   if (err) throw new Error(err)
-  return backupService.importBackup(payload, 'overwrite')
+  return payload
+}
+
+/* 从云端恢复梦角数据到本浏览器（下载备份 JSON → 按 mode 导入）。
+   mode: 'merge' 合并到当前数据 / 'overwrite' 覆盖（默认，兼容旧调用方）。
+   成功后调用方需整页刷新，让全部 store/服务基于新数据重新初始化 */
+export async function restoreFromOss(mode = 'overwrite') {
+  const payload = await downloadOssBackup()
+  return backupService.importBackup(payload, mode)
 }
 
 export async function getBadges() {

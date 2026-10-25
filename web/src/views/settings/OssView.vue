@@ -35,8 +35,8 @@
 
       <!-- 已配置：断开连接 -->
       <button v-if="configured" class="btn-block danger" type="button" :disabled="saving || testing" @click="doClear">断开连接</button>
-      <!-- 从云端恢复数据到本浏览器 -->
-      <button class="btn-block" type="button" :disabled="restoring || !configured" @click="doRestore">
+      <!-- 从云端恢复数据到本浏览器（下载后可选合并 / 覆盖） -->
+      <button class="btn-block" type="button" :disabled="restoring || importing || !configured" @click="openRestore">
         {{ restoring ? '恢复中…' : '从云端恢复数据到本浏览器' }}
       </button>
       <!-- 迁移本地图片到云端 -->
@@ -45,6 +45,31 @@
       </button>
       <!-- 最近一次同步时间 -->
     </div>
+
+    <!-- 从云端恢复：下载备份后选择合并 / 覆盖 -->
+    <Modal :show="restoreOpen" title="从云端恢复" width="360px" @close="restoreOpen = false">
+      <template v-if="restorePending">
+        <div class="imp-info">
+          <div class="imp-row"><span>备份时间</span><span>{{ fmtTime(restorePending.created_at) }}</span></div>
+          <div class="imp-row"><span>数据范围</span><span>{{ scopeText(restorePending.scope) }}</span></div>
+          <div class="imp-row"><span>数据量</span><span>{{ totalRows(restorePending) }} 条</span></div>
+        </div>
+        <p class="imp-tables">{{ tablesText(restorePending) }}</p>
+        <div class="imp-modes">
+          <button class="imp-btn" :disabled="importing" @click="doRestore('merge')">
+            <b>合并到当前数据</b>
+            <span>保留本浏览器当前数据，云端备份作为新条目加入；同名联系人、同源歌曲会自动归并到已有条目</span>
+          </button>
+          <button class="imp-btn danger" :disabled="importing" @click="askOverwriteRestore">
+            <b>覆盖导入</b>
+            <span>先删除本浏览器当前全部数据，再用云端备份替换，不可恢复</span>
+          </button>
+        </div>
+      </template>
+      <template #footer>
+        <button class="mini-btn" @click="restoreOpen = false">取消</button>
+      </template>
+    </Modal>
 
     <!-- 底部按钮栏：取消 / 测试连接 / 保存并连接 -->
     <div class="oss-footer">
@@ -59,10 +84,18 @@
 import { ref, reactive, computed, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
-import { getSettings, saveSettings, migrateImagesToOss, backupToOss, restoreFromOss } from '@/api/settings'
+import Modal from '@/components/common/Modal.vue'
+import { getSettings, saveSettings, migrateImagesToOss, backupToOss, downloadOssBackup, importBackup } from '@/api/settings'
+import { fmtBackupTime, backupScopeText, backupTotalRows, backupTablesText } from '@/utils/backupInfo'
 import { readOssCfg, ossReady, ossTest } from '@/utils/oss'
 import { fmtSyncTime } from '@/utils/syncTime'
 import { notify, confirmDialog } from '@/utils/dialog'
+
+/* 备份信息展示（与本地导入弹窗共用一套 helpers，保证口径一致） */
+const fmtTime = fmtBackupTime
+const scopeText = backupScopeText
+const totalRows = backupTotalRows
+const tablesText = backupTablesText
 
 const router = useRouter()
 
@@ -92,6 +125,9 @@ const testing = ref(false)
 const migrating = ref(false)
 const migDone = ref(0)
 const restoring = ref(false)
+const restoreOpen = ref(false)
+const restorePending = ref(null)
+const importing = ref(false)
 const msg = ref('')
 const isErr = ref(false)
 const msgOk = ref(false) /* 成功提示走绿色样式 */
@@ -215,30 +251,56 @@ async function doTest() {
   }
 }
 
-/* 从云端恢复梦角到本浏览器：下载备份 JSON → 覆盖导入 → 整页刷新重新初始化 */
-async function doRestore() {
-  const ok = await confirmDialog({
-    title: '从云端恢复',
-    text: '将用云端备份的数据覆盖本浏览器当前的梦角数据（聊天、字卡、设置等全部替换），且无法撤销。确定继续吗？',
-    okText: '恢复',
-    danger: true
-  })
-  if (!ok) return
+/* 从云端恢复：先下载备份并展示信息（时间 / 范围 / 条数），
+   再由用户选择合并 / 覆盖——与本地文件导入的体验保持一致 */
+async function openRestore() {
+  if (restoring.value) return
   restoring.value = true
   isErr.value = false
   msgOk.value = false
   msg.value = '正在从云端下载数据…'
   try {
-    const r = await restoreFromOss()
+    restorePending.value = await downloadOssBackup()
+    restoreOpen.value = true
+    msg.value = ''
+  } catch (e) {
+    isErr.value = true
+    msg.value = e.message || '下载失败'
+  } finally {
+    restoring.value = false
+  }
+}
+
+/* mode: 'merge' 合并 / 'overwrite' 覆盖；成功后整页刷新重新初始化 */
+async function doRestore(mode) {
+  if (!restorePending.value || importing.value) return
+  importing.value = true
+  try {
+    const r = await importBackup(restorePending.value, mode)
+    const n = r && r.inserted ? Object.values(r.inserted).reduce((a, b) => a + b, 0) : null
+    restoreOpen.value = false
+    msgOk.value = true
+    isErr.value = false
     msg.value = '恢复完成，正在刷新…'
-    notify(`已恢复云端数据（导入 ${r?.inserted ?? '--'} 条）`)
+    notify(`已${mode === 'overwrite' ? '覆盖' : '合并'}恢复云端数据${n != null ? `（导入 ${n} 条）` : ''}`)
     setTimeout(() => location.reload(), 800)
   } catch (e) {
     isErr.value = true
     msg.value = e.message || '恢复失败'
   } finally {
-    restoring.value = false
+    importing.value = false
   }
+}
+
+/* 覆盖导入二次确认（合并不破坏当前数据，无需确认） */
+async function askOverwriteRestore() {
+  const ok = await confirmDialog({
+    title: '确认覆盖导入',
+    text: '覆盖会先删除本浏览器当前全部数据，再用云端备份替换，且无法撤销。确定继续吗？',
+    danger: true,
+    okText: '覆盖'
+  })
+  if (ok) doRestore('overwrite')
 }
 
 /* 迁移本地图片到云端：逐张上传并替换字段，完成后汇报成功/失败数 */
@@ -316,6 +378,30 @@ select.field {
 .msg.ok { color: #3d9a6c; font-weight: 600; }
 .msg.ok::before { content: '✓ '; }
 .sync-time { font-size: 11px; color: var(--text-soft); margin: 0; }
+/* 恢复弹窗：备份信息 + 合并/覆盖 选择（样式与本地导入弹窗保持一致） */
+.mini-btn {
+  border: 1px solid var(--border); background: var(--bg-soft);
+  border-radius: 999px; padding: 5px 12px; font-size: 12px; color: var(--text);
+}
+.mini-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.mini-btn:disabled { opacity: 0.6; }
+.imp-info { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 12px; margin-bottom: 10px; }
+.imp-row { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; padding: 4px 0; }
+.imp-row span:first-child { color: var(--text-soft); flex: 0 0 auto; }
+.imp-row span:last-child { text-align: right; word-break: break-all; }
+.imp-tables { font-size: 12px; color: var(--text-soft); line-height: 1.7; margin: 0 0 12px; word-break: break-all; }
+.imp-modes { display: flex; flex-direction: column; gap: 10px; }
+.imp-btn {
+  display: flex; flex-direction: column; gap: 3px; text-align: left;
+  border: 1px solid var(--border); background: var(--bg-soft);
+  border-radius: var(--radius); padding: 12px; color: var(--text);
+}
+.imp-btn b { font-size: 14px; }
+.imp-btn span { font-size: 12px; color: var(--text-soft); line-height: 1.5; }
+.imp-btn.danger { border-color: #c0576b; }
+.imp-btn.danger b { color: #c0576b; }
+.imp-btn:disabled { opacity: 0.6; }
+
 /* 底部按钮栏：取消 / 测试连接 / 保存并连接 */
 .oss-footer {
   display: flex;
