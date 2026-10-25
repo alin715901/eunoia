@@ -9,7 +9,7 @@
  */
 import { chromium } from 'playwright'
 
-const DEV = 'http://127.0.0.1:5174'
+const DEV = 'http://127.0.0.1:5176'
 const CFG = { accessKeyId: 'AK', accessKeySecret: 'SK', bucket: 'bkt', endpoint: 'oss-cn-hangzhou.aliyuncs.com', prefix: 'eunoia' }
 const bucket = new Map()
 const putLog = []
