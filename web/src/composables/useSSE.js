@@ -174,7 +174,7 @@ export function connect() {
         const settings = useSettingsStore()
         const notifyOn = settings.global?.notifications?.browser !== false
         if (!isPageFocused() && notifyOn && notificationPermission() === 'granted') {
-          notify(title, { body: preview })
+          notify(title, { body: preview, route: `/contacts/${contactId}/chat` })
         }
 
         // 刷新角标

@@ -18,7 +18,7 @@
    index.html 带 max-age=600，SW 里默认模式的 fetch 会命中浏览器 HTTP
    缓存返回旧 HTML（旧 bundle → 旧样式/旧逻辑，用户侧表现为「改了没生效」）。
    reload 模式绕过 HTTP 缓存真正联网，HTML 只占一次请求，代价可忽略。 */
-const CACHE = 'eunoia-sw-v7'
+const CACHE = 'eunoia-sw-v8'
 
 self.addEventListener('install', () => {
   self.skipWaiting()
@@ -91,4 +91,42 @@ self.addEventListener('fetch', (event) => {
       return cached || network
     })
   )
+})
+
+/* ── 通知点击：唤醒 / 打开应用并跳转到对应会话 ──
+   本站无真实推送后端（纯静态 + 本地模拟消息），但用户点系统通知必须
+   能把应用带回前台并定位到对应聊天，否则点了毫无反应。
+   已有窗口则聚焦 + 发消息让前端路由跳转；无窗口则新开。 */
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close()
+  const data = event.notification.data || {}
+  const route = data.route || '/'
+  event.waitUntil(
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
+      for (const c of list) {
+        if ('focus' in c) {
+          c.postMessage({ type: 'NOTIFICATION_NAVIGATE', route })
+          return c.focus()
+        }
+      }
+      if (self.clients.openWindow) return self.clients.openWindow(route)
+    })
+  )
+})
+
+/* ── 真实 Web Push（预留，当前不触发）──
+   本站是纯静态部署，没有带 VAPID 的推送后端，也无 pushManager 订阅，
+   因此此分支不会触发。若未来接入推送服务，消息经 FCM/APNs 下发到 SW 后
+   在此弹出——届时即便 App 已彻底关闭也能收到系统通知。 */
+self.addEventListener('push', (event) => {
+  let payload = {}
+  try { payload = event.data ? event.data.json() : {} } catch (e) { /* ignore */ }
+  const options = {
+    body: payload.body || '',
+    icon: './icon-192.png',
+    badge: './icon-192.png',
+    tag: payload.tag || 'eunoia-push',
+    data: payload.data || {}
+  }
+  event.waitUntil(self.registration.showNotification(payload.title || 'Eunoia', options))
 })

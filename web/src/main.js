@@ -32,4 +32,13 @@ if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('./sw.js')
     .then(() => console.log('[sw] 注册成功'))
     .catch((e) => console.warn('[sw] 注册失败（不影响使用）:', e && e.message))
+
+  // 接收 SW 消息（如通知点击要求跳转会话）：点击系统通知时 SW 已聚焦窗口
+  // 并 postMessage，这里据此路由到对应页面。
+  navigator.serviceWorker.addEventListener('message', (event) => {
+    const d = event.data
+    if (d && d.type === 'NOTIFICATION_NAVIGATE' && d.route) {
+      router.push(d.route).catch(() => {})
+    }
+  })
 }
