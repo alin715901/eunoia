@@ -15,12 +15,13 @@
       <label class="field-label">Bucket 名称</label>
       <input v-model="form.bucket" class="field" autocomplete="off" />
 
-      <!-- 地区：下拉联动 Endpoint，可切自定义手填 -->
+      <!-- 地区：应用内弹层单选（不用原生 select，避免 iOS 系统滚轮弹窗），
+           选中联动 Endpoint，可切自定义手填 -->
       <label class="field-label">地区</label>
-      <select v-model="regionPick" class="field" @change="onRegionChange">
-        <option v-for="r in REGIONS" :key="r.endpoint" :value="r.endpoint">{{ r.n }}</option>
-        <option value="__custom">自定义 Endpoint</option>
-      </select>
+      <button type="button" class="field select-trigger" @click="regionOpen = true">
+        <span class="st-text">{{ regionLabel }}</span>
+        <AppIcon name="chevron-right" :size="16" color="var(--text-soft)" />
+      </button>
       <input v-if="regionPick === '__custom'" v-model="form.endpoint" class="field custom-ep" placeholder="oss-cn-xxx.aliyuncs.com" autocomplete="off" />
       <p class="sub">与创建 Bucket 时选择的地区保持一致</p>
 
@@ -80,6 +81,26 @@
       </template>
     </Modal>
 
+    <!-- 地区选择：应用内弹层单选列表（样式同「深色模式」选择） -->
+    <Modal :show="regionOpen" title="选择地区" width="320px" @close="regionOpen = false">
+      <div class="region-list">
+        <button
+          v-for="r in REGIONS"
+          :key="r.endpoint"
+          class="region-row"
+          :class="{ on: regionPick === r.endpoint }"
+          @click="pickRegion(r.endpoint)"
+        >
+          <span class="region-name">{{ r.n }}</span>
+          <AppIcon v-if="regionPick === r.endpoint" name="check" :size="18" color="var(--accent)" />
+        </button>
+        <button class="region-row" :class="{ on: regionPick === '__custom' }" @click="pickRegion('__custom')">
+          <span class="region-name">自定义 Endpoint</span>
+          <AppIcon v-if="regionPick === '__custom'" name="check" :size="18" color="var(--accent)" />
+        </button>
+      </div>
+    </Modal>
+
     <!-- 底部按钮栏：取消 / 测试连接 / 保存并连接 -->
     <div class="oss-footer">
       <button class="f-btn" type="button" @click="goBack">取消</button>
@@ -93,6 +114,7 @@
 import { ref, reactive, computed, onBeforeUnmount } from 'vue'
 import { useRouter } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
+import AppIcon from '@/components/common/AppIcon.vue'
 import Modal from '@/components/common/Modal.vue'
 import { getSettings, saveSettings, migrateImagesToOss, backupToOss, downloadOssBackup, importBackup } from '@/api/settings'
 import { fmtBackupTime, backupTotalRows, backupFeatureSummary } from '@/utils/backupInfo'
@@ -127,6 +149,18 @@ const REGIONS = [
 
 const form = reactive({ accessKeyId: '', accessKeySecret: '', bucket: '', endpoint: '', prefix: 'eunoia' })
 const regionPick = ref('')
+/* 地区选择弹层（应用内 Modal，替代原生 select 的系统弹窗） */
+const regionOpen = ref(false)
+const regionLabel = computed(() => {
+  if (regionPick.value === '__custom') return '自定义 Endpoint'
+  const hit = REGIONS.find((r) => r.endpoint === regionPick.value)
+  return hit ? hit.n : '请选择地区'
+})
+function pickRegion(v) {
+  regionPick.value = v
+  if (v !== '__custom') form.endpoint = v
+  regionOpen.value = false
+}
 const saving = ref(false)
 const testing = ref(false)
 const migrating = ref(false)
@@ -172,10 +206,6 @@ async function fill() {
   } catch (e) { /* 忽略：保持默认值 */ }
 }
 fill()
-
-function onRegionChange() {
-  if (regionPick.value !== '__custom') form.endpoint = regionPick.value
-}
 
 function goBack() {
   router.back()
@@ -357,14 +387,26 @@ async function doMigrate() {
   border: 1px solid var(--border); border-radius: 12px; background: var(--bg-screen); color: var(--text);
 }
 .field:focus { outline: none; border-color: var(--accent); }
-select.field {
-  appearance: none;
-  background-image: linear-gradient(45deg, transparent 50%, var(--text-soft) 50%), linear-gradient(135deg, var(--text-soft) 50%, transparent 50%);
-  background-position: calc(100% - 18px) 55%, calc(100% - 13px) 55%;
-  background-size: 5px 5px, 5px 5px;
-  background-repeat: no-repeat;
-  padding-right: 36px;
+/* 地区选择触发器：外观与输入框一致，点击弹应用内列表（替代原生 select） */
+.select-trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  text-align: left;
+  cursor: pointer;
 }
+.st-text { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* 地区弹层单选列表（样式同「深色模式」选择） */
+.region-list { display: flex; flex-direction: column; }
+.region-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 13px 4px; border: none; background: transparent;
+  border-bottom: 1px solid var(--border);
+  font-size: 15px; color: var(--text); text-align: left;
+}
+.region-row:last-child { border-bottom: none; }
+.region-row.on { color: var(--accent); font-weight: 600; }
 .custom-ep { margin-top: 8px; }
 .sub { font-size: 11px; color: var(--text-soft); line-height: 1.6; margin: 6px 0 0; }
 .btn-block {
