@@ -108,5 +108,9 @@ const viewKey = computed(() =>
      各页面内的全屏弹层（相册底纸/贴纸/文字样式等 position:fixed inset:0）
      只覆盖右侧内容区，不再铺满整个屏幕盖住侧栏与壁纸 */
   .rv-wrap { transform: translateZ(0); }
+  /* 桌面端外壳高度固定，整页(body)滚动不可用：
+     让内容容器自己承担纵向滚动，兼容「页面根只有 min-height:100%、
+     依赖整页滚动」的页面（如经期页），内部自滚动的页面不受影响 */
+  .rv-wrap { overflow-y: auto; }
 }
 </style>
