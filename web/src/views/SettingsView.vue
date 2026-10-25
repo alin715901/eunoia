@@ -56,12 +56,6 @@
             去开启
           </button>
         </p>
-        <p class="sub notif-tip">
-          桌面浏览器（Chrome/Edge/Firefox/Safari）直接支持；安卓浏览器原生支持。
-          iPhone 需先「添加到主屏幕」且系统 ≥ iOS 16.4 才有系统通知。
-          通知在 App 保持打开（后台未杀掉）时送达；完全退出后收不到——
-          本站为纯静态部署、无推送服务器，无法在 App 关闭时下发消息。
-        </p>
       </div>
 
       <!-- 分组：阿里云 OSS / 内存数据 -->
@@ -340,7 +334,6 @@ onActivated(refresh)
 .swatch.on { outline: 3px solid var(--text); outline-offset: 2px; transform: scale(1.08); }
 .swatch-name { margin: 6px 12px 12px; }
 .notif-sub { margin: 0; padding: 0 12px 12px; display: flex; align-items: center; gap: 8px; }
-.notif-tip { margin: 0; padding: 0 12px 12px; }
 /* 深色模式弹窗选项 */
 .ap-list { display: flex; flex-direction: column; }
 .ap-row {
