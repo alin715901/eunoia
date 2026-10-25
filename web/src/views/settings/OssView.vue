@@ -265,34 +265,52 @@ async function doSave() {
   }
 }
 
-/* 显式上传本机数据到云端；云端有更新的数据（多半来自另一台设备）时二次确认。
-   force 只接受 true（内部递归调用时传），避免按钮事件对象被当成真值。 */
+/* 显式上传本机数据到云端。
+   云端有更新的数据（多半来自另一台设备）时先弹二次确认，用户点「覆盖云端」后
+   在同一函数内重试（不递归：递归时外层 finally 会把 uploading 提前复位，
+   上传还在飞按钮就恢复可点，且成功文案容易被后续状态覆盖）。
+   覆盖成功要给一条不带歧义的「已更新云端数据」——只看按钮回到可点状态，
+   用户判断不出到底传没传上去、覆盖成功没有。 */
 async function doUpload(force = false) {
-  const hard = force === true
+  let hard = force === true
   if (uploading.value) return
   uploading.value = true
   isErr.value = false
   msgOk.value = false
+  msg.value = ''
+  /* 本次是否属于「用户确认后覆盖别人的数据」——决定成功文案 */
+  let overwrote = false
   try {
-    const r = await backupToOss({ force: hard, archive: true })
-    await loadSyncTime()
-    await refreshSyncState()
-    msgOk.value = true
-    msg.value = `已上传本机数据到云端（约 ${Math.round((r.bytes || 0) / 1024)} KB）`
-    notify('已上传本机数据到云端')
-  } catch (e) {
-    if (e && e.code === 'OSS_CONFLICT') {
-      /* 云端有本机没见过的新数据 → 询问是否覆盖（覆盖前会把旧备份存到 archive/） */
-      const ok = await confirmDialog({
-        title: '云端已有更新的数据',
-        text: `${e.message}\n\n覆盖前会先把云端现有备份另存为一份历史文件，确定继续吗？`,
-        danger: true,
-        okText: '覆盖云端'
-      })
-      uploading.value = false
-      if (ok) doUpload(true)
-      return
+    for (;;) {
+      try {
+        const r = await backupToOss({ force: hard, archive: true })
+        await loadSyncTime()
+        await refreshSyncState()
+        msgOk.value = true
+        msg.value = overwrote
+          ? '已更新云端数据（原有备份已存档）'
+          : `已上传本机数据到云端（约 ${Math.round((r.bytes || 0) / 1024)} KB）`
+        notify(overwrote ? '已更新云端数据' : '已上传本机数据到云端')
+        return
+      } catch (e) {
+        /* 只在还没取得用户授权时才弹确认；已经确认过还报冲突说明云端又变了，
+           再弹一次让用户重新决策，而不是拿旧授权直接覆盖 */
+        if (e && e.code === 'OSS_CONFLICT' && !hard) {
+          const ok = await confirmDialog({
+            title: '云端已有更新的数据',
+            text: `${e.message}\n\n覆盖前会先把云端现有备份另存为一份历史文件，确定继续吗？`,
+            danger: true,
+            okText: '覆盖云端'
+          })
+          if (!ok) return
+          hard = true
+          overwrote = true
+          continue
+        }
+        throw e
+      }
     }
+  } catch (e) {
     isErr.value = true
     msg.value = e.message || '上传失败'
   } finally {

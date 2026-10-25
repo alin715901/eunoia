@@ -1437,14 +1437,19 @@ export async function backupToOss(opts = {}) {
     err.state = st
     throw err
   }
-  /* 覆盖「别的设备」的数据前，先把旧文件存一份到 archive/，防止误覆盖后无法找回 */
-  if (opts.archive && st.hasCloud && st.cloudRev > 0) {
+  /* 覆盖前把云端现有备份另存一份到 archive/，防止误覆盖后无法找回。
+     条件只看 hasCloud：老版本备份没有 meta（cloudRev 为 0），但弹窗已经
+     承诺「会另存一份历史文件」，此时不归档就是说了不做——而用户反馈的场景
+     恰恰全是这种「未知来源（旧版本备份）」的云端数据。 */
+  if (opts.archive && st.hasCloud) {
     try {
       const old = await ossDownload(cfg, OSS_BACKUP_PATH)
+      /* 没有 meta 时 cloudAt 为 0，用当前时间兜底，避免文件名出现 eunoia-0.json */
       const ts = st.cloudAt || Date.now()
       await ossUpload(cfg, old, `${OSS_ARCHIVE_DIR}eunoia-${ts}.json`)
     } catch (e) {
-      /* 归档失败不阻断上传 */
+      /* 归档失败不阻断上传（云端数据仍在，只是少了份历史副本） */
+      console.warn('[oss] 覆盖前归档旧备份失败', e && e.message)
     }
   }
   const payload = backupService.buildBackup({ type: 'full' })
