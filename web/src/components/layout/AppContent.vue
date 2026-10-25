@@ -104,5 +104,9 @@ const viewKey = computed(() =>
      统一给一个舒适的阅读宽度并水平居中，两侧由壁纸/底色留白 */
   .rv-wrap { align-items: center; }
   .rv-wrap > * { width: 100%; max-width: 720px; }
+  /* transform 使 .rv-wrap 成为 fixed 后代的包含块：
+     各页面内的全屏弹层（相册底纸/贴纸/文字样式等 position:fixed inset:0）
+     只覆盖右侧内容区，不再铺满整个屏幕盖住侧栏与壁纸 */
+  .rv-wrap { transform: translateZ(0); }
 }
 </style>

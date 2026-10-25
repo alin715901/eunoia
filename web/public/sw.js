@@ -18,7 +18,7 @@
    index.html 带 max-age=600，SW 里默认模式的 fetch 会命中浏览器 HTTP
    缓存返回旧 HTML（旧 bundle → 旧样式/旧逻辑，用户侧表现为「改了没生效」）。
    reload 模式绕过 HTTP 缓存真正联网，HTML 只占一次请求，代价可忽略。 */
-const CACHE = 'eunoia-sw-v6'
+const CACHE = 'eunoia-sw-v7'
 
 self.addEventListener('install', () => {
   self.skipWaiting()

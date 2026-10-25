@@ -1,4 +1,4 @@
-import { createRouter, createWebHashHistory } from 'vue-router'
+import { createRouter, createWebHistory } from 'vue-router'
 import HomeView from '@/views/HomeView.vue'
 import ChatsListView from '@/views/ChatsListView.vue'
 import ContactChatView from '@/views/ContactChatView.vue'
@@ -88,7 +88,9 @@ const routes = [
 ]
 
 const router = createRouter({
-  history: createWebHashHistory(),
+  /* HTML5 history 模式：URL 干净不带 #/。
+     GitHub Pages 的刷新/直达由 404.html（构建时复制自 index.html）兜底 */
+  history: createWebHistory(import.meta.env.BASE_URL),
   routes
 })
 

@@ -56,6 +56,12 @@ jobs:
           VITE_MUSIC_PROXY: ${{ vars.VITE_MUSIC_PROXY }}
         run: npm run build
 
+      - name: 生成 SPA 404 回退页
+        # history 模式路由：GitHub Pages 用 404.html 响应未知路径，
+        # 复制 index.html 作为 SPA 回退，刷新/直达子路径不再 404
+        working-directory: web
+        run: cp dist/index.html dist/404.html
+
       - name: 上传构建产物
         uses: actions/upload-pages-artifact@v3
         with:
