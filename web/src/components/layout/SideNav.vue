@@ -1,8 +1,8 @@
 <template>
   <aside class="side-nav">
     <div class="sn-brand">
-      <span class="sn-logo">心迹</span>
-      <span class="sn-sub">Eunoia</span>
+      <span class="sn-logo">Eunoia</span>
+      <span class="sn-sub">心迹</span>
     </div>
 
     <nav class="sn-nav">
@@ -30,10 +30,10 @@ const route = useRoute()
    仍从主页图标进入，在右侧内容区渲染 */
 const nav = [
   { to: '/', label: '主页', icon: 'home' },
-  { to: '/chats', label: '聊天', icon: 'chat' },
   { to: '/cards', label: '字卡', icon: 'cards' },
-  { to: '/memo', label: '备忘录', icon: 'memo' },
+  { to: '/chats', label: '聊天', icon: 'chat' },
   { to: '/moments', label: '朋友圈', icon: 'moments' },
+  { to: '/workspace', label: '心迹', icon: 'trace' },
   { to: '/music', label: '音乐', icon: 'music' },
   { to: '/settings', label: '设置', icon: 'settings' }
 ]
@@ -71,13 +71,12 @@ function isActive(prefix) {
   font-size: 22px;
   font-weight: 700;
   color: var(--text);
-  letter-spacing: 2px;
+  letter-spacing: 1px;
 }
 .sn-sub {
   font-size: 12px;
-  letter-spacing: 1.5px;
+  letter-spacing: 2px;
   color: var(--text-soft);
-  text-transform: uppercase;
 }
 
 .sn-nav {

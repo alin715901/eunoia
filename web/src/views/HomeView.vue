@@ -1,7 +1,17 @@
 <template>
   <div class="home">
     <!-- ═══ 左右翻页容器：第1页=卡片A+应用网格，第2页=卡片B ═══ -->
-    <div class="pager" ref="pager" @scroll="onScroll">
+    <div
+      class="pager"
+      ref="pager"
+      :class="{ dragging: pagerDragging }"
+      @scroll="onScroll"
+      @pointerdown="onPagerDown"
+      @pointermove="onPagerMove"
+      @pointerup="onPagerUp"
+      @pointercancel="onPagerUp"
+      @click.capture="onPagerClickCapture"
+    >
       <!-- ─── 第 1 页：大卡片 A + 灵魂链接/纪念日 + 应用网格 ─── -->
       <section class="page">
         <!-- 大卡片A：只展示当前选中联系人（单人）。点击进设置页可切换联系人 -->
@@ -812,6 +822,54 @@ function goPage(i) {
   el.scrollTo({ left: i * el.clientWidth, behavior: 'smooth' })
 }
 
+/* ═══ 桌面端鼠标拖拽翻页：触摸滑动在鼠标下无效，按住左键拖动即可翻页 ═══ */
+const pagerDragging = ref(false)
+let drag = null
+let suppressClick = false
+function onPagerDown(e) {
+  if (e.pointerType !== 'mouse' || e.button !== 0) return
+  const el = pager.value
+  if (!el) return
+  drag = { id: e.pointerId, startX: e.clientX, startLeft: el.scrollLeft, moved: false }
+}
+function onPagerMove(e) {
+  if (!drag || e.pointerId !== drag.id) return
+  const el = pager.value
+  if (!el) return
+  const dx = e.clientX - drag.startX
+  if (!drag.moved && Math.abs(dx) > 5) {
+    drag.moved = true
+    pagerDragging.value = true
+    // 拖动期间关闭 scroll-snap，否则 scrollLeft 会被强制吸回原页
+    el.style.scrollSnapType = 'none'
+    try { el.setPointerCapture(drag.id) } catch (err) {}
+  }
+  if (drag.moved) el.scrollLeft = drag.startLeft - dx
+}
+function onPagerUp(e) {
+  if (!drag || e.pointerId !== drag.id) return
+  const el = pager.value
+  if (drag.moved && el) {
+    // 拖动结束拦截随后这次 click，避免误点宫格图标
+    suppressClick = true
+    setTimeout(() => { suppressClick = false }, 0)
+    // 吸附到最近一页
+    const idx = Math.max(0, Math.round(el.scrollLeft / el.clientWidth))
+    goPage(idx)
+    // smooth 滚动到位后再恢复 snap，避免 mandatory snap 提前把位置吸回
+    setTimeout(() => { if (pager.value) pager.value.style.scrollSnapType = '' }, 450)
+  }
+  pagerDragging.value = false
+  drag = null
+}
+function onPagerClickCapture(e) {
+  if (suppressClick) {
+    e.stopPropagation()
+    e.preventDefault()
+    suppressClick = false
+  }
+}
+
 async function bootHome() {
   try { await contactsStore.load() } catch (e) {}
   await desktop.ensureValid()
@@ -909,6 +967,11 @@ function onUnmountedClear(t) {
   scrollbar-width: none;
 }
 .pager::-webkit-scrollbar { display: none; }
+/* 桌面端：鼠标可按住拖动翻页 */
+@media (min-width: 501px) {
+  .pager { cursor: grab; }
+  .pager.dragging { cursor: grabbing; user-select: none; }
+}
 
 .page {
   flex: 0 0 100%;
