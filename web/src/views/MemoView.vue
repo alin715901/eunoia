@@ -119,11 +119,17 @@
         </div>
 
         <template v-if="form.type === 'todo'">
-          <!-- 标题 / 待办项用自动增高的多行输入：长文本换行展示，不会被横向截断 -->
-          <textarea v-model="form.title" v-grow class="mm-input mm-ta" placeholder="标题（可选）" maxlength="40" rows="1"></textarea>
+          <!-- 标题 / 待办项用自动增高的多行输入：长文本换行展示，不会被横向截断。
+               边框由外层 .mm-ta-box 绘制（部分老 WebView 对 textarea 的 box-sizing
+               支持有缺陷，width:100% 会左右溢出被裁，外包一层彻底根治） -->
+          <div class="mm-ta-box">
+            <textarea v-model="form.title" v-grow class="mm-input mm-ta" placeholder="标题（可选）" maxlength="40" rows="1"></textarea>
+          </div>
           <div class="mm-todo-edit">
             <div v-for="(t, i) in form.todos" :key="i" class="mm-te-row">
-              <textarea v-model="t.text" v-grow class="mm-te-input mm-ta" rows="1" :placeholder="`第 ${i + 1} 项`" maxlength="60" @keydown="onItemKey($event)"></textarea>
+              <div class="mm-ta-box">
+                <textarea v-model="t.text" v-grow class="mm-te-input mm-ta" rows="1" :placeholder="`第 ${i + 1} 项`" maxlength="60" @keydown="onItemKey($event)"></textarea>
+              </div>
               <button class="mm-te-del" @click="form.todos.splice(i, 1)" aria-label="删除该项">×</button>
             </div>
             <button class="mm-te-add" @click="addTodo">＋ 添加一项</button>
@@ -171,7 +177,9 @@
           </div>
         </template>
         <template v-else>
-          <textarea v-model="form.note" class="mm-textarea" placeholder="随便写点什么…像一张空白信纸" />
+          <div class="mm-ta-box">
+            <textarea v-model="form.note" class="mm-textarea" placeholder="随便写点什么…像一张空白信纸" />
+          </div>
         </template>
 
         <div class="mm-color-row">
@@ -651,16 +659,31 @@ onMounted(() => {
 .mm-type-btn { flex: 1; border: 1px solid var(--border); background: var(--bg-soft); border-radius: 10px; padding: 10px; font-size: 14px; color: var(--text-soft); }
 .mm-type-btn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .mm-input, .mm-textarea, .mm-te-input { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 10px; padding: 10px; font-size: 14px; background: var(--bg-soft); }
-.mm-textarea { min-height: 130px; resize: none; line-height: 1.6; overflow-wrap: anywhere; word-break: break-word; }
+/* 多行输入外包一层：边框、圆角、底色、内边距全由外层 .mm-ta-box 负责，
+   内层 textarea 透明无边框零边距——即使个别老 WebView 忽略 textarea 的
+   box-sizing，width:100% 也绝不溢出，边框永远完整（根治「边框两边被截」） */
+.mm-ta-box {
+  display: block; position: relative;
+  border: 1px solid var(--border); border-radius: 10px; background: var(--bg-soft);
+  padding: 10px; overflow: hidden;
+}
+.mm-ta-box:focus-within { border-color: var(--accent); }
+.mm-ta-box .mm-ta, .mm-ta-box .mm-textarea {
+  display: block; width: 100%; padding: 0; border: none; border-radius: 0;
+  background: transparent; outline: none; resize: none;
+  -webkit-appearance: none; appearance: none;
+  -webkit-box-sizing: border-box; box-sizing: border-box;
+}
+.mm-textarea { min-height: 130px; line-height: 1.6; overflow-wrap: anywhere; word-break: break-word; }
 .mm-todo-edit { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
 .mm-te-row { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.mm-te-row .mm-ta-box { flex: 1 1 0%; min-width: 0; }
 .mm-te-del { width: 30px; height: 36px; border: none; background: transparent; color: #d9534f; font-size: 20px; flex: 0 0 auto; }
 .mm-te-add { align-self: flex-start; border: 1px dashed var(--border); background: transparent; color: var(--text-soft); border-radius: 10px; padding: 8px 14px; font-size: 13px; }
 /* 自动增高的多行输入（标题 / 待办项）：随内容换行拉高，长文本不再被横向截断。
    长串（无空格英文/数字/URL）也允许任意处断行，配合 JS 里 scrollLeft 归零，
-   双保险杜绝「输入框左边被截」。横向绝不滚动（overflow-x:hidden），
-   超过 120px 上限后允许纵向滚动查看已输入的内容 */
-.mm-ta { overflow-x: hidden; overflow-y: auto; resize: none; line-height: 1.5; overflow-wrap: anywhere; word-break: break-word; }
+   双保险杜绝「输入框左边被截」 */
+.mm-ta { overflow: hidden; line-height: 1.5; overflow-wrap: anywhere; word-break: break-word; }
 /* 提醒区块 */
 .mm-remind-head { display: flex; align-items: center; justify-content: space-between; }
 .mm-remind-head .mm-fld-label { margin-bottom: 0; }
@@ -704,8 +727,8 @@ onMounted(() => {
 .mm-color.on { border-color: var(--accent); }
 .mm-pin-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0 14px; }
 .mm-pin-row .row-title { font-size: 14px; }
-/* 中间内容滚动；标题与按钮固定不随滚动 */
-.mm-scroll { flex: 1; min-height: 0; overflow-y: auto; }
+/* 中间内容滚动；标题与按钮固定不随滚动。横向显式 hidden：万一份溢出也不产生横向滚动裁切 */
+.mm-scroll { flex: 1; min-height: 0; overflow-y: auto; overflow-x: hidden; }
 /* 取消/保存固定底部，按钮大小与心情弹窗一致 */
 .mm-actions { display: flex; gap: 10px; flex: 0 0 auto; margin-top: 12px; }
 .mm-btn { flex: 1; border: none; border-radius: 10px; padding: 12px; font-size: 15px; }
