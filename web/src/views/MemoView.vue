@@ -129,7 +129,7 @@
             <span class="mm-fld-label">截止日期（可选，可精确到时间）</span>
             <input v-model="form.due" class="mm-input" type="datetime-local" />
           </div>
-          <!-- 提醒：到点 / 提前 N 分钟；可选联系人——到点以对方身份往聊天里发「提醒你{标题}」 -->
+          <!-- 提醒：到点 / 提前 N 分钟；提醒人「无」= 屏幕中间弹窗，选联系人 = 到点由对方发消息提醒我 -->
           <div class="mm-fld">
             <div class="mm-remind-head">
               <span class="mm-fld-label">提醒</span>
@@ -145,10 +145,13 @@
               </div>
               <div class="mm-remind-to">
                 <span class="mm-fld-label">提醒人</span>
-                <select v-model.number="form.remindContact" class="mm-input mm-select">
-                  <option :value="0">只提醒我</option>
-                  <option v-for="c in contactOptions" :key="c.id" :value="c.id">{{ c.name }}</option>
-                </select>
+                <!-- 应用内单选列表，不用系统原生的下拉弹窗 -->
+                <button type="button" class="mm-rm-picker" @click="contactPicker = true">
+                  <span class="mm-rm-picker-name">{{ remindContactName }}</span>
+                  <svg class="mm-rm-picker-arrow" viewBox="0 0 24 24" width="14" height="14" aria-hidden="true">
+                    <path d="M8 10l4 4 4-4" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
+                  </svg>
+                </button>
               </div>
               <p v-if="remindHint" class="mm-remind-hint">{{ remindHint }}</p>
             </template>
@@ -185,6 +188,24 @@
         </div>
       </div>
     </div>
+
+    <!-- 提醒人选择：应用内单选列表 -->
+    <Modal :show="contactPicker" title="选择提醒人" width="300px" @close="contactPicker = false">
+      <div class="mr-pick-list">
+        <button
+          v-for="c in remindContactOptions"
+          :key="c.id"
+          type="button"
+          class="mr-pick-item"
+          :class="{ on: form.remindContact === c.id }"
+          :data-id="c.id"
+          @click="pickContact(c.id)"
+        >
+          <span class="mr-pick-name">{{ c.name }}</span>
+          <AppIcon v-if="form.remindContact === c.id" name="check" :size="14" color="var(--accent)" />
+        </button>
+      </div>
+    </Modal>
   </div>
 </template>
 
@@ -192,6 +213,7 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
+import Modal from '@/components/common/Modal.vue'
 import ToggleSwitch from '@/components/common/ToggleSwitch.vue'
 import { useItems } from '@/composables/useItems'
 import { useNotificationsStore } from '@/stores/notifications'
@@ -365,12 +387,22 @@ const show = ref(false)
 const editing = ref(null)
 const form = reactive({ id: null, type: 'todo', title: '', todos: [], note: '', color: PALETTE[0], pinned: false, due: '', remindOn: false, remindOffset: 0, remindContact: 0 })
 
-/* 提醒人候选：排除群聊（群聊里以「对方」身份发言没有具体成员，观感突兀）与已拉黑 */
-const contactOptions = computed(() =>
-  (contactsStore.list || []).filter((c) => c.kind !== 'group' && !Number(c.blocked))
-)
+/* 提醒人候选：「无」= 屏幕中间弹窗提醒我；其余为联系人（排除群聊与已拉黑） */
+const contactPicker = ref(false)
+const remindContactOptions = computed(() => [
+  { id: 0, name: '无' },
+  ...(contactsStore.list || []).filter((c) => c.kind !== 'group' && !Number(c.blocked))
+])
+const remindContactName = computed(() => {
+  const c = remindContactOptions.value.find((x) => x.id === form.remindContact)
+  return c ? c.name : '无'
+})
+function pickContact(id) {
+  form.remindContact = id
+  contactPicker.value = false
+}
 
-/* 提醒时间预览：「将于 10月26日 09:00 提醒你 / 并给「XX」发消息」 */
+/* 提醒时间预览：「将于 10月26日 09:00 由「XX」提醒你」/「弹窗提醒你」 */
 const remindHint = computed(() => {
   if (!form.due || !form.remindOn) return ''
   const at = remindAtMs(form.due, form.remindOffset)
@@ -378,8 +410,8 @@ const remindHint = computed(() => {
   const d = new Date(at)
   const pad = (n) => String(n).padStart(2, '0')
   const when = `${d.getMonth() + 1}月${d.getDate()}日 ${pad(d.getHours())}:${pad(d.getMinutes())}`
-  const c = contactOptions.value.find((x) => x.id === form.remindContact)
-  return c ? `将于 ${when} 提醒，并给「${c.name}」发消息` : `将于 ${when} 提醒你`
+  const c = remindContactOptions.value.find((x) => x.id === form.remindContact)
+  return c && c.id > 0 ? `将于 ${when} 由「${c.name}」提醒你` : `将于 ${when} 弹窗提醒你`
 })
 
 /* 截止日期被清空时自动关闭提醒（提醒依赖截止时间） */
@@ -390,18 +422,30 @@ watch(
   }
 )
 
-/* 自动增高的多行输入：随内容换行拉高，长文本不再被横向截断 */
+/* 自动增高的多行输入：随内容换行拉高，长文本不再被横向截断。
+   scrollLeft 归零是兜底：任何情况下输入内容左对齐显示，绝不出现「左边被截」。
+   input 事件里也做一次：IME 组词 / 粘贴等路径下 Vue 的 updated 钩子可能不触发 */
 const vGrow = {
   mounted(el) {
     growTa(el)
+    el.__growInput = () => growTa(el)
+    el.addEventListener('input', el.__growInput)
   },
   updated(el) {
     growTa(el)
+  },
+  unmounted(el) {
+    if (el.__growInput) {
+      el.removeEventListener('input', el.__growInput)
+      el.__growInput = null
+    }
   }
 }
 function growTa(el) {
+  el.scrollLeft = 0
   el.style.height = 'auto'
   el.style.height = `${Math.min(el.scrollHeight, 120)}px`
+  el.scrollLeft = 0
 }
 /* 回车（不加 Shift）快速添加下一项；Shift+回车 换行 */
 function onItemKey(e) {
@@ -550,13 +594,16 @@ onMounted(() => {
 .mm-type-btn { flex: 1; border: 1px solid var(--border); background: var(--bg-soft); border-radius: 10px; padding: 10px; font-size: 14px; color: var(--text-soft); }
 .mm-type-btn.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .mm-input, .mm-textarea, .mm-te-input { width: 100%; box-sizing: border-box; border: 1px solid var(--border); border-radius: 10px; padding: 10px; font-size: 14px; background: var(--bg-soft); }
-.mm-textarea { min-height: 130px; resize: none; line-height: 1.6; }
+.mm-textarea { min-height: 130px; resize: none; line-height: 1.6; overflow-wrap: anywhere; word-break: break-word; }
 .mm-todo-edit { margin-top: 10px; display: flex; flex-direction: column; gap: 8px; }
-.mm-te-row { display: flex; gap: 8px; align-items: center; }
-.mm-te-del { width: 30px; height: 36px; border: none; background: transparent; color: #d9534f; font-size: 20px; }
+.mm-te-row { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.mm-te-del { width: 30px; height: 36px; border: none; background: transparent; color: #d9534f; font-size: 20px; flex: 0 0 auto; }
 .mm-te-add { align-self: flex-start; border: 1px dashed var(--border); background: transparent; color: var(--text-soft); border-radius: 10px; padding: 8px 14px; font-size: 13px; }
-/* 自动增高的多行输入（标题 / 待办项）：随内容换行拉高，长文本不再被横向截断 */
-.mm-ta { overflow: hidden; resize: none; line-height: 1.5; }
+/* 自动增高的多行输入（标题 / 待办项）：随内容换行拉高，长文本不再被横向截断。
+   长串（无空格英文/数字/URL）也允许任意处断行，配合 JS 里 scrollLeft 归零，
+   双保险杜绝「输入框左边被截」。横向绝不滚动（overflow-x:hidden），
+   超过 120px 上限后允许纵向滚动查看已输入的内容 */
+.mm-ta { overflow-x: hidden; overflow-y: auto; resize: none; line-height: 1.5; overflow-wrap: anywhere; word-break: break-word; }
 /* 提醒区块 */
 .mm-remind-head { display: flex; align-items: center; justify-content: space-between; }
 .mm-remind-head .mm-fld-label { margin-bottom: 0; }
@@ -565,7 +612,26 @@ onMounted(() => {
 .mm-rm-chip.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .mm-rm-chip.sm { padding: 5px 11px; font-size: 12px; }
 .mm-remind-to { margin-top: 12px; }
+/* 提醒人选择器：外观同输入框的按钮，点击弹应用内单选列表（不用系统原生下拉） */
+.mm-rm-picker {
+  width: 100%; box-sizing: border-box; display: flex; align-items: center; justify-content: space-between;
+  border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px; font-size: 14px;
+  background: var(--bg-soft); color: var(--text); text-align: left;
+}
+.mm-rm-picker-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mm-rm-picker-arrow { flex: 0 0 auto; color: var(--text-soft); }
 .mm-remind-hint { font-size: 11.5px; color: var(--text-soft); margin: 8px 0 0; line-height: 1.6; }
+/* 提醒人单选列表 */
+.mr-pick-list { display: flex; flex-direction: column; }
+.mr-pick-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  border: none; background: transparent; padding: 12px 6px; font-size: 14px; color: var(--text);
+  border-bottom: 1px solid var(--border); text-align: left;
+}
+.mr-pick-item:last-child { border-bottom: none; }
+.mr-pick-item.on { color: var(--accent); font-weight: 600; }
+.mr-pick-item.on .mr-pick-name { color: var(--accent); }
+.mr-pick-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .mm-due-line { display: flex; align-items: center; gap: 3px; }
 .mm-remind-ico { flex: 0 0 auto; }
 .mm-fld { margin-top: 12px; }

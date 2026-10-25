@@ -56,6 +56,9 @@
       <Toast />
       <ConfirmDialog />
 
+      <!-- 备忘录待办提醒（提醒人选「无」）：屏幕中间的系统弹窗，独立于路由 -->
+      <MemoReminderDialog />
+
       <!-- 首次进入的使用须知：勾选同意后写入本机标记，之后不再弹出 -->
       <NoticeDialog v-if="showNotice" @enter="onNoticeEnter" />
 
@@ -78,6 +81,7 @@ import BottomTabBar from '@/components/layout/BottomTabBar.vue'
 import BootBrand from '@/components/layout/BootBrand.vue'
 import Toast from '@/components/common/Toast.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
+import MemoReminderDialog from '@/components/common/MemoReminderDialog.vue'
 import NoticeDialog from '@/components/common/NoticeDialog.vue'
 import CallOverlay from '@/components/chat/CallOverlay.vue'
 import MusicFloat from '@/components/music/MusicFloat.vue'
