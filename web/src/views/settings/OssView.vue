@@ -34,8 +34,17 @@
       <input v-model="form.accessKeySecret" class="field" type="password" autocomplete="off" />
       <p class="sub">密钥仅保存在你的浏览器本地，不会上传到任何服务器（除了阿里云本身）。</p>
 
+      <!-- 路径前缀：多台设备必须填成一样的，否则各存各的，看起来像"同步没生效" -->
+      <label class="field-label">路径前缀</label>
+      <input v-model="form.prefix" class="field" autocomplete="off" placeholder="eunoia" />
+      <p class="sub">云端文件会存在「前缀/backup/eunoia.json」。多台设备共用同一个 Bucket 时，此处必须完全一致。</p>
+
       <!-- 已配置：断开连接 -->
       <button v-if="configured" class="btn-block danger" type="button" :disabled="saving || testing" @click="doClear">断开连接</button>
+      <!-- 上传本机数据到云端（会覆盖云端现有备份，冲突时二次确认） -->
+      <button class="btn-block" type="button" :disabled="uploading || restoring || importing || !configured" @click="doUpload()">
+        {{ uploading ? '上传中…' : '上传本机数据到云端' }}
+      </button>
       <!-- 从云端恢复数据到本浏览器（下载后可选合并 / 覆盖） -->
       <button class="btn-block" type="button" :disabled="restoring || importing || !configured" @click="openRestore">
         {{ restoring ? '恢复中…' : '从云端恢复数据到本浏览器' }}
@@ -44,6 +53,8 @@
       <button class="btn-block" type="button" :disabled="migrating || !configured" @click="doMigrate">
         {{ migrating ? `迁移中…（已完成 ${migDone}）` : '迁移本地图片到云端（省空间）' }}
       </button>
+      <!-- 本机设备标识：多设备共用同一个 Bucket 时，用来区分数据来自哪台设备 -->
+      <p class="sub">本机标识：{{ deviceLabel }}<span v-if="syncState && syncState.cloudLabel"> · 云端备份来自：{{ syncState.cloudLabel }}</span></p>
       <!-- 最近一次同步时间 -->
     </div>
 
@@ -116,7 +127,7 @@ import { useRouter } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import Modal from '@/components/common/Modal.vue'
-import { getSettings, saveSettings, migrateImagesToOss, backupToOss, downloadOssBackup, importBackup } from '@/api/settings'
+import { getSettings, saveSettings, migrateImagesToOss, backupToOss, downloadOssBackup, importBackup, getOssSyncState, getDeviceLabel, markOssCloudSeen } from '@/api/settings'
 import { fmtBackupTime, backupTotalRows, backupFeatureSummary } from '@/utils/backupInfo'
 import { readOssCfg, ossReady, ossTest } from '@/utils/oss'
 import { fmtSyncTime } from '@/utils/syncTime'
@@ -163,12 +174,16 @@ function pickRegion(v) {
 }
 const saving = ref(false)
 const testing = ref(false)
+const uploading = ref(false)
 const migrating = ref(false)
 const migDone = ref(0)
 const restoring = ref(false)
 const restoreOpen = ref(false)
 const restorePending = ref(null)
 const importing = ref(false)
+/* 本机设备标识 + 云端备份状态（用于冲突提示） */
+const deviceLabel = getDeviceLabel()
+const syncState = ref(null)
 /* 备份内容按板块汇总（与「按板块导出」弹窗同口径） */
 const featSummary = computed(() => backupFeatureSummary(restorePending.value))
 const msg = ref('')
@@ -191,8 +206,16 @@ async function loadSyncTime() {
     lastSyncText.value = t ? fmtSyncTime(t) : ''
   } catch (e) { /* ignore */ }
 }
+
+/* 读取云端备份状态（版本号 / 来源设备 / 是否冲突） */
+async function refreshSyncState() {
+  try {
+    syncState.value = await getOssSyncState()
+  } catch (e) { /* ignore */ }
+}
 loadSyncTime()
-syncTimer = setInterval(loadSyncTime, 30 * 1000)
+refreshSyncState()
+syncTimer = setInterval(() => { loadSyncTime(); refreshSyncState() }, 30 * 1000)
 onBeforeUnmount(() => clearInterval(syncTimer))
 
 async function fill() {
@@ -217,7 +240,6 @@ async function doSave() {
   msgOk.value = false
   try {
     if (!form.bucket.trim() || !form.endpoint.trim()) throw new Error('请填写 Bucket 名称并选择地区')
-    msgOk.value = false
     await saveSettings({
       oss_config: {
         accessKeyId: form.accessKeyId.trim(),
@@ -230,22 +252,51 @@ async function doSave() {
     msg.value = '已保存并连接'
     msgOk.value = true
     notify('云端同步配置已保存')
-    /* 保存成功 → 后台自动把当前全部数据备份到云端（不阻塞按钮，
-       上传在后台继续，完成后刷新同步时间并通知） */
-    backupToOss()
-      .then(() => {
-        loadSyncTime()
-        notify('已自动备份当前数据到云端')
-      })
-      .catch((be) => {
-        isErr.value = true
-        msg.value = `已保存，但自动备份失败：${be.message || '请检查 Bucket 权限'}`
-      })
+    /* 保存配置只保存配置，不动云端数据。
+       早期这里会「顺手把本机数据上传覆盖云端」，导致另一台设备刚同步上去的数据
+       被无声冲掉（用户反馈的「B 填好配置马上同步了 B 的数据」）。
+       现在上传必须显式点击「上传本机数据到云端」，且云端有更新数据时会二次确认。 */
+    await refreshSyncState()
   } catch (e) {
     isErr.value = true
     msg.value = e.message || '保存失败'
   } finally {
     saving.value = false
+  }
+}
+
+/* 显式上传本机数据到云端；云端有更新的数据（多半来自另一台设备）时二次确认。
+   force 只接受 true（内部递归调用时传），避免按钮事件对象被当成真值。 */
+async function doUpload(force = false) {
+  const hard = force === true
+  if (uploading.value) return
+  uploading.value = true
+  isErr.value = false
+  msgOk.value = false
+  try {
+    const r = await backupToOss({ force: hard, archive: true })
+    await loadSyncTime()
+    await refreshSyncState()
+    msgOk.value = true
+    msg.value = `已上传本机数据到云端（约 ${Math.round((r.bytes || 0) / 1024)} KB）`
+    notify('已上传本机数据到云端')
+  } catch (e) {
+    if (e && e.code === 'OSS_CONFLICT') {
+      /* 云端有本机没见过的新数据 → 询问是否覆盖（覆盖前会把旧备份存到 archive/） */
+      const ok = await confirmDialog({
+        title: '云端已有更新的数据',
+        text: `${e.message}\n\n覆盖前会先把云端现有备份另存为一份历史文件，确定继续吗？`,
+        danger: true,
+        okText: '覆盖云端'
+      })
+      uploading.value = false
+      if (ok) doUpload(true)
+      return
+    }
+    isErr.value = true
+    msg.value = e.message || '上传失败'
+  } finally {
+    uploading.value = false
   }
 }
 
@@ -310,19 +361,24 @@ async function openRestore() {
   }
 }
 
-/* mode: 'merge' 合并 / 'overwrite' 覆盖；成功后整页刷新重新初始化 */
+/* mode: 'merge' 合并 / 'overwrite' 覆盖；
+   导入后 api 层已 await flushNow() 确保写进 IndexedDB，这里才刷新页面。
+   早先固定等 800ms 就 location.reload()，数据量大时写盘尚未完成就被刷新打断，
+   表现为「提示导入成功、刷新后浏览器还是原来的数据」。 */
 async function doRestore(mode) {
   if (!restorePending.value || importing.value) return
   importing.value = true
   try {
     const r = await importBackup(restorePending.value, mode)
+    /* 本机已把云端这一版看进本地了 → 记下版本号，之后本机上传不会被误判冲突 */
+    markOssCloudSeen().catch(() => {})
     const n = r && r.inserted ? Object.values(r.inserted).reduce((a, b) => a + b, 0) : null
     restoreOpen.value = false
     msgOk.value = true
     isErr.value = false
     msg.value = '恢复完成，正在刷新…'
-    notify(`已${mode === 'overwrite' ? '覆盖' : '合并'}恢复云端数据${n != null ? `（导入 ${n} 条）` : ''}`)
-    setTimeout(() => location.reload(), 800)
+    notify(`${r && r.text ? r.text : '已恢复云端数据'}${n != null ? `（共 ${n} 条）` : ''}`)
+    setTimeout(() => location.reload(), 300)
   } catch (e) {
     isErr.value = true
     msg.value = e.message || '恢复失败'

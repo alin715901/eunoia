@@ -28,7 +28,10 @@ export function readOssCfg(settings) {
     accessKeySecret: String(raw.accessKeySecret || ''),
     bucket: String(raw.bucket || '').trim(),
     endpoint: String(raw.endpoint || '').trim().replace(/^https?:\/\//, '').replace(/\/+$/, ''),
-    prefix: String(raw.prefix || '').trim().replace(/^\/+|\/+$/g, '')
+    /* prefix 必须有稳定默认值：两台设备若 prefix 不一致，会写到完全不同的
+       OSS 对象上（对方以为覆盖了你的，其实各存一份），同步就"看起来不生效"。
+       配置里没写 prefix 时一律回落到 'eunoia'；显式写了空串才表示不要前缀。 */
+    prefix: raw.prefix === undefined ? OSS_DEFAULT.prefix : String(raw.prefix || '').trim().replace(/^\/+|\/+$/g, '')
   }
 }
 
@@ -210,6 +213,33 @@ export async function ossDownload(cfg, path) {
     throw new Error(parseOssError(res.status, txt))
   }
   return res.blob()
+}
+
+/**
+ * 判断云端对象是否存在（不发完整下载）。
+ * 做法：GET 请求拿到响应后只读流的第一块就取消，
+ * 避免为了「文件在不在」把几十上百 MB 的备份整个拉下来。
+ * 返回 true=存在；false=不存在（404/403）或请求失败。
+ */
+export async function ossExists(cfg, path) {
+  if (!ossReady(cfg)) return false
+  const key = ossKeyOf(cfg, path)
+  try {
+    const url = await signedUrlOf(cfg, 'GET', key, null, '', 600)
+    const res = await fetch(url, { method: 'GET' })
+    if (!res.ok) {
+      try { if (res.body) await res.body.cancel() } catch (e) { /* ignore */ }
+      return false
+    }
+    try {
+      const reader = res.body.getReader()
+      await reader.read()
+      await reader.cancel()
+    } catch (e) { /* 取消读取失败不影响存在性判断 */ }
+    return true
+  } catch (e) {
+    return false
+  }
 }
 
 /**

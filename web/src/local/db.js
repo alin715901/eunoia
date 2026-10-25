@@ -67,7 +67,13 @@ function toBindable(v) {
   }
 }
 
-const state = { raw: null, dirty: false, flushing: false, timer: null, lastBytes: 0 }
+const state = { raw: null, dirty: false, flushing: false, timer: null, lastBytes: 0, inTx: 0, flushPromise: null }
+/* 写入版本号：每次写操作 ++dirtySeq，落盘成功后记 savedSeq。
+   用于判断「导出快照之后是否又发生了新写入」——
+   早先的实现用布尔 dirty 标记，await idbPut() 期间的新写入会被
+   无条件 state.dirty = false 吞掉，导致这部分数据永远不落盘。 */
+let dirtySeq = 0
+let savedSeq = 0
 /* 按 SQL 文本缓存预编译语句：
    1. 业务代码（如 seed 的事务、repository 的循环插入）会复用同一个 prepare 结果多次 run，
       与 better-sqlite3 语义一致；
@@ -85,6 +91,7 @@ function getStmt(sql) {
 
 function markDirty() {
   state.dirty = true
+  dirtySeq++
   if (state.timer) return
   state.timer = setTimeout(() => {
     state.timer = null
@@ -92,21 +99,73 @@ function markDirty() {
   }, 400)
 }
 
+/* 把当前数据库快照写入 IndexedDB。
+   关键点：idbPut 是异步的，其间可能又发生新写入。
+   所以快照的版本号必须在 export() 之前取，落盘成功后只有当
+   dirtySeq 没有变化才允许清 dirty 标记；否则要再落一次盘。
+   早先的实现在 await 之后无条件 state.dirty = false，
+   会把 await 期间产生的新写入永久吞掉（数据丢失）。 */
 async function flush() {
-  if (!state.dirty || !state.raw || state.flushing) return
+  if (!state.raw) return
+  /* 事务进行中绝不导出快照：sql.js 的 export() 会重建底层连接，
+     在未提交事务中调用会静默结束该事务 → 未提交数据全部丢失。
+     （导入备份动辄上万行写入，事务可能持续数百毫秒，必须挡住。） */
+  if (state.inTx > 0) {
+    state.pendingFlush = true
+    if (!state.timer) {
+      state.timer = setTimeout(() => { state.timer = null; flush() }, 400)
+    }
+    return
+  }
+  if (state.flushing) {
+    /* 正在落盘：记一个「还需要再落一次」的标记，
+       由当前这次 flush 结束时继续处理。
+       早先的实现直接 return，导致这次新写入既没被本次快照带走，
+       也没重新排 timer → 数据永久丢失。 */
+    state.pendingFlush = true
+    return
+  }
+  if (!state.dirty && !state.pendingFlush) return
   state.flushing = true
   try {
-    const bytes = state.raw.export()
-    /* 关键：sql.js 的 export() 会 finalize 所有已编译语句并重开库句柄，
-       缓存里的 Statement 全部失效，必须清掉，下次 prepare 时重新编译 */
-    stmtCache.clear()
-    await idbPut(IDB_KEY, bytes)
-    state.lastBytes = bytes.byteLength
-    state.dirty = false
+    do {
+      state.pendingFlush = false
+      const ver = dirtySeq
+      const bytes = state.raw.export()
+      /* 关键：sql.js 的 export() 会 finalize 所有已编译语句并重开库句柄，
+         缓存里的 Statement 全部失效，必须清掉，下次 prepare 时重新编译 */
+      stmtCache.clear()
+      /* export() 重建了底层连接，PRAGMA foreign_keys 会回到默认的 0（外键约束失效）。
+         实测确认（dbg_sqljs.mjs）：export 后 PRAGMA foreign_keys = 0。
+         这里显式恢复，保证导出不会悄悄削弱数据完整性约束。 */
+      try { state.raw.exec('PRAGMA foreign_keys = ON') } catch (e) { /* ignore */ }
+      await idbPut(IDB_KEY, bytes)
+      state.lastBytes = bytes.byteLength
+      savedSeq = ver
+      state.dirty = dirtySeq !== savedSeq
+    } while (state.pendingFlush || state.dirty)
   } catch (e) {
     console.error('[db] 持久化失败', e)
   } finally {
     state.flushing = false
+  }
+}
+
+/* 立即落盘并等待完成（导入 / 导出 / 页面跳转等关键节点用）。
+   返回 true 表示当前内存状态已确实写入 IndexedDB。 */
+export async function flushNow() {
+  if (!state.raw) return false
+  try {
+    await flush()
+    /* flush 期间又来了新写入 → 再来一次，确保收敛 */
+    let guard = 0
+    while ((state.dirty || state.pendingFlush) && guard++ < 20) {
+      await flush()
+    }
+    return !state.dirty
+  } catch (e) {
+    console.error('[db] 立即落盘失败', e)
+    return false
   }
 }
 
@@ -171,6 +230,8 @@ const db = {
   transaction(fn) {
     return (...args) => {
       state.raw.run('BEGIN')
+      /* inTx 计数：事务期间禁止导出快照（export 会静默结束事务） */
+      state.inTx++
       try {
         const r = fn(...args)
         state.raw.run('COMMIT')
@@ -183,6 +244,8 @@ const db = {
           /* 忽略 */
         }
         throw e
+      } finally {
+        state.inTx--
       }
     }
   },

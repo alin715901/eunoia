@@ -3,7 +3,7 @@
  * fail(res, msg) 换成 throw new Error(msg)（与原来 http 拦截器 reject 的行为一致）。
  * 上层 web/src/api/*.js 只做薄封装再导出，stores 零改动。
  */
-import db, { resetDb } from './db'
+import db, { resetDb, flushNow } from './db'
 import * as chatRepo from './repositories/chat.repo'
 import * as chatService from './services/chat.service'
 import * as contactsRepo from './repositories/contacts.repo'
@@ -23,7 +23,7 @@ import * as musicCache from './services/musicCache'
 import * as mochiService from './services/mochi.service'
 import * as backupService from './services/backup.service'
 import * as notification from './services/notification.service'
-import { readOssCfg, ossReady, ossUpload, ossDownload } from '../utils/oss'
+import { readOssCfg, ossReady, ossUpload, ossDownload, ossExists } from '../utils/oss'
 
 export { resetDb }
 
@@ -1284,8 +1284,14 @@ export function buildBackup(scope) {
 }
 
 // 导入备份：mode 'merge' 合并 / 'overwrite' 覆盖
+// 导入后立即强制落盘（await flushNow）：备份动辄几十上百 MB，
+// 若不等待写完 IndexedDB 就刷新页面，数据会停留在内存里没进库，
+// 表现为「提示导入成功、刷新后还是原来的数据」。
 export async function importBackup(payload, mode) {
-  return backupService.importBackup(payload, mode)
+  const r = backupService.importBackup(payload, mode)
+  const ok = await flushNow()
+  if (!ok) throw new Error('数据已导入内存，但写入本地数据库失败，请重试或检查浏览器存储空间')
+  return r
 }
 
 // 备份文件预校验（导入前用，错误信息直接展示；同步，因为底层校验是纯函数）
@@ -1295,18 +1301,172 @@ export function validateBackupFile(payload) {
 
 /* ─────────── 云端（OSS）备份 / 恢复梦角 ─────────── */
 
+/* 云端对象布局：
+ *   backup/eunoia.json          当前备份数据（会被覆盖）
+ *   backup/eunoia.meta.json     备份元信息（版本号 / 时间 / 来源设备），很小，用于冲突检测
+ *   backup/archive/<ts>.json    被覆盖前的旧备份（只在覆盖「别的设备的数据」时留存一份）
+ *
+ * 为什么要 meta + 版本号：
+ *   早期只有一个固定 key，任何一台设备「保存配置后顺手备份」都会直接 PUT 覆盖云端，
+ *   另一台设备刚同步上去的数据当场被冲掉，且用户完全无感知。
+ *   现在上传前先读 meta：
+ *     云端 rev <= 本机已知 rev → 云端不比本机新，允许直接覆盖；
+ *     云端 rev >  本机已知 rev → 云端有本机没见过的新数据（多半来自另一台设备），
+ *                              必须让用户显式确认后才允许覆盖。
+ *   这样「A 先同步、B 误同步」就不会再静默发生。 */
 const OSS_BACKUP_PATH = 'backup/eunoia.json'
+const OSS_META_PATH = 'backup/eunoia.meta.json'
+const OSS_ARCHIVE_DIR = 'backup/archive/'
 
-/* 备份当前全部数据到 OSS（全量 JSON，保存并连接成功后自动触发）。
-   成功后记录 oss_last_backup_at（OssView 显示「刚刚同步 / 几时几分同步」） */
-export async function backupToOss() {
+const DEVICE_ID_KEY = 'eunoia-device-id'
+
+/* 本机设备标识：存在 localStorage（不进数据库，避免随备份同步到别的设备） */
+export function getDeviceId() {
+  try {
+    let id = localStorage.getItem(DEVICE_ID_KEY)
+    if (!id) {
+      id = 'd' + Math.random().toString(36).slice(2, 10) + Date.now().toString(36).slice(-4)
+      localStorage.setItem(DEVICE_ID_KEY, id)
+    }
+    return id
+  } catch (e) {
+    return 'd-unknown'
+  }
+}
+
+/* 本机设备名称：从 UA 猜浏览器名 + 短 id，便于在冲突提示里区分「哪台设备的数据」 */
+export function getDeviceLabel() {
+  const ua = (typeof navigator !== 'undefined' && navigator.userAgent) || ''
+  let name = '浏览器'
+  if (/Edg\//.test(ua)) name = 'Edge'
+  else if (/OPR\//.test(ua) || /Opera/.test(ua)) name = 'Opera'
+  else if (/Firefox\//.test(ua)) name = 'Firefox'
+  else if (/Chrome\//.test(ua)) name = 'Chrome'
+  else if (/Safari\//.test(ua)) name = 'Safari'
+  return `${name}·${getDeviceId().slice(-4)}`
+}
+
+/* 本机已知状态：
+ *   rev  = 本机最后一次上传后云端的版本号（本机自己写上去的）
+ *   seen = 本机已下载/导入过的云端版本号
+ * 两者取大者作为「本机已知云端版本」，用于冲突判定。 */
+function localSyncState() {
+  const s = readGlobalSettings()
+  return {
+    rev: Math.max(Number(s.oss_rev || 0), Number(s.oss_seen_rev || 0)),
+    uploadedRev: Number(s.oss_rev || 0),
+    seenRev: Number(s.oss_seen_rev || 0),
+    at: Number(s.oss_last_backup_at || 0),
+    device: String(s.oss_last_backup_device || '')
+  }
+}
+
+/* 读云端 meta（不存在时返回 null） */
+async function readOssMeta(cfg) {
+  try {
+    const blob = await ossDownload(cfg, OSS_META_PATH)
+    const txt = await blob.text()
+    const m = JSON.parse(txt)
+    if (m && typeof m === 'object') return m
+    return null
+  } catch (e) {
+    return null
+  }
+}
+
+/* 当前同步状态（供 UI 展示 + 冲突判断）
+ * 返回 { deviceId, deviceLabel, localRev, localAt, cloudRev, cloudAt, cloudDevice, cloudLabel, hasCloud, conflict }
+ */
+export async function getOssSyncState() {
+  const s = localSyncState()
+  const base = {
+    deviceId: getDeviceId(),
+    deviceLabel: getDeviceLabel(),
+    localRev: s.rev,
+    localAt: s.at,
+    cloudRev: 0,
+    cloudAt: 0,
+    cloudDevice: '',
+    cloudLabel: '',
+    hasCloud: false,
+    conflict: false
+  }
+  const cfg = readOssCfg(readGlobalSettings())
+  if (!ossReady(cfg)) return base
+  const meta = await readOssMeta(cfg)
+  if (!meta) {
+    /* 没有 meta：可能是老版本留下的备份（只有数据文件，没有元信息），
+       无法判断来源设备与版本 → 一律按「冲突」处理，要求用户显式确认后再覆盖，
+       避免又出现「另一台设备的数据被无声冲掉」。 */
+    try {
+      /* 用 ossExists 探测（只读流的第一块就取消），不整包下载上百 MB 的备份 */
+      if (await ossExists(cfg, OSS_BACKUP_PATH)) {
+        base.hasCloud = true
+        base.conflict = true
+        base.cloudLabel = '未知来源（旧版本备份）'
+      }
+    } catch (e) { /* 云端确实没有 */ }
+    return base
+  }
+  base.hasCloud = true
+  base.cloudRev = Number(meta.rev || 0)
+  base.cloudAt = Number(meta.created_at || 0)
+  base.cloudDevice = String(meta.device_id || '')
+  base.cloudLabel = String(meta.device_label || '')
+  /* 云端比本机新 → 可能冲突。
+     但如果云端就是「本设备自己」上传的（同一浏览器多标签页场景），
+     那不算冲突，可直接覆盖。 */
+  base.conflict = base.cloudRev > base.localRev && base.cloudDevice !== base.deviceId
+  return base
+}
+
+/* 备份当前全部数据到 OSS（全量 JSON）。
+ * opts.force = true 时跳过冲突检查（用户已显式确认覆盖）。
+ * opts.archive = true 时把被覆盖的旧备份另存一份到 backup/archive/。
+ * 成功后记录 oss_last_backup_at / oss_rev / oss_last_backup_device（供下次冲突判断）。 */
+export async function backupToOss(opts = {}) {
   const cfg = readOssCfg(readGlobalSettings())
   if (!ossReady(cfg)) throw new Error('请先填写并保存 OSS 配置')
+  const st = await getOssSyncState()
+  if (st.conflict && !opts.force) {
+    const err = new Error(
+      `云端已有更新的数据（${st.cloudLabel || '其他设备'}，${st.cloudAt ? new Date(st.cloudAt).toLocaleString('zh-CN') : '时间未知'}），` +
+      '直接上传会把它覆盖掉。请确认后再上传。'
+    )
+    err.code = 'OSS_CONFLICT'
+    err.state = st
+    throw err
+  }
+  /* 覆盖「别的设备」的数据前，先把旧文件存一份到 archive/，防止误覆盖后无法找回 */
+  if (opts.archive && st.hasCloud && st.cloudRev > 0) {
+    try {
+      const old = await ossDownload(cfg, OSS_BACKUP_PATH)
+      const ts = st.cloudAt || Date.now()
+      await ossUpload(cfg, old, `${OSS_ARCHIVE_DIR}eunoia-${ts}.json`)
+    } catch (e) {
+      /* 归档失败不阻断上传 */
+    }
+  }
   const payload = backupService.buildBackup({ type: 'full' })
+  payload.device_id = getDeviceId()
+  payload.device_label = getDeviceLabel()
   const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' })
   const r = await ossUpload(cfg, blob, OSS_BACKUP_PATH)
-  settingsRepo.setGlobal('oss_last_backup_at', Date.now())
-  return r
+  const rev = Math.max(st.cloudRev, st.localRev) + 1
+  const meta = {
+    app: 'eunoia',
+    kind: 'oss-backup-meta',
+    rev,
+    created_at: Date.now(),
+    device_id: getDeviceId(),
+    device_label: getDeviceLabel(),
+    bytes: blob.size
+  }
+  await ossUpload(cfg, new Blob([JSON.stringify(meta)], { type: 'application/json' }), OSS_META_PATH)
+  settingsRepo.setGlobal('oss_rev', rev)
+  settingsRepo.setGlobal('oss_last_backup_at', meta.created_at)
+  settingsRepo.setGlobal('oss_last_backup_device', meta.device_id)
+  return { url: r, rev, bytes: blob.size }
 }
 
 /* 从云端下载备份 JSON 并校验（只下载，不导入）。
@@ -1323,12 +1483,23 @@ export async function downloadOssBackup() {
   return payload
 }
 
+/* 导入成功后调用：把「本机已见到的云端版本」记下来，
+   这样本机之后再上传不会被误判为冲突（冲突只针对云端更新到本机没见过的版本）。 */
+export async function markOssCloudSeen() {
+  const cfg = readOssCfg(readGlobalSettings())
+  if (!ossReady(cfg)) return
+  const meta = await readOssMeta(cfg)
+  if (meta && Number(meta.rev || 0) > 0) {
+    settingsRepo.setGlobal('oss_seen_rev', Number(meta.rev))
+  }
+}
+
 /* 从云端恢复梦角数据到本浏览器（下载备份 JSON → 按 mode 导入）。
    mode: 'merge' 合并到当前数据 / 'overwrite' 覆盖（默认，兼容旧调用方）。
    成功后调用方需整页刷新，让全部 store/服务基于新数据重新初始化 */
 export async function restoreFromOss(mode = 'overwrite') {
   const payload = await downloadOssBackup()
-  return backupService.importBackup(payload, mode)
+  return importBackup(payload, mode)
 }
 
 export async function getBadges() {

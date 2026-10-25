@@ -339,7 +339,8 @@ async function doImport(mode) {
     const r = await importBackup(pending.value, mode)
     importOpen.value = false
     toast.pushToast({ title: mode === 'overwrite' ? '已覆盖导入' : '已合并导入', text: r.text })
-    setTimeout(() => window.location.reload(), 900)
+    /* importBackup 内部已等待写盘完成（await flushNow），这里只需给一点刷新缓冲 */
+    setTimeout(() => window.location.reload(), 300)
   } catch (err) {
     toast.pushToast({ title: '导入失败', text: err && err.message ? err.message : '未知错误' })
   } finally {

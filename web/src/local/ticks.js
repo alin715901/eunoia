@@ -172,7 +172,11 @@ function runAll() {
 /* ── OSS 自动同步：配置就绪时自动把全量数据备份到云端 ──
  *   开站 15 秒后补一次；页面开着每 30 分钟一次（同一节流窗口内不重复上传，
  *   失败也不 Hammering——无论成败，两次尝试至少间隔 30 分钟）。
- *   手动「保存并连接」的备份不受此节流限制，成功后同样刷新同步时间。 */
+ *
+ *   冲突保护：多设备共用同一个 Bucket 时，自动备份绝不能把别的设备
+ *   刚上传的数据无声覆盖掉。这里用 backupToOss 的版本号检查，
+ *   检测到云端有本机没见过的新数据就跳过本轮自动上传（留给用户手动决定）。
+ *   手动「上传本机数据到云端」按钮会在用户确认后强制覆盖。 */
 const OSS_SYNC_MS = 30 * 60 * 1000
 let ossSyncBusy = false
 let ossLastAttempt = 0
@@ -189,7 +193,10 @@ async function ossAutoBackupTick() {
     ossSyncBusy = true
     await backupToOss()
   } catch (e) {
-    /* 静默失败，下个周期再试 */
+    /* 冲突（云端有别的设备的新数据）或网络失败：静默跳过，不覆盖云端 */
+    if (e && e.code === 'OSS_CONFLICT') {
+      console.info('[oss] 云端有更新的数据（来自其他设备），本轮自动备份已跳过')
+    }
   } finally {
     ossSyncBusy = false
   }

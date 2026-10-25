@@ -25,6 +25,21 @@ dbReady
     console.error('[main] 本地数据库初始化失败', e)
   })
 
+/* 开发环境的自动化测试钩子（生产构建会被完全剔除）：
+ * E2E 脚本需要拿到「应用正在用的那个」db / api 实例。
+ * 若在 page.evaluate 里写 import('/src/local/db.js')，Vite dev 会当成另一个模块实例
+ * 重新初始化一份数据库（读到的是 IndexedDB 旧快照），测出来的结论是假的。
+ * 这里通过 main.js 的模块图（与业务代码同一批实例）挂到 window 上，仅 DEV 生效。 */
+if (import.meta.env.DEV) {
+  Promise.all([
+    import('./local/db.js'),
+    import('./local/api.js'),
+    import('./local/services/backup.service.js')
+  ]).then(([dbm, api, backupService]) => {
+    window.__eunoia = { db: dbm.default, dbm, api, backupService }
+  })
+}
+
 // Service Worker：缓存同源静态资源，二次访问瞬间打开（GitHub Pages 链路慢的对策）。
 // 直接注册（不等 load 事件：慢链路上 load 可能迟迟不来或时机不可靠）。
 // 相对路径注册，GitHub Pages /<仓库名>/ 子路径部署同样有效。
