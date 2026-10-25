@@ -23,36 +23,42 @@ export function backupTotalRows(data) {
   return Object.values(data.tables || {}).reduce((s, rows) => s + (Array.isArray(rows) ? rows.length : 0), 0)
 }
 
-/* app_items 是通用表：游戏 / 影院 / 心情 / 备忘录 / 经期 / 相册等模块记录都按
-   module 存在这一张表里。备份清单里不能只显示「模块记录 N」，用户看不到自己
-   的游戏纪录、心情日记到底有没有进备份——按 module 拆开列出 */
-const APP_ITEM_MODULE_LABELS = {
-  memo: '备忘录',
-  mood: '心情',
-  period: '经期',
-  game: '游戏',
-  cinema: '影院',
-  cinema_sites: '影院站点',
-  cinema_links: '影院链接',
-  album: '相册记录',
-  music: '音乐'
-}
+/* 把备份内容按「板块」汇总（口径与「按板块导出」弹窗完全一致）：
+   - 每个板块 = 其 tables 行数 + app_items 里归属该板块的 module 行数；
+   - 未归入任何板块的表（联系人 / 群成员 / 联系人设置 / 群设置 / 主动任务）
+     合并展示为「联系人及设置」；
+   - app_items 里无法归属任何板块的残留 module 归入「其他记录」。
+   返回 { features: [{key,label,count}], others: [{label,count}] }，均只含有数据的行 */
+const CONTACT_SIDE_TABLES = ['contacts', 'contact_members', 'contact_settings', 'group_member_settings', 'proactive_jobs']
 
-export function backupTablesText(data) {
-  const parts = []
-  for (const [t, rows] of Object.entries(data.tables || {})) {
-    if (!Array.isArray(rows) || !rows.length) continue
-    if (t === 'app_items') {
-      const byMod = new Map()
-      for (const r of rows) {
-        const m = String((r && r.module) || '其他')
-        byMod.set(m, (byMod.get(m) || 0) + 1)
-      }
-      const sorted = [...byMod.entries()].sort((a, b) => b[1] - a[1])
-      for (const [m, n] of sorted) parts.push(`${APP_ITEM_MODULE_LABELS[m] || m} ${n}`)
-      continue
+export function backupFeatureSummary(data) {
+  const tables = (data && data.tables) || {}
+  const rowsOf = (t) => (Array.isArray(tables[t]) ? tables[t] : [])
+  const covered = new Set()
+  const allMods = new Set()
+  const features = []
+  for (const f of BACKUP_FEATURES) {
+    let c = f.tables.reduce((s, t) => s + rowsOf(t).length, 0)
+    f.tables.forEach((t) => covered.add(t))
+    for (const [t, mods] of Object.entries(f.mods || {})) {
+      covered.add(t)
+      for (const m of mods) allMods.add(m)
+      c += rowsOf(t).filter((r) => mods.includes(String((r && r.module) || ''))).length
     }
-    parts.push(`${BACKUP_TABLE_LABELS[t] || t} ${rows.length}`)
+    if (c > 0) features.push({ key: f.key, label: f.label, count: c })
   }
-  return parts.length ? parts.join(' · ') : '（空备份）'
+  const others = []
+  let contactN = 0
+  for (const t of CONTACT_SIDE_TABLES) {
+    contactN += rowsOf(t).length
+    covered.add(t)
+  }
+  if (contactN > 0) others.push({ label: '联系人及设置', count: contactN })
+  for (const [t, rows] of Object.entries(tables)) {
+    if (!Array.isArray(rows) || !rows.length || covered.has(t)) continue
+    others.push({ label: BACKUP_TABLE_LABELS[t] || t, count: rows.length })
+  }
+  const leftover = rowsOf('app_items').filter((r) => !allMods.has(String((r && r.module) || ''))).length
+  if (leftover > 0) others.push({ label: '其他记录', count: leftover })
+  return { features, others }
 }

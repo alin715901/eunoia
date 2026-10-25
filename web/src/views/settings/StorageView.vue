@@ -116,7 +116,17 @@
           <div class="imp-row"><span>数据范围</span><span>{{ scopeText(pending.scope) }}</span></div>
           <div class="imp-row"><span>数据量</span><span>{{ totalRows(pending) }} 条</span></div>
         </div>
-        <p class="imp-tables">{{ tablesText(pending) }}</p>
+        <div class="bk-feats">
+          <div v-for="f in featSummary.features" :key="f.key" class="feat-row">
+            <span class="ck-name">{{ f.label }}</span>
+            <span class="ck-count">{{ f.count }} 条</span>
+          </div>
+          <div v-for="o in featSummary.others" :key="o.label" class="feat-row">
+            <span class="ck-name">{{ o.label }}</span>
+            <span class="ck-count">{{ o.count }} 条</span>
+          </div>
+          <p v-if="!featSummary.features.length && !featSummary.others.length" class="exp-empty">（空备份）</p>
+        </div>
         <div class="imp-modes">
           <button class="imp-btn" :disabled="importing" @click="doImport('merge')">
             <b>合并到当前数据</b>
@@ -147,7 +157,7 @@ import {
   validateBackupFile,
   resetDb
 } from '@/api/settings'
-import { fmtBackupTime, backupScopeText, backupTotalRows, backupTablesText } from '@/utils/backupInfo'
+import { fmtBackupTime, backupScopeText, backupTotalRows, backupFeatureSummary } from '@/utils/backupInfo'
 import { BACKUP_FORMAT } from '@/local/services/backup.service'
 import { confirmDialog } from '@/utils/dialog'
 import { useNotificationsStore } from '@/stores/notifications'
@@ -319,7 +329,8 @@ function scopeText(s) { return backupScopeText(s) }
 
 function totalRows(data) { return backupTotalRows(data) }
 
-function tablesText(data) { return backupTablesText(data) }
+/* 备份内容按板块汇总（与「按板块导出」弹窗同口径） */
+const featSummary = computed(() => backupFeatureSummary(pending.value))
 
 async function doImport(mode) {
   if (!pending.value || importing.value) return
@@ -454,7 +465,12 @@ onMounted(load)
 .imp-row { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; padding: 4px 0; }
 .imp-row span:first-child { color: var(--text-soft); flex: 0 0 auto; }
 .imp-row span:last-child { text-align: right; word-break: break-all; }
-.imp-tables { font-size: 12px; color: var(--text-soft); line-height: 1.7; margin: 0 0 12px; word-break: break-all; }
+/* 备份内容板块列表（与「按板块导出」弹窗同口径） */
+.bk-feats { border: 1px solid var(--border); border-radius: var(--radius); padding: 2px 12px; margin-bottom: 12px; max-height: 38vh; overflow: auto; }
+.feat-row { display: flex; align-items: center; gap: 9px; padding: 8px 0; font-size: 13px; color: var(--text); border-bottom: 1px solid var(--border); }
+.feat-row:last-child { border-bottom: none; }
+.feat-row .ck-name { flex: 1 1 auto; min-width: 0; }
+.feat-row .ck-count { font-size: 12px; color: var(--text-soft); flex: 0 0 auto; }
 .imp-modes { display: flex; flex-direction: column; gap: 10px; }
 .imp-btn {
   display: flex; flex-direction: column; gap: 3px; text-align: left;

@@ -51,10 +51,19 @@
       <template v-if="restorePending">
         <div class="imp-info">
           <div class="imp-row"><span>备份时间</span><span>{{ fmtTime(restorePending.created_at) }}</span></div>
-          <div class="imp-row"><span>数据范围</span><span>{{ scopeText(restorePending.scope) }}</span></div>
           <div class="imp-row"><span>数据量</span><span>{{ totalRows(restorePending) }} 条</span></div>
         </div>
-        <p class="imp-tables">{{ tablesText(restorePending) }}</p>
+        <div class="bk-feats">
+          <div v-for="f in featSummary.features" :key="f.key" class="feat-row">
+            <span class="ck-name">{{ f.label }}</span>
+            <span class="ck-count">{{ f.count }} 条</span>
+          </div>
+          <div v-for="o in featSummary.others" :key="o.label" class="feat-row">
+            <span class="ck-name">{{ o.label }}</span>
+            <span class="ck-count">{{ o.count }} 条</span>
+          </div>
+          <p v-if="!featSummary.features.length && !featSummary.others.length" class="exp-empty">（空备份）</p>
+        </div>
         <div class="imp-modes">
           <button class="imp-btn" :disabled="importing" @click="doRestore('merge')">
             <b>合并到当前数据</b>
@@ -86,16 +95,14 @@ import { useRouter } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import Modal from '@/components/common/Modal.vue'
 import { getSettings, saveSettings, migrateImagesToOss, backupToOss, downloadOssBackup, importBackup } from '@/api/settings'
-import { fmtBackupTime, backupScopeText, backupTotalRows, backupTablesText } from '@/utils/backupInfo'
+import { fmtBackupTime, backupTotalRows, backupFeatureSummary } from '@/utils/backupInfo'
 import { readOssCfg, ossReady, ossTest } from '@/utils/oss'
 import { fmtSyncTime } from '@/utils/syncTime'
 import { notify, confirmDialog } from '@/utils/dialog'
 
 /* 备份信息展示（与本地导入弹窗共用一套 helpers，保证口径一致） */
 const fmtTime = fmtBackupTime
-const scopeText = backupScopeText
 const totalRows = backupTotalRows
-const tablesText = backupTablesText
 
 const router = useRouter()
 
@@ -128,6 +135,8 @@ const restoring = ref(false)
 const restoreOpen = ref(false)
 const restorePending = ref(null)
 const importing = ref(false)
+/* 备份内容按板块汇总（与「按板块导出」弹窗同口径） */
+const featSummary = computed(() => backupFeatureSummary(restorePending.value))
 const msg = ref('')
 const isErr = ref(false)
 const msgOk = ref(false) /* 成功提示走绿色样式 */
@@ -390,6 +399,13 @@ select.field {
 .imp-row span:first-child { color: var(--text-soft); flex: 0 0 auto; }
 .imp-row span:last-child { text-align: right; word-break: break-all; }
 .imp-tables { font-size: 12px; color: var(--text-soft); line-height: 1.7; margin: 0 0 12px; word-break: break-all; }
+/* 备份内容板块列表（与「按板块导出」弹窗同口径） */
+.bk-feats { border: 1px solid var(--border); border-radius: var(--radius); padding: 2px 12px; margin-bottom: 12px; max-height: 38vh; overflow: auto; }
+.feat-row { display: flex; align-items: center; gap: 9px; padding: 8px 0; font-size: 13px; color: var(--text); border-bottom: 1px solid var(--border); }
+.feat-row:last-child { border-bottom: none; }
+.feat-row .ck-name { flex: 1 1 auto; min-width: 0; }
+.feat-row .ck-count { font-size: 12px; color: var(--text-soft); flex: 0 0 auto; }
+.exp-empty { font-size: 12px; color: var(--text-soft); text-align: center; padding: 12px 0; margin: 0; }
 .imp-modes { display: flex; flex-direction: column; gap: 10px; }
 .imp-btn {
   display: flex; flex-direction: column; gap: 3px; text-align: left;
