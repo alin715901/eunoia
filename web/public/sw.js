@@ -29,8 +29,16 @@
    Promise 永远 resolve 成一个真实 Response（缓存 → 兜底 → 离线页），
    绝不 resolve undefined；caches API 全部 try/catch 包裹（隐私模式
    可能 throw）；导航网络请求加超时（弱网 hanging 时尽快回落缓存，
-   而不是挂着转圈最后报错）。 */
-const CACHE = 'eunoia-sw-v10'
+   而不是挂着转圈最后报错）。
+
+   ── v11 字体清单不缓存旧版 ──
+   症状：圆体换成 Huninn 后部分设备「改了没生效」。根因：SWR 会先返回
+   缓存里的旧 fonts/round/round.css（内容还是旧字体的 @font-face），
+   新字体栈在旧清单里找不到自己的 family，直接回退系统字体。修复：
+   fonts/ 目录下的 .css 清单改 network-first（清单很小，联网时永远拿
+   最新；断网才回落缓存）。woff2 切片文件名含内容 hash（内容变名字变），
+   保持 SWR 缓存优先；SW 版本升 v11，activate 清空旧缓存兜底。 */
+const CACHE = 'eunoia-sw-v11'
 
 /* SW 作用域根（如 https://xxx.github.io/eunoia/）——
    兜底取 index.html 必须用它拼相对路径：绝对 '/index.html' 指向站点根目录，
@@ -172,6 +180,28 @@ self.addEventListener('fetch', (event) => {
           status: 200,
           headers: { 'Content-Type': 'application/javascript' }
         })
+      })()
+    )
+    return
+  }
+
+  /* fonts/*.css：字体清单 network-first——清单内容随部署变化（换字体时
+     family 名会变），走 SWR 会先命中旧清单导致新字体栈找不到 family 而回退
+     系统字体（v11 前圆体换 Huninn 没生效正是此因）。清单只有几 KB，联网时
+     永远拿最新；断网回落缓存。woff2 切片文件名含内容 hash，仍走下方 SWR。 */
+  if (/\/fonts\/.+\.css$/.test(url.pathname)) {
+    event.respondWith(
+      (async () => {
+        const net = await fetchWithTimeout(req, 8000)
+        if (net && net.ok) {
+          safePut(req, net)
+          return net
+        }
+        let cached = null
+        try { cached = await caches.match(req) } catch (e) { /* ignore */ }
+        if (cached) return cached
+        if (net) return net
+        return new Response('', { status: 504, statusText: 'Offline' })
       })()
     )
     return
