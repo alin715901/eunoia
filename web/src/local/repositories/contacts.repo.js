@@ -389,6 +389,7 @@ export {
   getSettings,
   updateSettings,
   markReadAll,
+  refreshQuoteTexts,
   listMembers,
   addMember,
   removeMember,

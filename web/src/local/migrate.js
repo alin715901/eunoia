@@ -3,6 +3,7 @@
  * 注意：原代码在全新库上先 SELECT _migrations 再建表有顺序缺陷，这里先把 _migrations 建好。
  */
 import db from './db'
+import { quoteBodyOf } from '@/utils/quoteText'
 
 export function migrate() {
   const addCol = (table, col, type) => {
@@ -213,6 +214,46 @@ export function migrate() {
          AND content_type IN ('text','card')`
     ).run()
     db.prepare("INSERT OR IGNORE INTO _migrations(key) VALUES('fav_by_backfill_v1')").run()
+  }
+
+  // 一次性迁移：历史引用摘要修复。早期提问/红包/通话等结构化消息被引用时，
+  // 摘要里存的是原始 JSON（如 小狸：{"type":"single",…}）。对含 JSON 摘要的
+  // 联系人按 refreshQuoteTexts 同款逻辑重算（幂等，按最新备注生成可读文案）。
+  // 注意内联实现而非 import contacts.repo——migrate 由 db.js 顶层调用，静态引入
+  // 会形成 db.js → migrate.js → contacts.repo.js → db.js 循环依赖。
+  const quoteFix = db.prepare("SELECT 1 FROM _migrations WHERE key = 'quote_text_fix_v1'").get()
+  if (!quoteFix) {
+    try {
+      const bad = db
+        .prepare("SELECT DISTINCT contact_id AS id FROM chat_messages WHERE quote_text LIKE '%{\"type\"%'")
+        .all()
+      const upd = db.prepare('UPDATE chat_messages SET quote_text = ? WHERE id = ?')
+      const memberOf = db.prepare('SELECT name FROM contacts WHERE id = ?')
+      for (const { id: cid } of bad) {
+        const st = db.prepare('SELECT my_name FROM contact_settings WHERE contact_id = ?').get(cid)
+        const desk = db.prepare('SELECT my_name AS dn FROM contact_desktop WHERE contact_id = ?').get(cid)
+        const myName = (st?.my_name || '').trim() || (desk?.dn || '').trim() || '我'
+        const cName = db.prepare('SELECT name FROM contacts WHERE id = ?').get(cid)?.name || ''
+        const rows = db
+          .prepare(
+            `SELECT cm.id, cm.quote_id, q.sender AS q_sender, q.author_member_id AS q_member,
+                    q.content_type AS q_type, q.text AS q_text, q.asset_path AS q_asset
+             FROM chat_messages cm JOIN chat_messages q ON q.id = cm.quote_id
+             WHERE cm.contact_id = ? AND cm.recalled = 0 AND q.recalled = 0`
+          )
+          .all(cid)
+        for (const row of rows) {
+          let prefix = cName
+          if (row.q_sender === 'me') prefix = myName
+          else if (row.q_member) prefix = memberOf.get(row.q_member)?.name || cName
+          const body = quoteBodyOf(row.q_text, row.q_asset, row.q_type)
+          upd.run(prefix ? `${prefix}：${body}` : body, row.id)
+        }
+      }
+    } catch (e) {
+      console.error('[migrate] 引用摘要修复跳过:', e.message)
+    }
+    db.prepare("INSERT OR IGNORE INTO _migrations(key) VALUES('quote_text_fix_v1')").run()
   }
 
   // ─── 拍一拍独立成库 ───
