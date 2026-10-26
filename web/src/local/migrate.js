@@ -197,6 +197,24 @@ export function migrate() {
   // 一次性迁移标记表
   db.exec('CREATE TABLE IF NOT EXISTS _migrations(key TEXT PRIMARY KEY)')
 
+  // 一次性迁移：收藏归属（fav_by）回填。
+  // fav_by 字段是后期加入的，旧库里随之生成的收藏记录该列全部缺省为 'me'；
+  // 但其中「TA 收藏我的消息」被错误地归进了「我的收藏」，统计页「TA的收藏」因此漏显。
+  // 语义还原：被收藏消息是我发的、且为普通文本/字卡（提问类收藏必然是我发起，
+  // 保持 'me'）——归属 TA 收藏（fav_by='contact'）。正常「我收藏」收藏的是对方发的
+  // 消息（sender='contact'），不受影响。边缘情况「我长按自己发的文本收藏」会被一并
+  // 归到 TA的收藏，概率极低、影响可忽略。
+  const favBackfill = db.prepare("SELECT 1 FROM _migrations WHERE key = 'fav_by_backfill_v1'").get()
+  if (!favBackfill) {
+    db.prepare(
+      `UPDATE favorites SET fav_by = 'contact'
+       WHERE (fav_by IS NULL OR fav_by = 'me')
+         AND sender = 'me'
+         AND content_type IN ('text','card')`
+    ).run()
+    db.prepare("INSERT OR IGNORE INTO _migrations(key) VALUES('fav_by_backfill_v1')").run()
+  }
+
   // ─── 拍一拍独立成库 ───
   db.exec(`CREATE TABLE IF NOT EXISTS poke_library (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
