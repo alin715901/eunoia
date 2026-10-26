@@ -10,10 +10,16 @@ import * as api from '@/api/settings'
 /* 可选字体（预设）：直接写进 --font-sans，全站正文与标题一起变 */
 export const FONTS = [
   { k: 'default', n: '系统默认', css: "-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', 'Segoe UI', Roboto, sans-serif" },
-  { k: 'serif', n: '宋体', css: "'Songti SC', 'STSong', 'Noto Serif CJK SC', 'Noto Serif SC', SimSun, serif" },
-  { k: 'kai', n: '楷体', css: "'Kaiti SC', KaiTi, STKaiti, 'Noto Serif CJK SC', serif" },
-  { k: 'hei', n: '黑体', css: "'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif" },
-  { k: 'round', n: '圆体', css: "'Yuanti SC', 'Hiragino Sans GB', 'Quicksand', 'PingFang SC', sans-serif" },
+  /* 宋体：macOS 有原生 Songti SC 直接用；iOS 只内置苹方，没有宋体，故内嵌 Noto Serif SC
+     作为兜底（选中时才下载、且被 Service Worker 缓存）。顺序：原生优先，iOS 才落到 webfont。 */
+  { k: 'serif', n: '宋体', css: "'Songti SC', 'Noto Serif SC', 'STSong', 'Noto Serif CJK SC', serif", wf: 'Noto+Serif+SC' },
+  /* 楷体：同上，macOS 用原生 Kaiti SC，iOS 内嵌 LXGW 文楷（简体标准楷体字形）。 */
+  { k: 'kai', n: '楷体', css: "'Kaiti SC', 'LXGW WenKai', KaiTi, STKaiti, serif", wf: 'LXGW+WenKai' },
+  /* 黑体：苹果上「系统默认」本质就是苹方＝黑体，二者本就相同；这里用 600 字重让黑体明显更粗，
+     与系统默认区分开（Android/Win 上则是真正的微软雅黑等黑体）。 */
+  { k: 'hei', n: '黑体', css: "'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif", weight: 600 },
+  /* 圆体：macOS 用原生 Yuanti SC，iOS 内嵌 ZCOOL KuaiLe（免费圆体）兜底。 */
+  { k: 'round', n: '圆体', css: "'Yuanti SC', 'ZCOOL KuaiLe', 'Quicksand', 'PingFang SC', sans-serif", wf: 'ZCOOL+KuaiLe' },
   /* 手写：马善政手写体（自托管分片打包在 public/fonts/mashanzheng，选中时按需加载，
      不依赖 Google；字形偏小，配 0.5px 字距增加呼吸感；极端情况回退行楷/楷体） */
   { k: 'hand', n: '手写', css: "'Ma Shan Zheng', 'Xingkai SC', STXingkai, 'Kaiti SC', cursive", wf: 'Ma+Shan+Zheng', extra: 'html,body{letter-spacing:.5px}' }
@@ -125,8 +131,11 @@ export function applyFont(fontKey, fontCss) {
   document.documentElement.style.setProperty('--font-sans', preset.css)
   /* 标题、字卡、朋友圈等用的是衬线变量，也一起换，才叫「全局生效」 */
   document.documentElement.style.setProperty('--font-serif', preset.css)
-  /* 预设依赖的 Google Fonts webfont（如手写·马善政）：按需注入一次 */
+  /* 预设依赖的 webfont（手写·马善政 / 宋体·Noto Serif SC / 楷体·LXGW 文楷 / 圆体·ZCOOL KuaiLe）：按需注入一次 */
   if (preset.wf) ensureWebfont(preset.wf)
+  /* 字重：仅「黑体」设为 600（与系统默认区分）；其余重置回默认 400 */
+  if (preset.weight) document.documentElement.style.setProperty('--font-weight', String(preset.weight))
+  else document.documentElement.style.removeProperty('--font-weight')
   let tag = document.getElementById('zika-font-css')
   if (!tag) {
     tag = document.createElement('style')
@@ -139,7 +148,15 @@ export function applyFont(fontKey, fontCss) {
 /* 自托管的 webfont：Google Fonts 的分片已打包进 public/fonts/（马善政为 OFL 许可证，
    见 public/fonts/mashanzheng/OFL.txt）。走自己的域名：不依赖 Google（国内访问稳）、
    可被 Service Worker 缓存，离线也能正常显示 */
-const LOCAL_WEBFONTS = { 'Ma+Shan+Zheng': 'fonts/mashanzheng/mashanzheng.css' }
+/* 自托管 Web 字体清单：key 与 FONTS[].wf 对应，value 为相对 BASE_URL 的 css 清单路径。
+   这些字体仅在对应选项被选中（或进入字体选择页预览）时才加载，且会被 Service Worker 缓存；
+   默认字体与首屏速度不受影响。iOS 上原生缺宋体/楷体/圆体，正是靠它们兜底才显示成不同字体。 */
+const LOCAL_WEBFONTS = {
+  'Ma+Shan+Zheng': 'fonts/mashanzheng/mashanzheng.css',
+  'Noto+Serif+SC': 'fonts/song/song.css',
+  'LXGW+WenKai': 'fonts/kai/kai.css',
+  'ZCOOL+KuaiLe': 'fonts/round/round.css'
+}
 /* 按需加载 webfont（幂等；font-display:swap 保证加载前用回退字体渲染） */
 const webfontLoaded = new Set()
 function ensureWebfont(family) {

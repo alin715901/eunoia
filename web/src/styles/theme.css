@@ -80,6 +80,8 @@ html, body {
   height: 100%;
   /* 系统无衬线作为正文；衬线字体栈用于标题/品牌/字卡，营造文艺温柔感 */
   font-family: var(--font-sans);
+  /* 字重：默认 400；选「黑体」时由 JS 写入 --font-weight:600，使全站正文更粗，与系统默认区分 */
+  font-weight: var(--font-weight, 400);
   color: var(--text);
   background: var(--bg-body);
   -webkit-font-smoothing: antialiased;
