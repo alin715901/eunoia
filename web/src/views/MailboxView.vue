@@ -3,11 +3,11 @@
     <AppHeader :title="headerTitle" back @back="onBack" />
 
     <div class="mb-body">
-      <!-- 三个胶囊页签：收到的信 / 寄出的信 / 写封信 -->
+      <!-- 三个胶囊页签：收到的信 / 寄出的信 / 写一封信 -->
       <div class="mb-tabs">
         <button class="mb-tab" :class="{ on: view === 'inbox' }" @click="view = 'inbox'">收到的信</button>
         <button class="mb-tab" :class="{ on: view === 'sent' }" @click="view = 'sent'">寄出的信</button>
-        <button class="mb-tab" :class="{ on: view === 'write' }" @click="openWrite">写封信</button>
+        <button class="mb-tab" :class="{ on: view === 'write' }" @click="openWrite">写一封信</button>
       </div>
 
       <!-- 收到的信 / 寄出的信：分组卡片列表 -->
@@ -79,7 +79,7 @@
         </template>
       </div>
 
-      <!-- 写封信：整页信纸 -->
+      <!-- 写一封信：整页信纸 -->
       <div v-else-if="view === 'write'" class="write-view">
         <!-- 回信时显示正在回复的那一封信 -->
         <div v-if="replyTarget" class="wv-reply" @click.stop="clearReply">
@@ -139,7 +139,7 @@ const list = ref([])
 const sending = ref(false)
 const form = ref({ opening: '', body: '', closing: '' })
 
-/* 页签状态：收到的信 / 寄出的信 / 写封信 */
+/* 页签状态：收到的信 / 寄出的信 / 写一封信 */
 const view = ref('inbox')
 const expandedId = ref(null)
 const sendToChat = ref(false)
@@ -405,7 +405,7 @@ onMounted(async () => {
   text-align: center;
   white-space: nowrap;
 }
-.mb-tab.on { background: var(--text); color: var(--bg-screen); border-color: var(--text); }
+.mb-tab.on { background: var(--accent); color: #fff; border-color: var(--accent); }
 
 /* 列表容器：去掉最外层边框，扁平化 */
 .mb-wrap { background: transparent; border: none; border-radius: 0; padding: 0; }
@@ -686,8 +686,8 @@ onMounted(async () => {
   padding: 14px 0;
   border: none;
   border-radius: 14px;
-  background: var(--text);
-  color: var(--bg-screen);
+  background: var(--accent);
+  color: #fff;
   font-size: 16px;
   font-weight: 700;
   font-family: var(--font-serif);
