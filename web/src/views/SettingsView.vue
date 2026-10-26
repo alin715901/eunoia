@@ -51,10 +51,10 @@
           </label>
         </div>
         <p class="sub notif-sub">
-          浏览器授权：{{ notifSupported ? notifText : '浏览器不支持' }}
-          <button v-if="notifSupported && notifText !== '已开启'" class="link-btn" @click="enableNotify">
-            去开启
-          </button>
+          浏览器授权：{{ notifStatusText }}
+          <button v-if="needGuide" class="link-btn" @click="a2hsOpen = true">查看引导</button>
+          <button v-if="canRequest" class="link-btn" @click="enableNotify">去开启</button>
+          <button v-if="canTest" class="link-btn" @click="testNotify">点击测试</button>
         </p>
       </div>
 
@@ -110,6 +110,20 @@
       <p class="ap-hint">{{ appearanceHint }}</p>
     </Modal>
 
+    <!-- iOS「添加到主屏幕」开启通知引导 -->
+    <Modal :show="a2hsOpen" title="开启系统通知" width="320px" @close="a2hsOpen = false">
+      <div class="a2hs-body">
+        <p class="a2hs-p">
+          iPhone / iPad 从 iOS 16.4 起，系统通知仅对「添加到主屏幕」的网站开放——
+          在 Safari、Chrome 等任何浏览器的普通标签页里都拿不到通知权限，这是苹果的平台限制。
+        </p>
+        <p class="a2hs-p">按以下步骤开启：</p>
+        <p class="a2hs-step">1. 点击浏览器底部的「分享」按钮（⬆️ 方框加箭头）</p>
+        <p class="a2hs-step">2. 选择「添加到主屏幕」→ 确认添加</p>
+        <p class="a2hs-step">3. 从主屏幕打开字卡，回到 设置 → 消息通知 开启授权</p>
+      </div>
+    </Modal>
+
   </div>
 </template>
 
@@ -124,6 +138,7 @@ import {
   useNotification,
   notificationPermissionState,
   notificationSupported,
+  notificationEnv,
   requestNotificationPermission
 } from '@/composables/useNotification'
 import { useContactsStore } from '@/stores/contacts'
@@ -153,7 +168,6 @@ const accents = [
   { c: '#1c1c1e', n: '墨黑' }
 ]
 
-const notifSupported = computed(() => notif.supported)
 /* 权限状态用响应式 ref 镜像（授权成功 / 切回前台自动刷新），
    否则 computed 读非响应式的 Notification.permission 会永远缓存「未开启」 */
 const notifPerm = notificationPermissionState()
@@ -164,6 +178,24 @@ const notifText = computed(() => {
   if (p === 'unsupported') return '不支持'
   return '未开启'
 })
+/* 环境结论：supported / ios-a2hs（iOS 需添加到主屏幕）/ unsupported（webview 等）。
+   Notification API 不存在时权限镜像恒为 'unsupported'，用环境结论区分文案。 */
+const notifEnv = ref(notificationEnv())
+const notifStatusText = computed(() => {
+  if (notifEnv.value === 'supported') return notifText.value
+  if (notifEnv.value === 'ios-a2hs') return '添加到主屏幕后可开启'
+  return '浏览器不支持'
+})
+const needGuide = computed(() => notifEnv.value === 'ios-a2hs')
+/* 浏览器具备通知能力，且还没授权 → 显示「去开启」；已被拒绝时点开关也没用，不给按钮 */
+const canRequest = computed(() => notifEnv.value === 'supported' && notifText.value !== '已开启' && notifText.value !== '被拒绝')
+/* 已授权 → 显示「点击测试」，弹一条真实系统通知验证链路 */
+const canTest = computed(() => notifEnv.value === 'supported' && notifText.value === '已开启')
+const a2hsOpen = ref(false)
+async function testNotify() {
+  const ok = await notif.notify('字卡', { body: '这是一条测试通知，收到即说明系统通知正常 ✅' })
+  toast.pushToast(ok ? { title: '测试通知已发出，请查看系统弹窗' } : { title: '测试失败', text: '通知未能弹出，请检查系统是否允许通知' })
+}
 
 /* 主题入口：点进去才设置主题色 / 字体 / 背景 / 图标 */
 const currentAccent = computed(() => settings.accent)
@@ -323,6 +355,11 @@ onActivated(refresh)
   white-space: nowrap;
 }
 .sub { font-size: 12px; color: var(--text-soft); line-height: 1.6; }
+
+/* iOS 添加到主屏幕引导弹窗 */
+.a2hs-body { padding: 4px 2px 8px; }
+.a2hs-p { font-size: 13px; color: var(--text); line-height: 1.7; margin: 0 0 10px; }
+.a2hs-step { font-size: 13px; color: var(--text-soft); line-height: 1.9; margin: 0; }
 .swatches { display: flex; gap: 10px; flex-wrap: wrap; padding: 12px 12px 4px; }
 .swatch {
   width: 32px;

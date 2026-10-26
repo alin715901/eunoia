@@ -5,6 +5,34 @@ export function notificationSupported() {
   return typeof window !== 'undefined' && 'Notification' in window
 }
 
+/* iOS / iPadOS 判定（含 iPadOS 13+ 伪装 Mac UA 的情况）。
+   iOS 16.4 起 Web Push 仅对「添加到主屏幕」的 web app 开放——
+   任何浏览器（含 Safari / Chrome）的普通标签页里 Notification API 都不存在，
+   这是平台限制而非浏览器差异；添加到主屏幕后所有 iOS 浏览器均可通知。 */
+export function isIOS() {
+  if (typeof navigator === 'undefined') return false
+  const ua = navigator.userAgent || ''
+  const classic = /iPad|iPhone|iPod/.test(ua)
+  const ipadOS = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1
+  return classic || ipadOS
+}
+
+/* 是否以「添加到主屏幕」的独立应用模式运行（standalone PWA） */
+export function isStandalone() {
+  if (typeof window === 'undefined') return false
+  if (navigator.standalone === true) return true // iOS Safari 专有字段
+  return window.matchMedia?.('(display-mode: standalone)').matches === true
+}
+
+/* 通知不可用时的环境结论，用于给用户可执行的引导而非一句「不支持」：
+   - 'ios-a2hs'：iOS 且不在主屏幕模式 → 添加到主屏幕后可用
+   - 'unsupported'：webview（微信/QQ 等）或确实无通知能力的环境 */
+export function notificationEnv() {
+  if (notificationSupported()) return 'supported'
+  if (isIOS()) return 'ios-a2hs'
+  return 'unsupported'
+}
+
 export function notificationPermission() {
   if (!notificationSupported()) return 'unsupported'
   return Notification.permission // 'granted' | 'denied' | 'default'
