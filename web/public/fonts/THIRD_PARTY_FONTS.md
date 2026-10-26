@@ -9,7 +9,7 @@
 | 手写 | 马善政手写体 | `mashanzheng/` | SIL OFL 1.1 | 马善政；见 `mashanzheng/OFL.txt` |
 | 宋体 | Noto Serif SC | `song/` | SIL OFL 1.1 | © 2015–2021 Google LLC（Google Fonts） |
 | 楷体 | LXGW WenKai（霞鹜文楷） | `kai/` | SIL OFL 1.1 | 基于 Fontworks Klee One / Glyphs；lxgw-wenkai-webfont |
-| 圆体 | ZCOOL KuaiLe（站酷快乐体） | `round/` | SIL OFL 1.1 | © 2016 ZCOOL（站酷） |
+| 圆体 | Huninn（jf open 粉圆） | `round/` | SIL OFL 1.1 | © justfont open 粉圆项目；Google Fonts「Huninn」 |
 
 以上字体均遵循 **SIL Open Font License 1.1**（可自由用于商业与个人项目，须保留版权与许可声明）。
 如需完整许可文本，参见 https://openfontlicense.org/ 。

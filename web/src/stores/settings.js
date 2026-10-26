@@ -18,8 +18,10 @@ export const FONTS = [
   /* 黑体：苹果上「系统默认」本质就是苹方＝黑体，二者本就相同；这里用 600 字重让黑体明显更粗，
      与系统默认区分开（Android/Win 上则是真正的微软雅黑等黑体）。 */
   { k: 'hei', n: '黑体', css: "'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif", weight: 600 },
-  /* 圆体：macOS 用原生 Yuanti SC，iOS 内嵌 ZCOOL KuaiLe（免费圆体）兜底。 */
-  { k: 'round', n: '圆体', css: "'Yuanti SC', 'ZCOOL KuaiLe', 'Quicksand', 'PingFang SC', sans-serif", wf: 'ZCOOL+KuaiLe' },
+  /* 圆体：macOS 用原生 Yuanti SC，iOS 内嵌 Huninn（jf open 粉圆，免费开源圆体）兜底。
+     粉圆是标准「圆角黑体」风格（笔画圆润、结构工整），符合圆体直觉；
+     旧的站酷快乐体偏手绘卡通，已弃用。 */
+  { k: 'round', n: '圆体', css: "'Yuanti SC', 'Huninn', 'PingFang SC', sans-serif", wf: 'Huninn' },
   /* 手写：马善政手写体（自托管分片打包在 public/fonts/mashanzheng，选中时按需加载，
      不依赖 Google；字形偏小，配 0.5px 字距增加呼吸感；极端情况回退行楷/楷体） */
   { k: 'hand', n: '手写', css: "'Ma Shan Zheng', 'Xingkai SC', STXingkai, 'Kaiti SC', cursive", wf: 'Ma+Shan+Zheng', extra: 'html,body{letter-spacing:.5px}' }
@@ -131,7 +133,7 @@ export function applyFont(fontKey, fontCss) {
   document.documentElement.style.setProperty('--font-sans', preset.css)
   /* 标题、字卡、朋友圈等用的是衬线变量，也一起换，才叫「全局生效」 */
   document.documentElement.style.setProperty('--font-serif', preset.css)
-  /* 预设依赖的 webfont（手写·马善政 / 宋体·Noto Serif SC / 楷体·LXGW 文楷 / 圆体·ZCOOL KuaiLe）：按需注入一次 */
+  /* 预设依赖的 webfont（手写·马善政 / 宋体·Noto Serif SC / 楷体·LXGW 文楷 / 圆体·Huninn 粉圆）：按需注入一次 */
   if (preset.wf) ensureWebfont(preset.wf)
   /* 字重：仅「黑体」设为 600（与系统默认区分）；其余重置回默认 400 */
   if (preset.weight) document.documentElement.style.setProperty('--font-weight', String(preset.weight))
@@ -155,7 +157,7 @@ const LOCAL_WEBFONTS = {
   'Ma+Shan+Zheng': 'fonts/mashanzheng/mashanzheng.css',
   'Noto+Serif+SC': 'fonts/song/song.css',
   'LXGW+WenKai': 'fonts/kai/kai.css',
-  'ZCOOL+KuaiLe': 'fonts/round/round.css'
+  'Huninn': 'fonts/round/round.css'
 }
 /* 按需加载 webfont（幂等；font-display:swap 保证加载前用回退字体渲染） */
 const webfontLoaded = new Set()
