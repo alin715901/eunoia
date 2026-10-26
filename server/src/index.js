@@ -86,6 +86,20 @@ app.use(errorHandler);
 // 启动时自动建表 + 种子
 runSeed(db);
 
+/* 一次性修复历史引用摘要：早期提问类消息被引用时，摘要里存的是原始 JSON
+   （如 小狸：{"type":"single",…}）。这里对含 JSON 摘要的联系人重算全部引用摘要
+   （refreshQuoteTexts 幂等，按最新备注/昵称生成「提问 · 单选/多选/问答」等可读文案）。 */
+try {
+  const { refreshQuoteTexts } = require('./repositories/contacts.repo');
+  const badContacts = db
+    .prepare("SELECT DISTINCT contact_id AS id FROM chat_messages WHERE quote_text LIKE '%{\"type\"%'")
+    .all();
+  for (const c of badContacts) refreshQuoteTexts(c.id);
+  if (badContacts.length) console.log(`[startup] 已修复 ${badContacts.length} 个联系人的历史引用摘要`);
+} catch (e) {
+  console.error('[startup] 引用摘要修复跳过:', e.message);
+}
+
 // 启动调度器（P1 占位）
 cron.start();
 worker.start();

@@ -4,6 +4,7 @@ const notification = require('./notification.service');
 const settingsRepo = require('../repositories/settings.repo');
 const chatRepo = require('../repositories/chat.repo');
 const walletRepo = require('../repositories/wallet.repo');
+const { quoteBodyOf } = require('../utils/quoteText');
 
 function randInt(min, max) {
   const lo = Math.min(min, max);
@@ -201,11 +202,11 @@ function sendUserMessage(dbRef, contactId, text, quoteId = null) {
   let quote_text = '';
   let quote_image = '';
   if (quoteId) {
-    const q = d.prepare('SELECT id, sender, text, asset_path, author_member_id FROM chat_messages WHERE id = ?').get(quoteId);
+    const q = d.prepare('SELECT id, sender, content_type, text, asset_path, author_member_id FROM chat_messages WHERE id = ?').get(quoteId);
     if (q) {
       /* 微信样式：引用摘要带发送者前缀。引用我的消息 → 我的备注名；群聊成员发言 → 成员昵称；否则对方昵称 */
       const prefix = quotePrefixFor(d, contactId, q);
-      const body = q.text || (q.asset_path ? '[图片]' : '');
+      const body = quoteBodyOf(q.text, q.asset_path, q.content_type);
       quote_text = prefix ? `${prefix}：${body}` : body;
       quote_image = q.asset_path || '';
     }
@@ -570,7 +571,7 @@ function pickQuoteForContact(d, contactId) {
     if (Math.random() >= 0.2) return null;
     const rows = d
       .prepare(
-        `SELECT id, sender, text, asset_path, author_member_id FROM chat_messages
+        `SELECT id, sender, content_type, text, asset_path, author_member_id FROM chat_messages
          WHERE contact_id = ? AND content_type IN ('text','card')
            AND text IS NOT NULL AND TRIM(text) != ''
          ORDER BY id DESC LIMIT 6`
@@ -579,7 +580,7 @@ function pickQuoteForContact(d, contactId) {
     if (!rows.length) return null;
     const target = rows[Math.floor(Math.random() * Math.min(3, rows.length))];
     const prefix = quotePrefixFor(d, contactId, target);
-    const body = target.text || (target.asset_path ? '[图片]' : '');
+    const body = quoteBodyOf(target.text, target.asset_path, target.content_type);
     if (!body) return null;
     return {
       quoteId: target.id,

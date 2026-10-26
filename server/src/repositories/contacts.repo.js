@@ -1,4 +1,5 @@
 const db = require('../db');
+const { quoteBodyOf } = require('../utils/quoteText');
 
 function now() {
   return Math.floor(Date.now() / 1000);
@@ -234,7 +235,7 @@ function refreshQuoteTexts(contactId) {
     const rows = db
       .prepare(
         `SELECT cm.id, cm.quote_id, q.sender AS q_sender, q.author_member_id AS q_member,
-                q.text AS q_text, q.asset_path AS q_asset
+                q.content_type AS q_type, q.text AS q_text, q.asset_path AS q_asset
          FROM chat_messages cm JOIN chat_messages q ON q.id = cm.quote_id
          WHERE cm.contact_id = ? AND cm.recalled = 0 AND q.recalled = 0`
       )
@@ -246,7 +247,7 @@ function refreshQuoteTexts(contactId) {
       let prefix = cName;
       if (r.q_sender === 'me') prefix = myName;
       else if (r.q_member) prefix = memberOf.get(r.q_member)?.name || cName;
-      const body = r.q_text || (r.q_asset ? '[图片]' : '');
+      const body = quoteBodyOf(r.q_text, r.q_asset, r.q_type);
       upd.run(prefix ? `${prefix}：${body}` : body, r.id);
     }
   } catch (e) {
@@ -373,6 +374,7 @@ module.exports = {
   getSettings,
   updateSettings,
   markReadAll,
+  refreshQuoteTexts,
   listMembers,
   addMember,
   removeMember,

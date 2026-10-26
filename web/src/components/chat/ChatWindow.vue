@@ -178,6 +178,7 @@ import { useChatStore } from '@/stores/chat'
 import { favoriteMessage, recallMessage, deleteMessage, sendImage, sendRedPacket, sendQuestion, continueTalk, searchMessages, claimRedPacket, returnRedPacket } from '@/api/chat'
 import { getCards, listMyPokes, createMyPokes } from '@/api/cards'
 import { uploadFile } from '@/api/settings'
+import { quoteBodyOf } from '@/utils/quoteText'
 import { useSettingsStore } from '@/stores/settings'
 import { compressImage } from '@/utils/image'
 import { useNotificationsStore } from '@/stores/notifications'
@@ -273,7 +274,7 @@ function doQuote() {
        群聊引用某位成员的发言 → 该成员昵称（不显示群名）；其余 → 对方昵称 */
     const member = m.author_member_id && props.memberMap ? props.memberMap[String(m.author_member_id)] : null
     const prefix = m.sender === 'me' ? (props.myName || '我') : (member?.name || props.name || '')
-    const body = m.text || (m.asset_path ? '[图片]' : '')
+    const body = quoteBodyOf(m.text, m.asset_path, m.content_type)
     pendingQuote.value = { id: m.id, text: prefix ? `${prefix}：${body}` : body, image: m.asset_path || '', sender: m.sender }
   }
   closeMenu()
