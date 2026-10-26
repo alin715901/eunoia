@@ -134,12 +134,21 @@
           </template>
         </template>
 
-        <!-- ── 消息收藏（只收消息：文本 / 图片 / 语音 / 红包等；提问归「提问」tab） ── -->
+        <!-- ── 消息收藏（只收消息：文本 / 图片 / 语音 / 红包等；提问归「提问」tab）
+                子页签：我的收藏（我收藏的消息）/ TA的收藏（TA 收藏我的消息） ── -->
         <template v-else-if="curTab === 'fav'">
+          <div class="st-subtabs">
+            <button class="st-subtab" :class="{ on: favTab === 'mine' }" type="button" @click="favTab = 'mine'">
+              我的收藏<span class="st-subtab-n">{{ myFavs.length }}</span>
+            </button>
+            <button class="st-subtab" :class="{ on: favTab === 'ta' }" type="button" @click="favTab = 'ta'">
+              TA的收藏<span class="st-subtab-n">{{ taFavs.length }}</span>
+            </button>
+          </div>
           <div v-if="!curFavs.length" class="sv-empty">
             <div class="sv-empty-emoji">⭐</div>
-            <div class="sv-empty-title">还没有收藏</div>
-            <div class="sv-empty-sub">长按聊天里的气泡，点「收藏」即可把消息存到这里</div>
+            <div class="sv-empty-title">{{ favTab === 'mine' ? '还没有收藏' : 'TA还没有收藏你的消息' }}</div>
+            <div class="sv-empty-sub">{{ favTab === 'mine' ? '长按聊天里的气泡，点「收藏」即可把消息存到这里' : '聊天时 TA 会偶尔收藏你发的消息，会自动归到这里' }}</div>
           </div>
           <div v-else class="st-favs">
             <div v-for="it in curFavs" :key="it.id" class="st-card st-fav-card">
@@ -508,10 +517,15 @@ const rpPctMe = computed(() => {
 })
 const rpPctTa = computed(() => (rpPctMe.value ? 100 - rpPctMe.value : 0))
 
-/* 收藏（当前联系人；提问类收藏归「提问」tab，这里只展示消息类） */
-const curFavs = computed(() =>
+/* 收藏（当前联系人；提问类收藏归「提问」tab，这里只展示消息类）
+   fav_by：'me'（或旧数据缺省）= 我收藏的；'contact' = TA 收藏我的消息 */
+const favTab = ref('mine')
+const curContactFavs = computed(() =>
   favorites.value.filter((f) => String(f.contact_id) === String(curCid.value) && f.content_type !== 'question')
 )
+const myFavs = computed(() => curContactFavs.value.filter((f) => (f.fav_by || 'me') !== 'contact'))
+const taFavs = computed(() => curContactFavs.value.filter((f) => (f.fav_by || 'me') === 'contact'))
+const curFavs = computed(() => (favTab.value === 'mine' ? myFavs.value : taFavs.value))
 
 /* 提问列表：含双方提问；回答 = 提问之后对方发来的第一条文字消息（5 分钟内，且不被其他提问占用） */
 const questions = computed(() => {
@@ -694,6 +708,18 @@ onBeforeUnmount(() => {
 /* 选中态跟随主题强调色（与分段控件/主按钮同款模式） */
 .st-tab.on { background: var(--accent); color: #fff; border-color: var(--accent); font-weight: 600; }
 .st-tab:active { border-color: var(--accent); color: var(--accent); }
+
+/* ── 收藏子页签：我的收藏 / TA的收藏（主页签内的次级切换） ── */
+.st-subtabs { display: flex; gap: 8px; padding: 0 12px 10px; }
+.st-subtab {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--border); background: transparent;
+  color: var(--text-soft); font-size: 12.5px;
+  padding: 5px 13px; border-radius: 999px;
+}
+.st-subtab-n { font-size: 11px; opacity: 0.6; }
+.st-subtab.on { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+.st-subtab.on .st-subtab-n { opacity: 0.85; }
 
 /* ── 卡片基础 ── */
 .st-card {

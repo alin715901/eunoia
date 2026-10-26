@@ -65,20 +65,22 @@ function deleteMessage(id) {
   return { id, deleted: true };
 }
 
-/* 收藏：把消息快照落库（按 message_id 去重），在「统计」页归集展示。
-   群聊消息不可收藏（仅单人联系人可收藏） */
+/* 收藏：把消息快照落库（按 message_id + 归属去重），在「统计」页归集展示。
+   群聊消息不可收藏（仅单人联系人可收藏）
+   fav_by='me'：我收藏的消息；fav_by='contact'：TA 收藏我的消息（双方独立，同一
+   条消息允许两边各存一份） */
 function addFavorite(messageId) {
   const m = db.prepare('SELECT * FROM chat_messages WHERE id = ?').get(messageId);
   if (!m) return null;
   // 群聊（contacts.kind='group'）禁止收藏
   const c = db.prepare('SELECT kind FROM contacts WHERE id = ?').get(m.contact_id);
   if (c && c.kind === 'group') return null;
-  const exist = db.prepare('SELECT id FROM favorites WHERE message_id = ?').get(messageId);
+  const exist = db.prepare("SELECT id FROM favorites WHERE message_id = ? AND IFNULL(fav_by, 'me') = 'me'").get(messageId);
   if (exist) return db.prepare('SELECT * FROM favorites WHERE id = ?').get(exist.id);
   const info = db
     .prepare(
-      `INSERT INTO favorites(message_id, contact_id, sender, content_type, text, asset_path, quote_text, quote_image, created_at)
-       VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO favorites(message_id, contact_id, sender, content_type, text, asset_path, quote_text, quote_image, created_at, fav_by)
+       VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, 'me')`
     )
     .run(
       m.id, m.contact_id, m.sender, m.content_type, m.text, m.asset_path,

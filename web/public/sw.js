@@ -17,8 +17,20 @@
    冷打开防旧版：导航 fetch 必须带 cache:'reload'——GitHub Pages 的
    index.html 带 max-age=600，SW 里默认模式的 fetch 会命中浏览器 HTTP
    缓存返回旧 HTML（旧 bundle → 旧样式/旧逻辑，用户侧表现为「改了没生效」）。
-   reload 模式绕过 HTTP 缓存真正联网，HTML 只占一次请求，代价可忽略。 */
-const CACHE = 'eunoia-sw-v9'
+   reload 模式绕过 HTTP 缓存真正联网，HTML 只占一次请求，代价可忽略。
+
+   ── v10 兼容性加固（iOS Safari / iOS Chrome 报错页修复）──
+   症状：Safari「FetchEvent.respondWith received an error: Returned
+   response is null」、Chrome「无法访问此网站 ERR_FAILED」，重大更新后
+   偶发。根因：respondWith 的 Promise 在「网络失败 + 缓存为空」时解析成
+   undefined——规范视为 null response，浏览器直接渲染错误页。缓存为空的
+   常见诱因：iOS ITP 对 7 天未用的站点清掉 SW 缓存、Safari 隐私模式
+   caches API 异常、首访未完成即断网。修复原则：fetch 拦截器返回的
+   Promise 永远 resolve 成一个真实 Response（缓存 → 兜底 → 离线页），
+   绝不 resolve undefined；caches API 全部 try/catch 包裹（隐私模式
+   可能 throw）；导航网络请求加超时（弱网 hanging 时尽快回落缓存，
+   而不是挂着转圈最后报错）。 */
+const CACHE = 'eunoia-sw-v10'
 
 /* SW 作用域根（如 https://xxx.github.io/eunoia/）——
    兜底取 index.html 必须用它拼相对路径：绝对 '/index.html' 指向站点根目录，
@@ -27,6 +39,75 @@ const SCOPE_ROOT = self.registration && self.registration.scope
   ? self.registration.scope.replace(/\/*$/, '/')
   : './'
 const INDEX_URL = SCOPE_ROOT + 'index.html'
+
+/* ── 兜底工具：任何浏览器、任何存储状态下都不抛错、不返回空 ── */
+
+/* 缓存读取：caches API 在 Safari 隐私模式 / 存储被清时可能 throw，
+   全部吞掉返回 null。依次匹配：精确请求 → 索引页 */
+async function matchAny(req) {
+  try {
+    const hit = await caches.match(req)
+    if (hit) return hit
+  } catch (e) { /* ignore */ }
+  try {
+    const hit = await caches.match(INDEX_URL)
+    if (hit) return hit
+  } catch (e) { /* ignore */ }
+  return null
+}
+
+/* 写缓存：配额满 / 隐私模式失败都不影响主流程 */
+function safePut(req, res) {
+  try {
+    const copy = res.clone()
+    caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {})
+  } catch (e) { /* ignore */ }
+}
+
+/* 带超时的 fetch：失败/超时 resolve null（不 reject，简化下游逻辑）。
+   GitHub Pages 在部分移动网络下会长时间 hanging，导航挂着不动比失败
+   更伤体验——超时后立即走缓存回落 */
+function fetchWithTimeout(req, ms, opts) {
+  return new Promise((resolve) => {
+    let settled = false
+    let ctl = null
+    try { ctl = new AbortController() } catch (e) { /* 老浏览器无 AbortController */ }
+    const timer = setTimeout(() => {
+      if (!settled && ctl) { try { ctl.abort() } catch (e) { /* ignore */ } }
+    }, ms)
+    const init = Object.assign({}, opts || {})
+    if (ctl) init.signal = ctl.signal
+    fetch(req, init)
+      .then((res) => { settled = true; clearTimeout(timer); resolve(res) })
+      .catch(() => { settled = true; clearTimeout(timer); resolve(null) })
+  })
+}
+
+/* 离线兜底页：缓存全空 + 断网时也不让浏览器渲染错误页。
+   5 秒后自动重试一次联网；页内提供手动重试按钮 */
+const OFFLINE_HTML = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Eunoia · 网络开小差了</title><style>
+body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;
+font-family:-apple-system,BlinkMacSystemFont,'PingFang SC','Microsoft YaHei',sans-serif;
+background:#faf9f7;color:#5a5248;text-align:center}
+.box{padding:32px}.e{font-size:52px;margin-bottom:16px}
+h1{font-size:17px;font-weight:600;margin:0 0 8px}
+p{font-size:13px;color:#9a9186;margin:0 0 20px}
+button{border:0;border-radius:20px;padding:9px 26px;font-size:14px;
+background:#8a7f6f;color:#fff}
+</style></head><body><div class="box"><div class="e">🌙</div>
+<h1>网络开小差了</h1><p>正在尝试重新连接…<br>若长时间无响应，请检查网络后再试</p>
+<button onclick="location.reload()">重试</button></div>
+<script>setTimeout(function(){location.reload()},5000)</script>
+</body></html>`
+
+function offlineResponse() {
+  return new Response(OFFLINE_HTML, {
+    status: 200,
+    headers: { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' }
+  })
+}
 
 self.addEventListener('install', () => {
   self.skipWaiting()
@@ -49,55 +130,73 @@ self.addEventListener('fetch', (event) => {
   /* version.json：使用方 no-store 拉取，SW 不拦不缓存 */
   if (url.pathname.endsWith('/version.json')) return
 
-  /* 导航（HTML）：network-first + 绕过 HTTP 缓存（cache:'reload'），失败回落缓存
-     ——GitHub Pages index.html max-age=600，默认 fetch 会命中旧文档缓存，
-     导致冷打开仍是旧 bundle；reload 模式强制联网拿最新 HTML */
+  /* 导航（HTML）：network-first + 绕过 HTTP 缓存（cache:'reload'），失败回落缓存，
+     缓存也没有 → 离线页。respondWith 永远拿到真实 Response（v10 修复 null response） */
   if (req.mode === 'navigate') {
     event.respondWith(
-      fetch(req, { cache: 'reload' })
-        .then((res) => {
-          if (res && res.ok) {
-            const copy = res.clone()
-            caches.open(CACHE).then((c) => c.put(req, copy))
+      (async () => {
+        const net = await fetchWithTimeout(req, 10000, { cache: 'reload' })
+        if (net) {
+          if (net.ok) {
+            safePut(req, net)
+            return net
           }
-          return res
-        })
-        .catch(() => caches.match(req).then((c) => c || caches.match(INDEX_URL)))
+          /* 服务器有响应但非 2xx：GitHub Pages 对深链接本就以 404 状态回
+             SPA 兜底内容（页面能用），404 直接放行；5xx 尝试回落缓存 */
+          if (net.status === 404) return net
+          const cached = await matchAny(req)
+          return cached || net
+        }
+        const cached = await matchAny(req)
+        if (cached) return cached
+        return offlineResponse()
+      })()
     )
     return
   }
 
-  /* config.js：network-first，失败回落缓存 */
+  /* config.js：network-first，失败回落缓存，再不行给空 JS（不能返回 null） */
   if (url.pathname.endsWith('/config.js')) {
     event.respondWith(
-      fetch(req)
-        .then((res) => {
-          if (res && res.ok) {
-            const copy = res.clone()
-            caches.open(CACHE).then((c) => c.put(req, copy))
-          }
-          return res
+      (async () => {
+        const net = await fetchWithTimeout(req, 8000)
+        if (net && net.ok) {
+          safePut(req, net)
+          return net
+        }
+        let cached = null
+        try { cached = await caches.match(req) } catch (e) { /* ignore */ }
+        if (cached) return cached
+        if (net) return net
+        return new Response('/* offline: config fallback */', {
+          status: 200,
+          headers: { 'Content-Type': 'application/javascript' }
         })
-        .catch(() => caches.match(req))
+      })()
     )
     return
   }
 
-  /* 其余同源 GET（导航 / JS / CSS / wasm 数据 chunk / 图标）：
-     stale-while-revalidate——先返回缓存（如有），后台刷新 */
+  /* 其余同源 GET（JS / CSS / wasm 数据 chunk / 字体 / 图标）：
+     stale-while-revalidate——先返回缓存（如有），后台刷新。
+     缓存缺失走网络；网络也失败给 504 空响应（绝不返回 null，
+     让页面自身的资源加载错误处理接管，而不是浏览器级报错页）。
+     注意子资源不回落 index.html——HTML 当 JS/CSS 加载只会更糟 */
   event.respondWith(
-    caches.match(req).then((cached) => {
-      const network = fetch(req)
-        .then((res) => {
-          if (res && res.ok) {
-            const copy = res.clone()
-            caches.open(CACHE).then((c) => c.put(req, copy))
-          }
-          return res
-        })
-        .catch(() => cached || caches.match(INDEX_URL))
-      return cached || network
-    })
+    (async () => {
+      let hit = null
+      try { hit = await caches.match(req) } catch (e) { /* ignore */ }
+      if (hit) {
+        fetchWithTimeout(req, 15000).then((res) => { if (res && res.ok) safePut(req, res) })
+        return hit
+      }
+      const net = await fetchWithTimeout(req, 15000)
+      if (net) {
+        if (net.ok) safePut(req, net)
+        return net
+      }
+      return new Response('', { status: 504, statusText: 'Offline' })
+    })()
   )
 })
 

@@ -786,13 +786,16 @@ function quotePrefixFor(d, contactId, row) {
   return d.prepare('SELECT name FROM contacts WHERE id = ?').get(contactId)?.name || '';
 }
 
-/* 对方收藏我的消息：小概率发生，广播 contact_favorite 让前端弹窗「×××收藏了你的消息」 */
+/* 对方收藏我的消息：小概率发生。
+   ① 落库到 favorites（fav_by='contact'）——「统计 → 消息收藏 → TA的收藏」里展示；
+   ② 广播 contact_favorite 让前端弹窗「×××收藏了你的消息」。
+   历史行为只弹窗不落库，统计页看不到，属于漏记。 */
 function maybeContactFavorite(d, contactId) {
   try {
     if (Math.random() >= 0.15) return;
     const rows = d
       .prepare(
-        `SELECT text FROM chat_messages
+        `SELECT * FROM chat_messages
          WHERE contact_id = ? AND sender = 'me' AND content_type IN ('text','card')
            AND text IS NOT NULL AND TRIM(text) != ''
          ORDER BY id DESC LIMIT 10`
@@ -800,6 +803,20 @@ function maybeContactFavorite(d, contactId) {
       .all(contactId);
     if (!rows.length) return;
     const target = rows[Math.floor(Math.random() * rows.length)];
+    /* 按（消息 + 归属）去重：同一条消息 TA 只收藏一次；我收藏的同一条互不影响 */
+    const dup = d
+      .prepare("SELECT id FROM favorites WHERE message_id = ? AND IFNULL(fav_by, 'me') = 'contact'")
+      .get(target.id);
+    if (!dup) {
+      d.prepare(
+        `INSERT INTO favorites(message_id, contact_id, sender, content_type, text, asset_path, quote_text, quote_image, created_at, fav_by)
+         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, 'contact')`
+      ).run(
+        target.id, contactId, target.sender, target.content_type, target.text,
+        target.asset_path || '', target.quote_text || '', target.quote_image || '',
+        Math.floor(Date.now() / 1000)
+      );
+    }
     const info = effectiveContactInfo(d, contactId);
     notification.broadcast('contact_favorite', {
       contactId,

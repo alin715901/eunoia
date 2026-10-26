@@ -101,6 +101,8 @@ export function migrate() {
   addCol('letters', 'reply_due_at', 'INTEGER DEFAULT NULL')
   // 收藏表记录来源信件 id
   addCol('favorites', 'letter_id', 'INTEGER DEFAULT NULL')
+  // 收藏归属：'me' = 我收藏的，'contact' = TA 收藏我的消息（旧数据全是 'me'）
+  addCol('favorites', 'fav_by', "TEXT DEFAULT 'me'")
 
   // ─── 音乐模块 ───
   db.exec(`CREATE TABLE IF NOT EXISTS songs (
