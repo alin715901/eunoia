@@ -175,7 +175,7 @@ import QuestionSheet from './QuestionSheet.vue'
 import PokeSheet from './PokeSheet.vue'
 import CardEditor from '@/components/cards/CardEditor.vue'
 import { useChatStore } from '@/stores/chat'
-import { favoriteMessage, recallMessage, deleteMessage, sendImage, sendRedPacket, sendQuestion, continueTalk, searchMessages, claimRedPacket, returnRedPacket } from '@/api/chat'
+import { favoriteMessage, recallMessage, deleteMessage, sendImage, sendRedPacket, sendQuestion, continueTalk, searchMessages, getMessageById, claimRedPacket, returnRedPacket } from '@/api/chat'
 import { getCards, listMyPokes, createMyPokes } from '@/api/cards'
 import { uploadFile } from '@/api/settings'
 import { quoteBodyOf } from '@/utils/quoteText'
@@ -656,7 +656,10 @@ async function loadAndScroll() {
     await nextTick()
     scrollToBottom()
     requestAnimationFrame(() => scrollToBottom())
-    chat.syncFromServer(props.contactId).then(() => nextTick(() => scrollToBottom())).catch(() => {})
+    chat.syncFromServer(props.contactId).then(() => {
+      if (isLocating()) return
+      nextTick(() => scrollToBottom())
+    }).catch(() => {})
     return
   }
   ready.value = false
@@ -698,10 +701,14 @@ async function onScroll() {
   }
 }
 function scrollToMessage(id) {
-  if (!scroller.value) return
-  const el = scroller.value.querySelector('#m-' + id)
-  if (el) el.scrollIntoView({ block: 'center' })
-  else scrollToBottom()
+  const el = scroller.value && scroller.value.querySelector('#m-' + id)
+  if (el) {
+    el.scrollIntoView({ block: 'center' })
+    /* 下一帧再校一次：上方图片/字体异步加载会改变高度，避免定位偏移 */
+    requestAnimationFrame(() => el.scrollIntoView({ block: 'center' }))
+  } else {
+    scrollToBottom()
+  }
 }
 
 /* 点命中记录 → 跳到完整会话中它的真实位置，保留上下文并高亮 */
@@ -709,6 +716,7 @@ function locate(m) {
   locatedId.value = m.id
   searchPhase.value = 'located'
   hlId.value = null
+  lockScrollForLocating()
   nextTick(() => {
     scrollToMessage(m.id)
     // 重新挂载高亮动画（即便再次点同一条也能重放）
@@ -735,16 +743,28 @@ async function onContinueTalk() {
 
 /* 点击引用摘要 → 跳到被引用的原消息位置并高亮（复用搜索定位的滚动/高亮逻辑）；
    原消息已被删除/撤回（不在列表中）则不动作 */
-function onQuoteTap(quoteId) {
+async function onQuoteTap(quoteId) {
   const id = Number(quoteId)
-  if (!id || !messages.value.some((m) => m.id === id)) return
+  if (!id) return
   hlId.value = null
-  nextTick(() => {
-    scrollToMessage(id)
-    // 重新挂载高亮动画（即便再次点同一条也能重放）
-    requestAnimationFrame(() => { hlId.value = id })
-    setTimeout(() => { if (hlId.value === id) hlId.value = null }, 3100)
-  })
+  lockScrollForLocating()
+  /* 被引用消息可能不在已加载的「最近 50 条」窗口内（提问往往发生在对话早期、
+     被大量后续消息推到窗口外）：单独取回这条消息并入列表，才能滚动定位。
+     与搜索定位同样的 mergeMessages 思路；取回前先锁定滚底，避免 merge 触发自动滚底打断 */
+  if (!messages.value.some((m) => m.id === id)) {
+    try {
+      const m = await getMessageById(id)
+      if (m) chat.mergeMessages(props.contactId, [m])
+    } catch (e) { /* ignore */ }
+    lockScrollForLocating() // 重新锁定，覆盖 merge 触发的列表更新窗口
+  }
+  // 仍找不到（已被删除/撤回）则不动作
+  if (!messages.value.some((m) => m.id === id)) return
+  await nextTick()
+  scrollToMessage(id)
+  // 重新挂载高亮动画（即便再次点同一条也能重放）
+  requestAnimationFrame(() => { hlId.value = id })
+  setTimeout(() => { if (hlId.value === id) hlId.value = null }, 3100)
 }
 
 async function onSend(text) {
@@ -764,9 +784,18 @@ watch(
   () => props.contactId,
   () => loadAndScroll()
 )
-/* 删除/收藏/撤回等自己操作引起的列表变化：短时间内不自动滚底，
-   保持当前阅读位置（新消息到来的滚底不受影响） */
+/* 删除/收藏/撤回等自己操作，或搜索定位/点击引用跳转引起的列表变化：
+   短时间内不自动滚底，保持当前阅读位置（超出该窗口后自动滚底恢复正常） */
 let keepScrollUntil = 0
+/* 标记「正在定位」（点击引用/搜索命中跳转）：锁定期内禁止任何自动滚底
+   打断阅读位置 —— 否则 loadAndScroll 的后台同步滚底、onActivated 激活滚底、
+   新消息到达滚底、输入指示器滚底等会覆盖 scrollIntoView 的定位结果 */
+function lockScrollForLocating(ms = 3500) {
+  keepScrollUntil = Date.now() + ms
+}
+function isLocating() {
+  return Date.now() < keepScrollUntil
+}
 watch(messages, async () => {
   await nextTick()
   if (Date.now() < keepScrollUntil) return
@@ -776,7 +805,7 @@ watch(messages, async () => {
 /* 对方开始输入：输入指示器出现在消息列表底部，滚到底把它带入视野，
    不让用户还要手动往下滑才能看到「正在输入」 */
 watch(typing, (v) => {
-  if (v && !props.searchQuery) {
+  if (v && !props.searchQuery && !isLocating()) {
     nextTick(() => scrollToBottom())
   }
 })
@@ -835,6 +864,7 @@ onMounted(() => {
    搜索态除外：搜索列表/定位位置不打断 */
 onActivated(() => {
   if (props.searchQuery) return
+  if (isLocating()) return
   nextTick(() => {
     scrollToBottom()
     requestAnimationFrame(() => scrollToBottom())

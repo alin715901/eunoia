@@ -130,6 +130,11 @@ export async function getMessages(contactId, cursor = null) {
   return { messages: rows, nextCursor }
 }
 
+// 按 id 取单条消息（引用跳转时，被引用消息可能不在已加载的「最近 50 条」窗口内）
+export async function getMessageById(messageId) {
+  return chatRepo.getMessageById(Number(messageId)) || null
+}
+
 // 统计页：某联系人全部消息（时间正序）
 export async function getAllMessages(contactId) {
   return chatRepo.getAllMessages(Number(contactId))
