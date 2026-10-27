@@ -38,6 +38,18 @@
    fonts/ 目录下的 .css 清单改 network-first（清单很小，联网时永远拿
    最新；断网才回落缓存）。woff2 切片文件名含内容 hash（内容变名字变），
    保持 SWR 缓存优先；SW 版本升 v11，activate 清空旧缓存兜底。 */
+/* ── v12 WebView 自废武功 ──
+   套壳 APK（网页转 APK 类 App 内的 Android WebView）在弱网 / 从后台恢复 / WiFi
+   切换时网络偶发失败，SW 的 network-first 导航会 10s 超时 → 返回离线页 → 离线页
+   8s 后自动 reload → 又 network-first → 又超时 → 又离线页，制造「卡住（10s 等待）
+   → 刷新 → 又卡住」循环（几分钟一轮，符合「有时候几秒、有时候几分钟」）。
+   且 main.js 的 unregister() 对已 claim 控制页面的旧 SW 当前会话内不立即生效，残留
+   SW 仍会拦截。根绝办法：SW 自身检测到 WebView UA 就变成「透明 SW」——不拦截任何
+   请求、不返回离线页、不 claim、不自动 reload，交给 WebView 原生 HTTP 缓存。
+   判定标准与 web/src/utils/env.js 的 isWebView() 保持一致。 */
+const UA = (typeof self !== 'undefined' && self.navigator && self.navigator.userAgent) || ''
+const IS_WEBVIEW = /;\s*wv[;)]/i.test(UA) || /WebView/i.test(UA)
+
 const CACHE = 'eunoia-sw-v11'
 
 /* SW 作用域根（如 https://xxx.github.io/eunoia/）——
@@ -119,10 +131,11 @@ function offlineResponse() {
 }
 
 self.addEventListener('install', () => {
-  self.skipWaiting()
+  if (!IS_WEBVIEW) self.skipWaiting()
 })
 
 self.addEventListener('activate', (event) => {
+  if (IS_WEBVIEW) return /* 透明 SW：不 claim、不清缓存，完全不控制页面 */
   event.waitUntil(
     caches.keys()
       .then((keys) => Promise.all(keys.filter((k) => k !== CACHE).map((k) => caches.delete(k))))
@@ -131,6 +144,9 @@ self.addEventListener('activate', (event) => {
 })
 
 self.addEventListener('fetch', (event) => {
+  /* 透明 SW：WebView 下完全不拦截，浏览器原生处理（WebView 自带 HTTP 缓存），
+     杜绝弱网/前后台切换时的离线页自动 reload 循环 */
+  if (IS_WEBVIEW) return
   const req = event.request
   if (req.method !== 'GET') return
   const url = new URL(req.url)
