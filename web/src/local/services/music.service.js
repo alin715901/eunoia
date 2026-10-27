@@ -267,11 +267,31 @@ async function neResolvePlaylist(id) {
 
 async function neExpandShort(url) {
   /* 163cn.tv 短链：跟随重定向拿到真实链接。
-     走 worker 中转时 res.url 只是 worker 地址，最终地址由响应头 X-Final-Url 带回；
-     直连模式（无中转）时 res.url 即最终地址。 */
+     走 worker 中转时 res.url 只是 worker 地址，最终地址由响应头 X-Final-Url 带回
+     （需 worker 侧 Access-Control-Expose-Headers 暴露，否则浏览器 JS 读不到，恒为 null）；
+     直连模式（无中转）时 res.url 即最终地址。
+     兜底：两者都拿不到有效网易云地址时（旧版 worker 未暴露该头），
+     从返回页面 HTML 的 <link rel="canonical"> / og:url 里抠出真实链接。 */
   const res = await fetch(withProxy(url), { method: 'GET', redirect: 'follow' })
   const final = res.headers.get('X-Final-Url') || res.url || ''
-  return parseLink(final)
+  let parsed = parseLink(final)
+  if (parsed.type === 'netease_playlist' || parsed.type === 'netease_song') return parsed
+  /* 兜底：页面 HTML 头部有 canonical 指向真实地址，如
+     <link rel="canonical" href="https://music.163.com/playlist?id=14232721289" /> */
+  try {
+    const html = await res.text()
+    const m =
+      html.match(/rel="canonical"\s+href="([^"]+music\.163\.com\/(?:playlist|song)[^"]*)"/i) ||
+      html.match(/property="og:url"\s+content="([^"]+music\.163\.com\/(?:playlist|song)[^"]*)"/i) ||
+      html.match(/(https?:\/\/(?:y\.)?music\.163\.com\/(?:playlist|song)\?[^\s"'<>]+)/i)
+    if (m) {
+      const alt = parseLink(m[1].replace(/&amp;/g, '&'))
+      if (alt.type === 'netease_playlist' || alt.type === 'netease_song') return alt
+    }
+  } catch (e) {
+    /* ignore：保持 parsed 原样交给上层报错 */
+  }
+  return parsed
 }
 
 /* ─────────── 酷狗 ─────────── */

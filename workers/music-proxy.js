@@ -17,6 +17,9 @@ export default {
       'Access-Control-Allow-Origin': '*',
       'Access-Control-Allow-Methods': 'GET, OPTIONS',
       'Access-Control-Allow-Headers': '*',
+      // 关键：X-Final-Url 必须显式暴露，浏览器端 fetch 才能读到
+      //（163cn.tv 短链展开依赖它；不暴露时 JS 里 res.headers.get() 恒为 null）
+      'Access-Control-Expose-Headers': 'X-Final-Url',
       'Access-Control-Max-Age': '86400'
     }
 
