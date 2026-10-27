@@ -16,10 +16,14 @@
           {{ view === 'inbox' ? 'TA 还没来信，等 TA 写第一封吧。' : '你还没寄出过信。' }}
         </div>
         <template v-for="g in groupedList" :key="g.key">
-          <div class="grp-head">
+          <div class="grp-head" @click="toggleGroup(g.key)">
             <span>{{ g.label }}</span>
-            <span v-if="g.count" class="grp-count">{{ g.count }} 封 ⌄</span>
+            <span class="grp-count" :class="{ folded: collapsedGroups[g.key] }">
+              {{ g.items.length }} 封
+              <AppIcon class="grp-chev" name="chevron-down" :size="12" color="var(--text-soft)" />
+            </span>
           </div>
+          <template v-if="!collapsedGroups[g.key]">
           <div
             v-for="l in g.items"
             :key="l.id"
@@ -76,6 +80,7 @@
               </div>
             </div>
           </div>
+          </template>
         </template>
       </div>
 
@@ -143,6 +148,13 @@ const form = ref({ opening: '', body: '', closing: '' })
 const view = ref('inbox')
 const expandedId = ref(null)
 const sendToChat = ref(false)
+/* 月份分组折叠状态：key → 是否收起 */
+const collapsedGroups = ref({})
+
+/* 点击分组头（「N 封 ⌄」）收起 / 展开该组 */
+function toggleGroup(key) {
+  collapsedGroups.value[key] = !collapsedGroups.value[key]
+}
 /* 回信时记录正在回复的那一封信 */
 const replyTarget = ref(null)
 
@@ -193,7 +205,7 @@ const groupedList = computed(() => {
   if (week.length) res.push({ key: 'week', label: '本周', items: week })
   for (const k of Object.keys(months).sort().reverse()) {
     const [y, m] = k.split('-')
-    res.push({ key: k, label: `${y} 年 ${Number(m) + 1} 月`, count: months[k].length, items: months[k] })
+    res.push({ key: k, label: `${y} 年 ${Number(m) + 1} 月`, items: months[k] })
   }
   return res
 })
@@ -416,13 +428,25 @@ onMounted(async () => {
   font-size: 13px;
   color: var(--text-soft);
   padding: 4px 2px 10px;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 .grp-count {
   font-size: 12px;
   background: var(--bg-soft);
   border-radius: 999px;
   padding: 2px 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  transition: background 0.15s;
 }
+.grp-head:active .grp-count { background: var(--border); }
+/* 箭头方向：展开朝下，收起朝右 */
+.grp-chev { transition: transform 0.2s ease; }
+.grp-count.folded .grp-chev { transform: rotate(-90deg); }
 .letter-card {
   display: flex;
   gap: 11px;
