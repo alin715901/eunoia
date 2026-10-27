@@ -55,6 +55,7 @@ async function onCheck() {
   const r = await checkForUpdate()
   checking.value = false
   if (r === 'latest') checkMsg.value = '已是最新版'
+  else if (r === 'pending') checkMsg.value = '发现新版本，资源就绪中，稍后再点即可更新'
   else if (r === 'error') checkMsg.value = '检查失败'
 }
 </script>
