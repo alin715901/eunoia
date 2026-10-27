@@ -53,6 +53,27 @@
       <button class="btn-block" type="button" :disabled="migrating || !configured" @click="doMigrate">
         {{ migrating ? `迁移中…（已完成 ${migDone}）` : '迁移本地图片到云端（省空间）' }}
       </button>
+      <!-- 云端历史备份：覆盖云端前自动留存的旧备份，误覆盖可从这里找回 -->
+      <div class="hist-block">
+        <div class="hist-head">
+          <span class="hist-title">云端历史备份</span>
+          <button class="hist-refresh" type="button" :disabled="listing" @click="refreshArchives">{{ listing ? '刷新中…' : '刷新列表' }}</button>
+        </div>
+        <p class="sub">覆盖云端另一台设备的数据前，系统会把被覆盖的旧备份自动另存到这里。若误覆盖（例如拿回旧手机里的数据），可从此处下载找回。</p>
+        <div v-if="archList.length" class="hist-list">
+          <div v-for="a in archList" :key="a.key" class="hist-item">
+            <div class="hist-info">
+              <span class="hist-at">{{ fmtTime(a.at) }}</span>
+              <span class="hist-size">{{ fmtKb(a.size) }}</span>
+            </div>
+            <button class="hist-restore" type="button" :disabled="restoring || importing" @click="doRestoreArchive(a)">下载并恢复</button>
+          </div>
+        </div>
+        <p v-else-if="archTried && !listing" class="hist-empty">
+          暂无历史备份。说明覆盖云端时未触发归档（云端本就为空，或当时状态未知被取消上传），
+          可改用阿里云 OSS 控制台直接查看 <code>{{ prefixHint }}/backup/archive/</code> 目录。
+        </p>
+      </div>
       <!-- 本机设备标识：多设备共用同一个 Bucket 时，用来区分数据来自哪台设备 -->
       <p class="sub">本机标识：{{ deviceLabel }}<span v-if="syncState && syncState.cloudLabel"> · 云端备份来自：{{ syncState.cloudLabel }}</span></p>
       <!-- 最近一次同步时间 -->
@@ -127,7 +148,7 @@ import { useRouter } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import Modal from '@/components/common/Modal.vue'
-import { getSettings, saveSettings, migrateImagesToOss, backupToOss, downloadOssBackup, importBackup, getOssSyncState, getDeviceLabel, markOssCloudSeen } from '@/api/settings'
+import { getSettings, saveSettings, migrateImagesToOss, backupToOss, downloadOssBackup, importBackup, getOssSyncState, getDeviceLabel, markOssCloudSeen, listOssArchives, downloadOssArchive } from '@/api/settings'
 import { fmtBackupTime, backupTotalRows, backupFeatureSummary } from '@/utils/backupInfo'
 import { readOssCfg, ossReady, ossTest } from '@/utils/oss'
 import { fmtSyncTime } from '@/utils/syncTime'
@@ -181,6 +202,11 @@ const restoring = ref(false)
 const restoreOpen = ref(false)
 const restorePending = ref(null)
 const importing = ref(false)
+/* 云端历史备份（archive）列表：进入页面自动拉一次 */
+const archList = ref([])
+const listing = ref(false)
+const archTried = ref(false)
+const prefixHint = computed(() => (form.prefix && form.prefix.trim()) ? form.prefix.trim() + '/backup/archive' : 'backup/archive')
 /* 本机设备标识 + 云端备份状态（用于冲突提示） */
 const deviceLabel = getDeviceLabel()
 const syncState = ref(null)
@@ -215,6 +241,8 @@ async function refreshSyncState() {
 }
 loadSyncTime()
 refreshSyncState()
+/* 进入即尝试拉取云端历史备份列表（覆盖前自动留存的旧备份） */
+refreshArchives().catch(() => {})
 syncTimer = setInterval(() => { loadSyncTime(); refreshSyncState() }, 30 * 1000)
 onBeforeUnmount(() => clearInterval(syncTimer))
 
@@ -436,6 +464,49 @@ async function doMigrate() {
     migrating.value = false
   }
 }
+
+/* 拉取云端历史备份列表（archive 目录下的旧备份） */
+async function refreshArchives() {
+  if (listing.value) return
+  listing.value = true
+  archTried.value = true
+  try {
+    archList.value = await listOssArchives()
+  } catch (e) {
+    isErr.value = true
+    msg.value = e.message || '读取历史备份失败'
+    archList.value = []
+  } finally {
+    listing.value = false
+  }
+}
+
+/* 点击某条历史备份：下载并打开恢复弹窗（合并 / 覆盖），复用现有导入流程 */
+async function doRestoreArchive(a) {
+  if (restoring.value || importing.value) return
+  restoring.value = true
+  isErr.value = false
+  msgOk.value = false
+  msg.value = '正在从云端下载历史备份…'
+  try {
+    restorePending.value = await downloadOssArchive(a.key)
+    restoreOpen.value = true
+    msg.value = ''
+  } catch (e) {
+    isErr.value = true
+    msg.value = e.message || '下载失败'
+  } finally {
+    restoring.value = false
+  }
+}
+
+/* 历史备份大小友好显示 */
+function fmtKb(n) {
+  if (!n) return ''
+  if (n < 1024) return n + ' B'
+  if (n < 1024 * 1024) return (n / 1024).toFixed(0) + ' KB'
+  return (n / 1024 / 1024).toFixed(1) + ' MB'
+}
 </script>
 
 <style scoped>
@@ -533,6 +604,36 @@ async function doMigrate() {
 .imp-btn.danger { border-color: #c0576b; }
 .imp-btn.danger b { color: #c0576b; }
 .imp-btn:disabled { opacity: 0.6; }
+
+/* 云端历史备份区块：列出被覆盖前自动留存的旧备份，可下载找回 */
+.hist-block {
+  margin-top: 18px;
+  border-top: 1px solid var(--border);
+  padding-top: 14px;
+}
+.hist-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.hist-title { font-size: 14px; font-weight: 600; color: var(--text); }
+.hist-refresh {
+  border: 1px solid var(--border); background: var(--bg-soft);
+  border-radius: 999px; padding: 5px 12px; font-size: 12px; color: var(--text);
+  cursor: pointer;
+}
+.hist-refresh:disabled { opacity: 0.5; cursor: default; }
+.hist-list { display: flex; flex-direction: column; gap: 8px; margin: 12px 0 0; }
+.hist-item {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px;
+}
+.hist-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.hist-at { font-size: 13px; color: var(--text); }
+.hist-size { font-size: 11px; color: var(--text-soft); }
+.hist-restore {
+  flex: 0 0 auto; border: none; border-radius: 10px; padding: 8px 14px;
+  background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.hist-restore:disabled { opacity: 0.5; cursor: default; }
+.hist-empty { font-size: 12px; color: var(--text-soft); line-height: 1.6; margin: 12px 0 0; }
+.hist-empty code { background: var(--bg-soft); padding: 1px 5px; border-radius: 5px; font-size: 11px; word-break: break-all; }
 
 /* 底部按钮栏：取消 / 测试连接 / 保存并连接 */
 .oss-footer {

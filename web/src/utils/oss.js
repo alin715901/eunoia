@@ -267,6 +267,60 @@ export async function ossExists(cfg, path) {
 }
 
 /**
+ * 列出 OSS 对象（ListObjects V2）。
+ * 返回 { keys: [{ key, size, lastModified }], isTruncated, nextContinuationToken }。
+ * 用于「云端历史备份」浏览：列出 backup/archive/ 下被覆盖前自动留存的旧备份。
+ * 错误语义与 ossDownload 一致：403（权限 / 本机时钟偏差）需与「目录为空」区分，
+ * 绝不能把读不到当成「没有历史备份」。
+ */
+export async function ossList(cfg, prefix, continuationToken) {
+  if (!ossReady(cfg)) throw new Error('阿里云 OSS 配置不完整（AccessKey / Bucket / 地域节点）')
+  const params = { 'list-type': '2' }
+  if (prefix) params['prefix'] = prefix
+  if (continuationToken) params['continuation-token'] = continuationToken
+  let url
+  try {
+    url = await signedUrlOf(cfg, 'GET', '', params, '', 600)
+  } catch (e) {
+    throw new Error('生成列举签名失败：' + (e.message || e))
+  }
+  let res
+  try {
+    res = await fetch(url, { method: 'GET' })
+  } catch (e) {
+    throw new Error('列举云端文件失败（网络异常或被 CORS 拦截，需在 OSS 控制台配置 CORS 规则）')
+  }
+  if (res.status === 403) {
+    const err = new Error('无权读取云端文件（HTTP 403）：请检查 AccessKey 的读权限；若本机时间与标准时间偏差较大也会导致签名失效，请校准系统时间后重试')
+    err.status = 403
+    throw err
+  }
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '')
+    throw new Error(parseOssError(res.status, txt))
+  }
+  const xml = await res.text()
+  return parseOssListXml(xml)
+}
+
+/* 解析 ListObjects V2 的 XML 响应（只取需要的字段） */
+function parseOssListXml(xml) {
+  const keys = []
+  const re = /<Contents>([\s\S]*?)<\/Contents>/g
+  let m
+  while ((m = re.exec(xml))) {
+    const block = m[1]
+    const key = (/<Key>([\s\S]*?)<\/Key>/.exec(block) || [])[1] || ''
+    const size = Number((/<Size>([\s\S]*?)<\/Size>/.exec(block) || [])[1] || 0)
+    const lm = (/<LastModified>([\s\S]*?)<\/LastModified>/.exec(block) || [])[1] || ''
+    keys.push({ key, size, lastModified: lm ? Date.parse(lm) : 0 })
+  }
+  const isTruncated = /<IsTruncated>true<\/IsTruncated>/.test(xml)
+  const nextToken = (/<NextContinuationToken>([\s\S]*?)<\/NextContinuationToken>/.exec(xml) || [])[1] || ''
+  return { keys, isTruncated, nextContinuationToken: nextToken }
+}
+
+/**
  * 测试连接：上传一个探测文件再删除。
  * 返回 { ok, level, message }——level: 'ok' 读写正常 / 'write' 只能写 / 'cors' 疑似 CORS。
  */

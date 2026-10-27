@@ -23,7 +23,7 @@ import * as musicCache from './services/musicCache'
 import * as mochiService from './services/mochi.service'
 import * as backupService from './services/backup.service'
 import * as notification from './services/notification.service'
-import { readOssCfg, ossReady, ossUpload, ossDownload, ossExists } from '../utils/oss'
+import { readOssCfg, ossReady, ossUpload, ossDownload, ossExists, ossList } from '../utils/oss'
 
 export { resetDb }
 
@@ -1527,6 +1527,41 @@ export async function downloadOssBackup() {
   const text = await blob.text()
   let payload
   try { payload = JSON.parse(text) } catch (e) { throw new Error('云端备份文件格式不正确') }
+  const err = backupService.validateBackup(payload)
+  if (err) throw new Error(err)
+  return payload
+}
+
+/* 列出云端历史备份（被覆盖前自动留存的旧备份）。
+ * 每个 archive 文件名形如 <prefix>/backup/archive/eunoia-<ts>.json，
+ * ts 即被覆盖的旧备份的创建时间（即「另一台设备上一次成功备份的时间」）。
+ * 返回 [{ key, size, at }]，按时间倒序（最新的旧备份在前）。
+ * 注意：只列举，不下载；读取失败（403 / 网络）抛错——绝不能把「读不到」当「没有」。 */
+export async function listOssArchives() {
+  const cfg = readOssCfg(readGlobalSettings())
+  if (!ossReady(cfg)) throw new Error('请先填写并保存 OSS 配置')
+  const prefix = ossKeyOf(cfg, OSS_ARCHIVE_DIR)
+  const { keys } = await ossList(cfg, prefix)
+  const archs = keys
+    .filter((k) => /\/backup\/archive\/.+\.json$/.test(k.key))
+    .map((k) => {
+      const ts = Number((/eunoia-(\d+)\.json$/.exec(k.key) || [])[1] || 0)
+      return { key: k.key, size: k.size, at: ts || k.lastModified || 0 }
+    })
+    .filter((a) => a.at > 0)
+    .sort((a, b) => b.at - a.at)
+  return archs
+}
+
+/* 下载某个历史备份（archive 文件）并校验，返回 payload（不导入）。
+ * 供「云端历史备份」列表点击后先展示信息，再由用户选合并 / 覆盖——与当前备份恢复同流程。 */
+export async function downloadOssArchive(key) {
+  const cfg = readOssCfg(readGlobalSettings())
+  if (!ossReady(cfg)) throw new Error('请先填写并保存 OSS 配置')
+  const blob = await ossDownload(cfg, key)
+  const text = await blob.text()
+  let payload
+  try { payload = JSON.parse(text) } catch (e) { throw new Error('历史备份文件格式不正确') }
   const err = backupService.validateBackup(payload)
   if (err) throw new Error(err)
   return payload
