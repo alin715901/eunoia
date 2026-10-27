@@ -1366,7 +1366,10 @@ function localSyncState() {
   }
 }
 
-/* 读云端 meta（不存在时返回 null） */
+/* 读云端 meta。
+ * 返回：meta 对象（存在）/ null（确认不存在，404）。
+ * 读取失败（403 / 网络异常等）时抛错——绝不能把「读不到」当成「云端没有」，
+ * 否则下一行上传就会在状态不明时静默覆盖别的设备刚传的备份（真实发生过的 bug）。 */
 async function readOssMeta(cfg) {
   try {
     const blob = await ossDownload(cfg, OSS_META_PATH)
@@ -1375,12 +1378,15 @@ async function readOssMeta(cfg) {
     if (m && typeof m === 'object') return m
     return null
   } catch (e) {
-    return null
+    if (e && e.status === 404) return null
+    throw e
   }
 }
 
 /* 当前同步状态（供 UI 展示 + 冲突判断）
- * 返回 { deviceId, deviceLabel, localRev, localAt, cloudRev, cloudAt, cloudDevice, cloudLabel, hasCloud, conflict }
+ * 返回 { deviceId, deviceLabel, localRev, localAt, cloudRev, cloudAt, cloudDevice, cloudLabel, hasCloud, conflict, cloudUnknown }
+ * cloudUnknown = true 表示「云端状态读取失败，存在与否无法判定」——
+ * 此时 conflict 也置 true，上传必须先解决读取问题，绝不静默覆盖。
  */
 export async function getOssSyncState() {
   const s = localSyncState()
@@ -1394,23 +1400,45 @@ export async function getOssSyncState() {
     cloudDevice: '',
     cloudLabel: '',
     hasCloud: false,
-    conflict: false
+    conflict: false,
+    cloudUnknown: false
   }
   const cfg = readOssCfg(readGlobalSettings())
   if (!ossReady(cfg)) return base
-  const meta = await readOssMeta(cfg)
+  /* meta 读取失败 ≠ 云端没有备份：403（权限/时钟偏差）或网络波动都会走到这。
+     旧代码把所有失败吞成 null 再当「云端为空」，自动备份就会无声覆盖其他设备的
+     数据——现在状态未知时显式上报，由 backupToOss 拒绝上传。 */
+  let meta = null
+  try {
+    meta = await readOssMeta(cfg)
+  } catch (e) {
+    base.cloudUnknown = true
+    base.conflict = true
+    base.cloudLabel = '云端状态未知（读取失败：' + String(e.message || e).slice(0, 60) + '）'
+    return base
+  }
   if (!meta) {
     /* 没有 meta：可能是老版本留下的备份（只有数据文件，没有元信息），
        无法判断来源设备与版本 → 一律按「冲突」处理，要求用户显式确认后再覆盖，
-       避免又出现「另一台设备的数据被无声冲掉」。 */
+       避免又出现「另一台设备的数据被无声冲掉」。
+       注意 ossExists 三态：null（读取失败）同样按状态未知处理。 */
+    let exists
     try {
-      /* 用 ossExists 探测（只读流的第一块就取消），不整包下载上百 MB 的备份 */
-      if (await ossExists(cfg, OSS_BACKUP_PATH)) {
-        base.hasCloud = true
-        base.conflict = true
-        base.cloudLabel = '未知来源（旧版本备份）'
-      }
-    } catch (e) { /* 云端确实没有 */ }
+      exists = await ossExists(cfg, OSS_BACKUP_PATH)
+    } catch (e) {
+      exists = null
+    }
+    if (exists === null) {
+      base.cloudUnknown = true
+      base.conflict = true
+      base.cloudLabel = '云端状态未知（探测失败，请检查网络 / AccessKey / 本机时间）'
+      return base
+    }
+    if (exists) {
+      base.hasCloud = true
+      base.conflict = true
+      base.cloudLabel = '未知来源（旧版本备份）'
+    }
     return base
   }
   base.hasCloud = true
@@ -1433,6 +1461,17 @@ export async function backupToOss(opts = {}) {
   const cfg = readOssCfg(readGlobalSettings())
   if (!ossReady(cfg)) throw new Error('请先填写并保存 OSS 配置')
   const st = await getOssSyncState()
+  /* 云端状态未知（meta 读取失败 / 探测失败）：存在与否都判定不了，
+     此时上传等于蒙眼覆盖——可能冲掉另一台设备刚传的备份。拒绝上传并给出指引。 */
+  if (st.cloudUnknown) {
+    const err = new Error(
+      '无法确认云端备份状态（' + (st.cloudLabel || '读取失败') + '）。\n' +
+      '为避免覆盖另一台设备的数据，本次上传已取消。请先点「测试连接」排查（网络 / AccessKey 权限 / 本机时间是否准确），恢复读取后再上传。'
+    )
+    err.code = 'OSS_STATE_UNKNOWN'
+    err.state = st
+    throw err
+  }
   if (st.conflict && !opts.force) {
     const err = new Error(
       `云端已有更新的数据（${st.cloudLabel || '其他设备'}，${st.cloudAt ? new Date(st.cloudAt).toLocaleString('zh-CN') : '时间未知'}），` +
@@ -1498,7 +1537,12 @@ export async function downloadOssBackup() {
 export async function markOssCloudSeen() {
   const cfg = readOssCfg(readGlobalSettings())
   if (!ossReady(cfg)) return
-  const meta = await readOssMeta(cfg)
+  let meta = null
+  try {
+    meta = await readOssMeta(cfg)
+  } catch (e) {
+    return /* 读取失败就跳过记录：下轮上传会重新走冲突判定，宁可多确认不可漏判 */
+  }
   if (meta && Number(meta.rev || 0) > 0) {
     settingsRepo.setGlobal('oss_seen_rev', Number(meta.rev))
   }

@@ -196,6 +196,13 @@ export async function ossUpload(cfg, blob, path) {
 
 /**
  * 从 OSS 下载对象（预签名 GET，公共读 / 私有读均可；返回 Blob）。
+ * 错误语义严格区分：
+ *   404 → 「云端还没有备份」（真正的不存在）
+ *   403 → 无权访问（AccessKey 权限不足，或本机时钟偏差过大导致 V4 签名失效——
+ *         OSS 对签名时间与服务器时间偏差超过 15 分钟的请求一律 403）
+ *   其余 → 带 HTTP 状态码的原始错误
+ * 403 绝不能与「没有备份」混为一谈：把它误报成"云端没有备份"会诱导用户
+ * 在另一台设备上重新上传，从而把云端真正的新备份覆盖掉（真实发生过的 bug）。
  */
 export async function ossDownload(cfg, path) {
   if (!ossReady(cfg)) throw new Error('阿里云 OSS 配置不完整（AccessKey / Bucket / 地域节点）')
@@ -205,12 +212,25 @@ export async function ossDownload(cfg, path) {
     const url = await signedUrlOf(cfg, 'GET', key, null, '', 600)
     res = await fetch(url, { method: 'GET' })
   } catch (e) {
-    throw new Error('下载请求失败（浏览器直连可能被 CORS 拦截，需在 OSS 控制台配置 CORS 规则）')
+    const err = new Error('下载请求失败（网络异常或被 CORS 拦截，需在 OSS 控制台配置 CORS 规则）')
+    err.status = 0
+    throw err
   }
-  if (res.status === 404 || res.status === 403) throw new Error('云端还没有备份')
+  if (res.status === 404) {
+    const err = new Error('云端还没有备份')
+    err.status = 404
+    throw err
+  }
+  if (res.status === 403) {
+    const err = new Error('无权访问云端文件（HTTP 403）：请检查 AccessKey 的读写权限；若本机时间与标准时间偏差较大也会导致签名失效，请校准系统时间后重试')
+    err.status = 403
+    throw err
+  }
   if (!res.ok) {
     const txt = await res.text().catch(() => '')
-    throw new Error(parseOssError(res.status, txt))
+    const err = new Error(parseOssError(res.status, txt))
+    err.status = res.status
+    throw err
   }
   return res.blob()
 }
@@ -219,7 +239,10 @@ export async function ossDownload(cfg, path) {
  * 判断云端对象是否存在（不发完整下载）。
  * 做法：GET 请求拿到响应后只读流的第一块就取消，
  * 避免为了「文件在不在」把几十上百 MB 的备份整个拉下来。
- * 返回 true=存在；false=不存在（404/403）或请求失败。
+ * 返回三态（调用方必须区分「不存在」与「状态未知」，绝不能把未知当空）：
+ *   true  = 确认存在
+ *   false = 确认不存在（仅 404）
+ *   null  = 状态未知（403 / 网络失败 / CORS 等，云端可能存在也可能不存在）
  */
 export async function ossExists(cfg, path) {
   if (!ossReady(cfg)) return false
@@ -227,9 +250,10 @@ export async function ossExists(cfg, path) {
   try {
     const url = await signedUrlOf(cfg, 'GET', key, null, '', 600)
     const res = await fetch(url, { method: 'GET' })
+    if (res.status === 404) return false
     if (!res.ok) {
       try { if (res.body) await res.body.cancel() } catch (e) { /* ignore */ }
-      return false
+      return null // 403 / 5xx 等：存在与否无法判定
     }
     try {
       const reader = res.body.getReader()
@@ -238,7 +262,7 @@ export async function ossExists(cfg, path) {
     } catch (e) { /* 取消读取失败不影响存在性判断 */ }
     return true
   } catch (e) {
-    return false
+    return null // 请求本身失败：状态未知
   }
 }
 

@@ -71,6 +71,16 @@ export async function requestNotificationPermission() {
   }
 }
 
+/* 给 Promise 加超时：navigator.serviceWorker.ready 在「从未注册过任何 SW」
+   的环境下永远挂起（不 resolve 不 reject），await 它的调用方会一起卡死——
+   电脑端「点击测试」毫无反应就是这个原因（SW 注册失败 / 被 unregister 后 ready 永久 pending）。 */
+function withTimeout(promise, ms) {
+  return new Promise((resolve, reject) => {
+    const t = setTimeout(() => reject(new Error('timeout')), ms)
+    promise.then((v) => { clearTimeout(t); resolve(v) }, (e) => { clearTimeout(t); reject(e) })
+  })
+}
+
 export async function notify(title, options = {}) {
   if (!notificationSupported() || Notification.permission !== 'granted') return false
   try {
@@ -87,14 +97,18 @@ export async function notify(title, options = {}) {
 
     // 安卓 Chrome / 大部分手机浏览器不支持 `new Notification()` 构造器，
     // 必须用 Service Worker 的 showNotification()，否则即使授权也不会弹出。
+    // ready 加 3 秒超时 + showNotification 失败回退页面构造器：
+    // 桌面端 SW 未注册 / 注册失败 / showNotification 报错时都能弹出来。
     if ('serviceWorker' in navigator) {
-      const reg = await navigator.serviceWorker.ready
-      if (reg && typeof reg.showNotification === 'function') {
-        await reg.showNotification(title, opts)
-        return true
-      }
+      try {
+        const reg = await withTimeout(navigator.serviceWorker.ready, 3000)
+        if (reg && typeof reg.showNotification === 'function') {
+          await reg.showNotification(title, opts)
+          return true
+        }
+      } catch (e) { /* SW 不可用 / 超时 → 落到下面的页面构造器 */ }
     }
-    // 桌面端兜底：直接构造通知
+    // 兜底：直接构造通知（桌面 Chrome / Edge / Safari 均支持）
     new Notification(title, opts)
     return true
   } catch (e) {

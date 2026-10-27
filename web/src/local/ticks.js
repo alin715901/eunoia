@@ -196,6 +196,8 @@ async function ossAutoBackupTick() {
     /* 冲突（云端有别的设备的新数据）或网络失败：静默跳过，不覆盖云端 */
     if (e && e.code === 'OSS_CONFLICT') {
       console.info('[oss] 云端有更新的数据（来自其他设备），本轮自动备份已跳过')
+    } else if (e && e.code === 'OSS_STATE_UNKNOWN') {
+      console.warn('[oss] 云端状态未知（读取失败），本轮自动备份已跳过：', e.message)
     }
   } finally {
     ossSyncBusy = false
