@@ -856,7 +856,7 @@ function cardContentType(card) {
   return 'card';
 }
 
-function insertContactCard(d, contactId, card, memberId = null, proactive = false) {
+function insertContactCard(d, contactId, card, memberId = null, proactive = false, ts = null) {
   const info = d
     .prepare(
       `INSERT INTO chat_messages(contact_id, sender, content_type, card_id, text, asset_path, duration, author_member_id, is_proactive, read_receipt, read, seq, created_at)
@@ -872,7 +872,7 @@ function insertContactCard(d, contactId, card, memberId = null, proactive = fals
       memberId,
       proactive ? 1 : 0,
       getNextSeq(contactId),
-      Math.floor(Date.now() / 1000)
+      ts != null ? Math.floor(ts) : Math.floor(Date.now() / 1000)
     );
   return d.prepare('SELECT * FROM chat_messages WHERE id = ?').get(info.lastInsertRowid);
 }
@@ -1705,9 +1705,13 @@ function proactiveTick(opts = {}) {
         lastProactiveAt.set(cid, now);
       }
       const info = effectiveContactInfo(db, cid);
+      /* 落库时间：优先用「计划触发时间」（next，<= now），让被节流/补发的消息
+         显示真实发送时刻（如本该 30 分发、35 分才生成，仍显示为 30 分收到），
+         而不是你回前台的时刻——「就像真实发送到了」。实时生成时 next≈now，无差异。 */
+      const sentAt = next > 0 ? next : now;
       const sent = [];
       for (const card of cards) {
-        const m = insertContactCard(db, cid, card, null, true);
+        const m = insertContactCard(db, cid, card, null, true, sentAt);
         if (m) sent.push(m);
       }
       if (sent.length) {
