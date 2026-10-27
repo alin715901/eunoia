@@ -44,7 +44,20 @@ if (import.meta.env.DEV) {
 // 直接注册（不等 load 事件：慢链路上 load 可能迟迟不来或时机不可靠）。
 // 用 BASE_URL 拼绝对路径：相对路径在深链接（如 /settings/oss）下会解析到
 // /settings/sw.js 而注册失败，SW 就接管不了缓存与通知跳转。
-if ('serviceWorker' in navigator) {
+// 套壳 WebView（网页转 APK 类 App）跳过 SW：其 SW 导航超时 + 存储异常是
+// 「白屏卡死 / 反复重刷」的主要来源，且 WebView 自身有 HTTP 缓存，无需 SW 兜底。
+import { isWebView } from './utils/env'
+
+if (isWebView()) {
+  /* 套壳 WebView：彻底不用 SW。先注销历史版本可能残留的 SW——否则旧 SW 仍会
+     控制页面并用缓存里的旧 HTML 喂给页面，新版本永远加载不上、旧版强制重刷循环
+     也停不下来。注销后页面改由 WebView 原生 HTTP 缓存接管，正常联网取最新。 */
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistrations()
+      .then((regs) => Promise.all(regs.map((r) => r.unregister())))
+      .catch(() => {})
+  }
+} else if ('serviceWorker' in navigator) {
   const swUrl = `${import.meta.env.BASE_URL}sw.js`.replace(/\/{2,}/g, '/')
   navigator.serviceWorker.register(swUrl)
     .then(() => console.log('[sw] 注册成功'))

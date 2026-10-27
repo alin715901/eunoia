@@ -92,7 +92,8 @@ function fetchWithTimeout(req, ms, opts) {
 }
 
 /* 离线兜底页：缓存全空 + 断网时也不让浏览器渲染错误页。
-   5 秒后自动重试一次联网；页内提供手动重试按钮 */
+   最多自动重试 3 次（sessionStorage 计数），之后停下提示手动刷新，
+   避免套壳 WebView 下「永远刷不出又永远在刷」的卡死重刷循环；页内也提供手动重试按钮 */
 const OFFLINE_HTML = `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <title>Eunoia · 网络开小差了</title><style>
@@ -107,7 +108,7 @@ background:#8a7f6f;color:#fff}
 </style></head><body><div class="box"><div class="e">🌙</div>
 <h1>网络开小差了</h1><p>正在尝试重新连接…<br>若长时间无响应，请检查网络后再试</p>
 <button onclick="location.reload()">重试</button></div>
-<script>setTimeout(function(){location.reload()},5000)</script>
+<script>(function(){try{var n=Number(sessionStorage.getItem('eunoia_offline_retry')||'0');if(n<3){sessionStorage.setItem('eunoia_offline_retry',String(n+1));setTimeout(function(){location.reload()},8000);}else{document.querySelector('.tip').innerHTML='仍无法连接，请检查网络后手动刷新。';}}catch(e){setTimeout(function(){location.reload()},8000);}})();</script>
 </body></html>`
 
 function offlineResponse() {

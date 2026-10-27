@@ -56,6 +56,14 @@
 
     <!-- 全局歌词页：独立于路由，全屏覆盖 -->
     <MusicLyrics />
+
+    <!-- 全局「有新版本」提示条：自动更新关闭（套壳 APK 默认）时，探测到新版本
+         只通知不强制重刷，用户点一下才刷新——避免白屏卡死与反复重刷 -->
+    <Transition name="up-banner">
+      <div v-if="showUpdateBanner" class="up-banner" @click="applyUpdate">
+        <span class="up-dot" />发现新版本，点击更新
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -112,6 +120,17 @@ onMounted(() => {
   })
 })
 onUnmounted(() => { if (offDbProgress) { offDbProgress(); offDbProgress = null } })
+
+/* 自动更新关闭（套壳 APK 默认）时，探测到新版本只广播该事件；这里弹出可点击的
+   更新条，用户点一下才刷新，避免强制 reload 的「白屏卡死 + 反复重刷」。 */
+const showUpdateBanner = ref(false)
+function onUpdateAvailable() { showUpdateBanner.value = true }
+function applyUpdate() {
+  showUpdateBanner.value = false
+  location.reload()
+}
+onMounted(() => { window.addEventListener('eunoia:update-available', onUpdateAvailable) })
+onUnmounted(() => { window.removeEventListener('eunoia:update-available', onUpdateAvailable) })
 
 /* 进度停滞感知：超过 1.2s 没有新进度（wasm/数据加载中）时给进度条加流光，
    避免用户以为动画卡死（静态骨架与 Vue 骨架都靠它保持「活着」的观感） */
@@ -467,4 +486,38 @@ html[data-theme='dark'] .boot-screen {
   border-radius: 999px;
   padding: 10px 36px;
 }
+
+/* 全局「有新版本」提示条：固定在底部，点一下刷新 */
+.up-banner {
+  position: fixed;
+  left: 50%;
+  bottom: 22px;
+  transform: translateX(-50%);
+  z-index: 9999;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  background: var(--accent, #c5a47e);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .18);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.up-banner .up-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #fff;
+  animation: up-pulse 1.4s ease-in-out infinite;
+}
+@keyframes up-pulse {
+  0%, 100% { opacity: .4; transform: scale(.8); }
+  50% { opacity: 1; transform: scale(1.1); }
+}
+.up-banner-enter-active, .up-banner-leave-active { transition: all .25s ease; }
+.up-banner-enter-from, .up-banner-leave-to { opacity: 0; transform: translate(-50%, 12px); }
 </style>
