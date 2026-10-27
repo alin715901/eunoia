@@ -1634,7 +1634,8 @@ function nextIntervalSec(st) {
   if (hi < lo) [lo, hi] = [hi, lo];
   return randInt(Math.round(lo), Math.round(hi)) * 60;
 }
-function proactiveTick() {
+function proactiveTick(opts = {}) {
+  const suppressBackfill = !!opts.suppressBackfill
   try {
     const rows = db.prepare("SELECT id FROM contacts WHERE kind != 'group'").all();
     const now = Math.floor(Date.now() / 1000);
@@ -1668,6 +1669,23 @@ function proactiveTick() {
         }
       }
       if (next && now < next) continue;
+
+      // 冷启动（全新加载、非后台保活）后的安静期：不补发离线期间到期的主动消息，
+      // 把下次可发时间顺延到「现在 + 一个间隔」，让对方从你打开应用之后才按节奏发；
+      // 「不在线就不发」——避免一开门就炸一堆历史到期消息。
+      if (suppressBackfill) {
+        const nextAt = now + nextIntervalSec(st)
+        if (st) {
+          db.prepare('UPDATE contact_settings SET proactive_last_at = ?, proactive_next_at = ? WHERE contact_id = ?').run(
+            now,
+            nextAt,
+            cid
+          )
+        } else {
+          lastProactiveAt.set(cid, now)
+        }
+        continue
+      }
 
       const lo = Number(st && st.proactive_count_min);
       const hi = Number(st && st.proactive_count_max);

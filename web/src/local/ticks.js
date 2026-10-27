@@ -12,6 +12,7 @@ import * as notification from './services/notification.service'
 import { proactiveTick, redpacketTick, upgradeAllPseudoVoices } from './services/chat.service'
 import { backupToOss, getSettings } from './api'
 import { readOssCfg, ossReady } from '../utils/oss'
+import { setEntryQuiet } from './services/entryQuiet'
 import { periodCareTick } from './services/period.service'
 import { momentTick, flushPendingMoments } from './services/moment.service'
 import { letterTick, replyTick } from './services/letter.service'
@@ -28,11 +29,15 @@ const CALL_CHECK_KEY = 'eunoia:last_call_check_at'
 
 let timer = null
 let started = false
+// 冷启动（全新加载、非后台保活）后的「不补发」窗口：期间 proactiveTick 不补发
+// 离线期间到期的主动消息，把下次可发时间顺延到开门之后——「不在线就不发」。
+let justLaunchedSuppressUntil = 0
 
 // —— 60s 轮询的各项 tick（与 cron.js 一一对应，redpacketTick 原在 index.js 独立 interval）——
 function runMinuteTicks() {
   try {
-    proactiveTick()
+    // 冷启动后的短暂窗口内抑制「补发」：全新加载（非后台保活）时不补离线到期消息
+    proactiveTick({ suppressBackfill: Date.now() < justLaunchedSuppressUntil })
   } catch (e) {
     /* ignore */
   }
@@ -209,6 +214,11 @@ export function startTicks() {
   if (started) return
   started = true
 
+  // 冷启动（全新加载）后的安静窗口：进门 8s 内不弹「收到消息」横条（消息照常落聊天 / 角标），
+  // 并把主动消息「补发」顺延到开门之后——全新加载即「不在线」，不补发离线期间到期的消息。
+  setEntryQuiet(8000)
+  justLaunchedSuppressUntil = Date.now() + 8000
+
   setTimeout(runAll, 3000)
 
   /* 启动后一次性补齐：此前「未配置 MiniMax 时」遗留的伪语音，配置就绪后转成真实语音 */
@@ -220,7 +230,11 @@ export function startTicks() {
   timer = setInterval(runAll, TICK_MS)
 
   const onVisible = () => {
-    if (document.visibilityState === 'visible') runAll()
+    if (document.visibilityState === 'visible') {
+      // 从后台切回前台：进门 4s 内不弹消息横条（消息已静静躺在聊天里），但不抑制补发本身
+      setEntryQuiet(4000)
+      runAll()
+    }
   }
   document.addEventListener('visibilitychange', onVisible)
   // 页面卸载前不再需要持久化（db.js 的 flush 已兜底），这里只清理定时器

@@ -11,6 +11,7 @@ import { useMusicStore } from '@/stores/music'
 import { useCinemaStore } from '@/stores/cinema'
 import { getContactSettings } from '@/api/contacts'
 import { notify, notificationPermission } from './useNotification'
+import { isEntryQuiet } from '@/local/services/entryQuiet'
 import router from '@/router'
 
 let source = null
@@ -157,8 +158,10 @@ export function connect() {
         }
         const preview = last ? previewOf(last) : ''
         /* 影院播放器打开中：消息已在播放器聊天室里实时可见，
-           不再从屏幕顶部弹消息提示（浅色弹条会盖住视频顶部，即"白带"） */
-        if (inc > 0 && !useCinemaStore().playerOpen) {
+           不再从屏幕顶部弹消息提示（浅色弹条会盖住视频顶部，即"白带"）。
+           进门安静窗口（冷启动 / 从后台切回前台后的短暂时间）内也不弹横条：
+           离线 / 后台期间到达的消息静静躺在聊天里，开门不炸「X 发来一条消息」。 */
+        if (inc > 0 && !useCinemaStore().playerOpen && !isEntryQuiet()) {
           notifications.pushToast({
             title,
             text: preview,
@@ -175,7 +178,7 @@ export function connect() {
         // 页面非聚焦、全局通知开启、未免打扰、且浏览器已授权 → 系统通知
         const settings = useSettingsStore()
         const notifyOn = settings.global?.notifications?.browser !== false
-        if (inc > 0 && !isPageFocused() && notifyOn && notificationPermission() === 'granted') {
+        if (inc > 0 && !isPageFocused() && !isEntryQuiet() && notifyOn && notificationPermission() === 'granted') {
           notify(title, { body: preview, route: `/contacts/${contactId}/chat` })
         }
 
