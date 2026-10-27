@@ -528,9 +528,11 @@ async function chooseClear() {
       if (synced) {
         await updateDesktop(props.id, { my_avatar: '' })
         desk.value = { ...desk.value, my_avatar: '' }
+        settingsCache.update(props.id, { my_avatar: '' })
       } else {
         await updateContactSettings(props.id, { my_avatar: '' })
         settings.value = { ...settings.value, my_avatar: '' }
+        settingsCache.update(props.id, { my_avatar: '' })
       }
     }
     notify('已清空头像')
@@ -583,6 +585,7 @@ async function applyAvatar(file) {
       const r = await smartUpload(file)
       await updateContactSettings(props.id, { my_avatar: r.path })
       settings.value = { ...settings.value, my_avatar: r.path }
+      settingsCache.update(props.id, { my_avatar: r.path })
     } else if (avatarTarget === 'them') {
       if (synced) {
         const r = await smartUpload(file)
@@ -598,10 +601,13 @@ async function applyAvatar(file) {
         const r = await smartUpload(file)
         await updateDesktop(props.id, { my_avatar: r.path })
         desk.value = { ...desk.value, my_avatar: r.path }
+        /* 同步缓存：主页/聊天等读 contactSettingsStore 的页面即时拿到新头像 */
+        settingsCache.update(props.id, { my_avatar: r.path })
       } else {
         const r = await smartUpload(file)
         await updateContactSettings(props.id, { my_avatar: r.path })
         settings.value = { ...settings.value, my_avatar: r.path }
+        settingsCache.update(props.id, { my_avatar: r.path })
       }
     }
     notify('头像已更新')

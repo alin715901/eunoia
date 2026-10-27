@@ -93,8 +93,9 @@ const finalAvatar = computed(() => {
   return contact.value?.chat_avatar || contact.value?.avatar || ''
 })
 const finalMyAvatar = computed(() => {
+  /* 与统计页/一起听歌同源：sync 开启时优先桌面；否则设置里的优先、桌面兜底 */
   if (desk.value?.sync_chat_avatar && desk.value?.my_avatar) return desk.value.my_avatar
-  return settings.value?.my_avatar || ''
+  return settings.value?.my_avatar || desk.value?.my_avatar || ''
 })
 
 /* 聊天字体样式：自定义 CSS 优先，其次预设；「跟随全局」返回空对象即沿用全站字体 */

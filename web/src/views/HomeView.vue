@@ -319,6 +319,7 @@ import { getAnniversaries } from '@/api/anniversary'
 import { listItems } from '@/api/items'
 import { useBadgesStore } from '@/stores/badges'
 import { useContactsStore } from '@/stores/contacts'
+import { useContactSettingsStore } from '@/stores/contactSettings'
 import { useDesktopStore } from '@/stores/desktop'
 import { useHomeStore } from '@/stores/home'
 import { useSettingsStore } from '@/stores/settings'
@@ -332,6 +333,7 @@ import { cyclesFromItems, cycleOf, ovulationWindow, predictNext, fmtDate, dayDif
 const router = useRouter()
 const badgesStore = useBadgesStore()
 const contactsStore = useContactsStore()
+const contactSettingsStore = useContactSettingsStore()
 const desktop = useDesktopStore()
 const homeStore = useHomeStore()
 const settingsStore = useSettingsStore()
@@ -391,7 +393,14 @@ const curCard = computed(() => {
   /* 人物卡只与单人有关，群聊不参与 */
   if (!c || c.kind === 'group') return null
   const d = deskCache[c.id] || {}
-  const my = { name: d.my_name || '我', avatar: d.my_avatar || '' }
+  /* 我的头像与统计页/一起听歌同源：开启「同步人物卡头像到聊天」时优先桌面，
+     否则联系人设置里的 my_avatar 优先、桌面兜底。
+     此前只取桌面 my_avatar，导致在联系人设置里设置的「我的头像」主页不显示。 */
+  const st = contactSettingsStore.get(c.id) || {}
+  const myAvatar = d.sync_chat_avatar
+    ? (d.my_avatar || st.my_avatar || '')
+    : (st.my_avatar || d.my_avatar || '')
+  const my = { name: d.my_name || '我', avatar: myAvatar }
   const you = {
     name: d.partner_name || c.name || '对方',
     avatar: d.partner_avatar || c.avatar || ''
