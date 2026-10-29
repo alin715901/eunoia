@@ -881,14 +881,15 @@ function onRedpacketTap() {
 }
 .vm-asr-text { vertical-align: middle; }
 
-/* 图片消息：统一显示框 —— 宽 165 × 高 220（随气泡缩放），object-fit:cover 居中裁剪。
-   任何原比例（横图/竖图/方图）都填满同一个框、画面不变形，
-   对方抽卡图与相册发送图尺寸完全一致，不再出现「对方的图小一圈/发成方形」。 */
+/* 图片消息：保持图片原始比例完整显示 —— 不再裁成固定 3:4 框。
+   只限制最大尺寸：宽不超过气泡可用宽（.bubble-col 的 72% 列宽），
+   高不超过 300px（随气泡缩放），任何比例（横图/竖图/方图）都不变形、不裁剪 */
 .image-msg {
   display: block;
-  width: calc(165px * var(--bubble-scale, 1));
-  height: calc(220px * var(--bubble-scale, 1));
-  object-fit: cover;
+  width: auto;
+  height: auto;
+  max-width: 100%;
+  max-height: calc(300px * var(--bubble-scale, 1));
   border-radius: 8px;
   background: var(--bg-soft);
   -webkit-user-select: none;
