@@ -882,14 +882,14 @@ function onRedpacketTap() {
 .vm-asr-text { vertical-align: middle; }
 
 /* 图片消息：保持图片原始比例完整显示 —— 不再裁成固定 3:4 框。
-   只限制最大尺寸：宽不超过气泡可用宽（.bubble-col 的 72% 列宽），
-   高不超过 300px（随气泡缩放），任何比例（横图/竖图/方图）都不变形、不裁剪 */
+   只限制最大尺寸：宽不超过 200px、高不超过 240px（均随气泡缩放），
+   任何比例（横图/竖图/方图）都不变形、不裁剪，整体尺寸适中不占屏 */
 .image-msg {
   display: block;
   width: auto;
   height: auto;
-  max-width: 100%;
-  max-height: calc(300px * var(--bubble-scale, 1));
+  max-width: calc(200px * var(--bubble-scale, 1));
+  max-height: calc(240px * var(--bubble-scale, 1));
   border-radius: 8px;
   background: var(--bg-soft);
   -webkit-user-select: none;
