@@ -89,6 +89,7 @@ import { useCompanionStore } from '@/stores/companion'
 import { useMusicStore } from '@/stores/music'
 import { useDesktopStore } from '@/stores/desktop'
 import { useKeepAlive } from '@/composables/useKeepAlive'
+import { usePwaInstall } from '@/composables/usePwaInstall'
 
 const settings = useSettingsStore()
 const contactsStore = useContactsStore()
@@ -131,6 +132,9 @@ function applyUpdate() {
 }
 onMounted(() => { window.addEventListener('eunoia:update-available', onUpdateAvailable) })
 onUnmounted(() => { window.removeEventListener('eunoia:update-available', onUpdateAvailable) })
+
+/* PWA 安装：捕获浏览器原生「安装应用」提示，供「关于」页的「安装到主屏幕」按钮主动触发 */
+usePwaInstall().setupPwaInstall()
 
 /* 进度停滞感知：超过 1.2s 没有新进度（wasm/数据加载中）时给进度条加流光，
    避免用户以为动画卡死（静态骨架与 Vue 骨架都靠它保持「活着」的观感） */

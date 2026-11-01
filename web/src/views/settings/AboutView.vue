@@ -23,6 +23,32 @@
         </div>
       </div>
 
+      <!-- 安装到主屏幕：把网站变成手机上的独立 App（图标 + 无浏览器边框），
+           可接收系统通知。Android/桌面用按钮一键安装；iOS 走手动指引。 -->
+      <div class="panel sec">
+        <h3 class="sec-title">安装到主屏幕</h3>
+        <div v-if="installed" class="installed-note">
+          <AppIcon name="check" :size="15" color="var(--accent)" />
+          <span>已安装为应用，可从桌面图标直接进入。</span>
+        </div>
+        <template v-else>
+          <button v-if="canInstall" class="inst-btn" type="button" @click="onInstall">
+            安装到主屏幕 / 添加到应用
+          </button>
+          <div v-else-if="isIos" class="ios-hint">
+            <p class="th-line">iOS 暂不支持一键安装，请手动操作：</p>
+            <p class="th-line">① 点击底部 Safari 工具栏的「分享」图标</p>
+            <p class="th-line">② 下滑找到并点击「添加到主屏幕」</p>
+            <p class="th-line">③ 点「添加」，即可在桌面生成 App 图标</p>
+          </div>
+          <div v-else class="ios-hint">
+            <p class="th-line">在手机浏览器（Chrome/Edge 等）中打开本页面，</p>
+            <p class="th-line">浏览器菜单里选择「安装应用 / 添加到主屏幕」即可。</p>
+            <p class="th-line">（部分浏览器需先访问一次才会显示安装入口）</p>
+          </div>
+        </template>
+      </div>
+
       <!-- 致谢 -->
       <div class="panel sec">
         <h3 class="sec-title">致谢</h3>
@@ -52,7 +78,10 @@ import AppHeader from '@/components/layout/AppHeader.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import ToggleSwitch from '@/components/common/ToggleSwitch.vue'
 import { checkForUpdate, isAutoUpdateEnabled, setAutoUpdate } from '@/composables/useAutoUpdate'
+import { usePwaInstall } from '@/composables/usePwaInstall'
 import { isWebView } from '@/utils/env'
+
+const { installed, canInstall, isIos, promptInstall } = usePwaInstall()
 
 const checking = ref(false)
 const checkMsg = ref('')
@@ -75,6 +104,10 @@ async function onCheck() {
   if (r === 'latest') checkMsg.value = '已是最新版'
   else if (r === 'pending') checkMsg.value = autoOn.value ? '发现新版本，资源就绪中，稍后再点即可更新' : '发现新版本，开启「自动检查更新」或重开 App 即可生效'
   else if (r === 'error') checkMsg.value = '检查失败'
+}
+
+async function onInstall() {
+  await promptInstall()
 }
 </script>
 
@@ -118,4 +151,11 @@ async function onCheck() {
 .fb-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .fb-label { font-size: 14px; color: var(--text); }
 .fb-val { font-size: 13px; color: var(--text-soft); text-align: right; }
+.installed-note { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-soft); }
+.inst-btn {
+  width: 100%; border: 1px solid var(--accent); background: var(--accent); color: #fff;
+  border-radius: 10px; padding: 11px; font-size: 14px; font-weight: 600; cursor: pointer;
+}
+.ios-hint { display: flex; flex-direction: column; gap: 2px; }
+.ios-hint .th-line { margin-bottom: 2px; }
 </style>
