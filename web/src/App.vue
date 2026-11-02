@@ -82,6 +82,8 @@ import MusicLyrics from '@/components/music/MusicLyrics.vue'
 import { connect, disconnect } from '@/composables/useSSE'
 import { useAutoUpdate } from '@/composables/useAutoUpdate'
 import { requestNotificationPermission } from '@/composables/useNotification'
+import { ensureLocalNotificationPermission, initLocalNotifications } from '@/composables/useLocalNotification'
+import router from '@/router'
 import { dbReady, onDbProgress } from '@/local/db'
 import { useSettingsStore } from '@/stores/settings'
 import { useContactsStore } from '@/stores/contacts'
@@ -244,6 +246,13 @@ async function boot() {
   connect()
   // 尽早申请系统通知权限（部分浏览器要求用户交互后授权；失败静默忽略）
   requestNotificationPermission().catch(() => {})
+  // 原生 APK：申请安卓通知权限（Android 13+ 弹系统授权框）+ 初始化本地通知监听（点击打开会话）
+  ensureLocalNotificationPermission().catch(() => {})
+  initLocalNotifications({
+    onOpenChat: (cid) => {
+      try { router.push(`/contacts/${cid}/chat`) } catch (e) { /* ignore */ }
+    }
+  })
   try {
     await settings.load()
     await contactsStore.load()

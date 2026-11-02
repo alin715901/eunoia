@@ -6,9 +6,12 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build && node scripts/version.mjs",
+    "build:apk": "vite build --base=./ && node scripts/version.mjs",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@capacitor/core": "^6.2.0",
+    "@capacitor/local-notifications": "^6.1.0",
     "axios": "^1.7.7",
     "js-md5": "^0.9.2",
     "jszip": "^3.10.1",
@@ -18,7 +21,10 @@
     "vue-router": "^4.4.5"
   },
   "devDependencies": {
+    "@capacitor/android": "^6.2.0",
+    "@capacitor/cli": "^6.2.0",
     "@vitejs/plugin-vue": "^5.1.4",
+    "typescript": "^7.0.2",
     "vite": "^5.4.10"
   }
 }

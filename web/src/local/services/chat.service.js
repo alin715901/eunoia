@@ -1,4 +1,5 @@
 import db from '../db'
+import { scheduleProactiveNotification, fireImmediateNotification } from '@/composables/useLocalNotification'
 import { drawCards, drawCardsForMember, drawPokeCard } from './cardDraw.service'
 import * as notification from './notification.service'
 import * as settingsRepo from '../repositories/settings.repo'
@@ -1634,6 +1635,15 @@ function nextIntervalSec(st) {
   if (hi < lo) [lo, hi] = [hi, lo];
   return randInt(Math.round(lo), Math.round(hi)) * 60;
 }
+/* 取联系人显示名（用于通知标题）；缺省回退「对方」 */
+function contactName(cid) {
+  try {
+    const c = db.prepare('SELECT name FROM contacts WHERE id = ?').get(cid);
+    return (c && c.name) || '对方';
+  } catch (e) {
+    return '对方';
+  }
+}
 function proactiveTick(opts = {}) {
   const suppressBackfill = !!opts.suppressBackfill
   try {
@@ -1664,6 +1674,8 @@ function proactiveTick(opts = {}) {
               cid
             );
           }
+          // 预约下一次系统通知（即使进程被杀也能由闹钟弹出）
+          scheduleProactiveNotification({ contactId: cid, title: contactName(cid), atTimeSec: next });
         } else {
           next = 0; // 首次：立刻发一条
         }
@@ -1684,6 +1696,8 @@ function proactiveTick(opts = {}) {
         } else {
           lastProactiveAt.set(cid, now)
         }
+        // 冷启动（不在线）：仍预约下一次闹钟，下次打开后到点由系统弹出
+        scheduleProactiveNotification({ contactId: cid, title: contactName(cid), atTimeSec: nextAt })
         continue
       }
 
@@ -1704,6 +1718,8 @@ function proactiveTick(opts = {}) {
       } else {
         lastProactiveAt.set(cid, now);
       }
+      // 预约下一次系统通知（即使进程被杀也能由闹钟弹出）
+      scheduleProactiveNotification({ contactId: cid, title: contactName(cid), atTimeSec: nextAt });
       const info = effectiveContactInfo(db, cid);
       /* 落库时间：优先用「计划触发时间」（next，<= now），让被节流/补发的消息
          显示真实发送时刻（如本该 30 分发、35 分才生成，仍显示为 30 分收到），
@@ -1723,6 +1739,11 @@ function proactiveTick(opts = {}) {
         notification.broadcast('badge_update', settingsRepo.getBadges());
         const cid2 = cid;
         setTimeout(() => notification.broadcast('typing', { contactId: cid2, typing: false }), 3000);
+        // App 正处于后台（未被划掉）时，实时生成的消息立即弹系统通知；
+        // 前台时由应用内 UI 显示（不弹），与预约闹钟互补。
+        if (document.visibilityState === 'hidden') {
+          fireImmediateNotification({ contactId: cid, title: info.name, body: '给你发来了一条消息' });
+        }
       }
     }
   } catch (e) {
