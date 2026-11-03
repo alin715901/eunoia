@@ -17,6 +17,8 @@ web/dist/
 shots/
 *.png
 !web/public/*.png
+# 安卓工程源码资源（启动屏 splash + launcher 图标）必须入库，否则 CI 构建缺资源
+!web/android/app/src/main/res/**/*.png
 
 # ── 工具产生的本地目录 ──
 .playwright-cli/
