@@ -81,7 +81,7 @@ import MusicFloat from '@/components/music/MusicFloat.vue'
 import MusicLyrics from '@/components/music/MusicLyrics.vue'
 import { connect, disconnect } from '@/composables/useSSE'
 import { useAutoUpdate } from '@/composables/useAutoUpdate'
-import { requestNotificationPermission } from '@/composables/useNotification'
+import { requestNotificationPermission, notificationPermissionState } from '@/composables/useNotification'
 import { ensureLocalNotificationPermission, initLocalNotifications } from '@/composables/useLocalNotification'
 import router from '@/router'
 import { dbReady, onDbProgress } from '@/local/db'
@@ -248,6 +248,8 @@ async function boot() {
   requestNotificationPermission().catch(() => {})
   // 原生 APK：申请安卓通知权限（Android 13+ 弹系统授权框）+ 初始化本地通知监听（点击打开会话）
   ensureLocalNotificationPermission().catch(() => {})
+  // 同步一次原生真实权限状态（供设置页「消息通知」状态与「点击测试」可用性判断准确）
+  notificationPermissionState()
   initLocalNotifications({
     onOpenChat: (cid) => {
       try { router.push(`/contacts/${cid}/chat`) } catch (e) { /* ignore */ }

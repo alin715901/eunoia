@@ -176,15 +176,18 @@ export function connect() {
         // 即时刷新聊天列表该会话的「最后一条内容 + 时间」，避免弹窗已到、列表预览却没同步
         useChatListStore().applyMessage(contactId, last)
 
-        // 系统通知：未免打扰 + 全局开启 + 已授权 → 始终弹（前台与后台都弹）。
-        // 原生 APK：去掉「页面聚焦」与「进门安静」两个闸门，确保前台/后台/切回前台都能弹窗；
-        //          否则用户发完消息切到后台、对方回复时（WebView 在后台暂停，回复常在切回前台那一刻才生成）永远弹不出。
-        // Web/PWA：保留旧行为（仅页面非聚焦时弹），避免前台重复打扰。
+        // 系统通知：未免打扰 + 全局开启 → 始终弹（前台与后台都弹）。
+        // 原生 APK：notify() 在系统层自行校验权限，无需依赖可能滞后的 JS 权限状态
+        //          （ensureLocalNotificationPermission 请求权限但不更新该状态），
+        //          否则 permissionState 停在 'default' 会把真实回复挡掉——这正是后台回复不弹窗的根因；
+        //          同时去掉「页面聚焦」「进门安静」闸门，确保前台/后台/切回前台都能弹。
+        // Web/PWA：保留旧行为（仅页面非聚焦 + 已授权时弹），避免前台重复打扰。
         const settings = useSettingsStore()
         const notifyOn = settings.global?.notifications?.browser !== false
         const native = isNativePlatform()
         const quiet = native ? false : isEntryQuiet()
-        if (inc > 0 && notifyOn && notificationPermission() === 'granted' && (native || !isPageFocused()) && !quiet) {
+        const permOk = native ? true : (notificationPermission() === 'granted')
+        if (inc > 0 && notifyOn && permOk && (native || !isPageFocused()) && !quiet) {
           notify(title, { body: preview, route: `/contacts/${contactId}/chat` })
         }
 

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- 整张原图作为前景按原比例内缩(22%)，完整显示、不裁切不放大；
-         背景用原图边缘同色(#FBF6F0)，圆内只露出细环，视觉上就是原图本身 -->
+    <!-- 前景=整张原图缩放到约63%置于粉色同色画布(兔子约占图标58%，即"小兔子+留白"效果)；
+         圆遮罩裁出粉色圆 + 居中兔子，与 legacy mipmap 一致，四周保留水彩留白 -->
     <background android:drawable="@color/ic_launcher_background"/>
-    <foreground android:drawable="@drawable/app_icon_fg" android:inset="22%"/>
+    <foreground android:drawable="@drawable/app_icon_fg"/>
 </adaptive-icon>
