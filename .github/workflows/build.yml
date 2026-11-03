@@ -51,9 +51,12 @@ jobs:
         # build:apk = vite build --base=./ + 写入 version.json，路径用相对基，适配 Capacitor 加载
         run: npm run build:apk
 
-      - name: Copy web build into native project
-        # cap copy 只把 dist 拷贝进 android/app/src/main/assets/public，不重建、不动插件
-        run: npx cap copy android
+      - name: Sync web build + native plugins into android project
+        # 必须用 cap sync（= copy + update），不能用 cap copy：
+        # android/.gitignore 忽略了 capacitor-cordova-android-plugins 整个目录（含 cordova.variables.gradle），
+        # 只有 sync 才会从 node_modules 重新生成该目录与插件 gradle 文件，否则 Gradle 配置阶段秒退。
+        # 注意：cap sync 只拷贝 dist 并更新原生插件，不会重新构建网页，故 dist 的相对路径（./）不受影响。
+        run: npx cap sync android
 
       - name: Set up Android SDK (accept licenses + install platform 34 / build-tools)
         # 关键修复：先真正接受全部许可证，再显式安装 compileSdk 34 所需的 platform 与 build-tools，
