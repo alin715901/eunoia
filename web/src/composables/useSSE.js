@@ -134,15 +134,15 @@ export function connect() {
       const name = contact?.name || '对方'
 
       if (isOpen) {
-        // 正在该会话内接收：直接视为已读，不显示角标、不弹窗
+        // 正在该会话内接收：直接视为已读（前台查看时也立刻已读）
         chat.markRead(contactId).catch(() => {})
       } else if (!muted) {
-        // 不在该会话内接收：累加未读角标（列表红点实时更新），并弹窗
+        // 不在该会话内接收：累加未读角标（列表红点实时更新），并弹应用内横条
         const inc = (messages || []).filter((m) => m.sender === 'contact').length
         if (inc && contact) contact.unread = (Number(contact.unread) || 0) + inc
         /* inc 为 0 表示这批消息全是「我」自己发的（如从游戏大厅发出的游戏邀请卡片）：
            不弹窗、不发系统通知——没必要提醒自己「你刚发了条消息」，只更新列表预览与角标 */
-        // 非当前会话且未免打扰 → 消息弹窗（头像 + 名称 + 内容）
+        // 非当前会话且未免打扰 → 应用内横条弹窗（头像 + 名称 + 内容）
         const notifications = useNotificationsStore()
         const last = (messages || []).slice(-1)[0]
         let title = sseName || name
@@ -172,21 +172,35 @@ export function connect() {
             route: `/contacts/${contactId}/chat`
           })
         }
+      }
 
-        // 即时刷新聊天列表该会话的「最后一条内容 + 时间」，避免弹窗已到、列表预览却没同步
+      // ── 系统通知 + 列表预览 + 角标刷新 ──
+      // 未免打扰 + 全局开启 → 始终弹系统通知，**前台且正在该会话也要弹**（用户明确要求）。
+      // 之前前台在该会话被 markRead 分支拦截、完全没调 notify——这正是「前台会话内不弹窗」的根因。
+      // 原生 APK：notify() 在系统层自行校验权限，前台（含正在该会话）/后台都弹；
+      // Web/PWA：保留旧行为（仅页面非聚焦 + 已授权时弹），避免前台重复打扰。
+      if (!muted) {
+        const last = (messages || []).slice(-1)[0]
+        const inc = (messages || []).filter((m) => m.sender === 'contact').length
+        // 即时刷新聊天列表该会话的「最后一条内容 + 时间」，避免通知已到、列表预览却没同步
         useChatListStore().applyMessage(contactId, last)
 
-        // 系统通知：未免打扰 + 全局开启 → 始终弹（前台与后台都弹）。
-        // 原生 APK：notify() 在系统层自行校验权限，无需依赖可能滞后的 JS 权限状态
-        //          （ensureLocalNotificationPermission 请求权限但不更新该状态），
-        //          否则 permissionState 停在 'default' 会把真实回复挡掉——这正是后台回复不弹窗的根因；
-        //          同时去掉「页面聚焦」「进门安静」闸门，确保前台/后台/切回前台都能弹。
-        // Web/PWA：保留旧行为（仅页面非聚焦 + 已授权时弹），避免前台重复打扰。
         const settings = useSettingsStore()
         const notifyOn = settings.global?.notifications?.browser !== false
         const native = isNativePlatform()
         const quiet = native ? false : isEntryQuiet()
         const permOk = native ? true : (notificationPermission() === 'granted')
+        let title = sseName || name
+        let avatar = sseAvatar || contact?.chat_avatar || contact?.avatar || ''
+        if (kind === 'group' && last?.author_member_id) {
+          const mem = contacts.list.find((c) => String(c.id) === String(last.author_member_id))
+          title = contact?.name || sseName || name
+          if (mem) {
+            avatar = sseAvatar || mem.chat_avatar || mem.avatar || ''
+          }
+        }
+        const preview = last ? previewOf(last) : ''
+        // 原生：前台（含正在该会话）/后台都弹；Web：仅未聚焦弹
         if (inc > 0 && notifyOn && permOk && (native || !isPageFocused()) && !quiet) {
           notify(title, { body: preview, route: `/contacts/${contactId}/chat` })
         }
