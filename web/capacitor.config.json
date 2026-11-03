@@ -1,6 +1,6 @@
 {
   "appId": "com.eunoia.app",
-  "appName": "Eunoia字卡",
+  "appName": "Eunoia",
   "webDir": "dist",
   "server": {
     "androidScheme": "https"

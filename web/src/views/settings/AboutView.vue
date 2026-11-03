@@ -7,7 +7,7 @@
         <div class="logo-row">
           <span class="logo-badge"><AppIcon name="cards" :size="26" color="var(--accent)" /></span>
           <div class="logo-main">
-            <span class="app-name">Eunoia字卡</span>
+            <span class="app-name">Eunoia</span>
             <span class="app-ver">v0.1.0</span>
           </div>
           <button class="check-btn" type="button" :disabled="checking" @click="onCheck">

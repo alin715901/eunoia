@@ -1,6 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- 白色底；前景放整张原图并按原比例内缩，保证兔子不被裁切/放大，完整呈现原图 -->
-    <background android:drawable="@color/ic_launcher_background"/>
-    <foreground android:drawable="@drawable/app_icon_bg" android:inset="15%"/>
+    <!-- 整张原图作为背景直接显示（不缩进、不加白边），仅由系统把四角收成圆角 -->
+    <background android:drawable="@drawable/app_icon_bg"/>
 </adaptive-icon>
