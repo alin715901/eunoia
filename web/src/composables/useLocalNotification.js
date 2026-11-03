@@ -100,14 +100,21 @@ export function initLocalNotifications({ onOpenChat } = {}) {
   const offReceived = LocalNotifications.addListener('localNotificationReceived', (n) => {
     if (document.visibilityState === 'visible') {
       const id = n && n.id
-      if (id != null) LocalNotifications.cancel({ notifications: [{ id }] }).catch(() => {})
+      // 仅取消「主动消息」预约通知（100000~299999），改由应用内 UI 显示，避免重复弹窗；
+      // 手动测试通知（900000+）不取消，保证即使 App 在前台也能看到系统弹窗。
+      if (id != null && id >= 100000 && id < 300000) {
+        LocalNotifications.cancel({ notifications: [{ id }] }).catch(() => {})
+      }
     }
   })
   const offAction = LocalNotifications.addListener('localNotificationActionPerformed', (n) => {
     const notif = (n && n.notification) || {}
     let contactId = (notif.extra && notif.extra.contactId) || null
     const id = notif.id
-    if (!contactId && typeof id === 'number' && id >= 100000) contactId = String(id - 100000)
+    // 仅从主动消息预约段（100000~299999）反推 contactId；测试段不反推
+    if (!contactId && typeof id === 'number' && id >= 100000 && id < 300000) {
+      contactId = String(id - 100000)
+    }
     if (contactId && typeof onOpenChat === 'function') onOpenChat(contactId)
   })
   return () => {

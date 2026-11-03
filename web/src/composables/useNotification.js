@@ -1,7 +1,13 @@
-// 浏览器 Notification 封装
+// 通知封装 —— 自动按运行环境路由：
+//   - 原生 APK（Capacitor Android）：走 @capacitor/local-notifications（系统通知，稳定弹窗，无需 FCM）
+//   - Web / PWA / 普通浏览器：走标准 Notification API + Service Worker
 import { ref } from 'vue'
+import { LocalNotifications } from '@capacitor/local-notifications'
+import { isNativePlatform, ensureLocalNotificationPermission } from '@/composables/useLocalNotification'
 
 export function notificationSupported() {
+  // 原生壳里 WebView 没有 Notification API，但本地通知插件可用 → 视为「支持」
+  if (isNativePlatform()) return true
   return typeof window !== 'undefined' && 'Notification' in window
 }
 
@@ -33,29 +39,62 @@ export function notificationEnv() {
   return 'unsupported'
 }
 
+/* 权限状态的响应式镜像。原生端初始为 'default'，并在首次访问时异步查询真实状态。 */
+const permissionState = ref(initialPermission())
+
+function initialPermission() {
+  if (isNativePlatform()) return 'default'
+  if (typeof window === 'undefined') return 'unsupported'
+  return 'Notification' in window ? Notification.permission : 'unsupported'
+}
+
+/* 原生端从 LocalNotifications 查询真实权限并同步到响应式状态 */
+async function syncNativePermission() {
+  if (!isNativePlatform()) {
+    syncPermissionState()
+    return
+  }
+  try {
+    const p = await LocalNotifications.checkPermissions()
+    permissionState.value =
+      p.display === 'granted' ? 'granted' : p.display === 'denied' ? 'denied' : 'default'
+  } catch {
+    permissionState.value = 'default'
+  }
+}
+
 export function notificationPermission() {
+  if (isNativePlatform()) return permissionState.value
   if (!notificationSupported()) return 'unsupported'
   return Notification.permission // 'granted' | 'denied' | 'default'
 }
 
-/* 响应式的权限镜像：Notification.permission 是普通全局值（非响应式），
+/* Web 端：Notification.permission 是普通全局值（非响应式），
    Vue computed 读它永远不会触发更新；这里用 ref 镜像实际状态，
    并在窗口聚焦 / 切回前台时自动同步（iOS 主屏幕应用从系统设置改权限后回到 App 即刷新）。 */
-const permissionState = ref(notificationSupported() ? Notification.permission : 'unsupported')
-
 function syncPermissionState() {
   if (notificationSupported()) permissionState.value = Notification.permission
 }
+
 if (typeof window !== 'undefined') {
   window.addEventListener('focus', syncPermissionState)
   document.addEventListener('visibilitychange', syncPermissionState)
 }
 
 export function notificationPermissionState() {
+  // 原生端首次访问时异步刷新一次真实权限
+  if (isNativePlatform()) syncNativePermission()
   return permissionState
 }
 
 export async function requestNotificationPermission() {
+  // 原生端：走 Capacitor 本地通知权限（Android 13+ 弹系统授权框）
+  if (isNativePlatform()) {
+    const r = await ensureLocalNotificationPermission()
+    await syncNativePermission()
+    return r.granted ? 'granted' : 'denied'
+  }
+  // Web 端：标准 Notification 授权
   if (!notificationSupported()) return 'unsupported'
   if (Notification.permission === 'granted') {
     syncPermissionState()
@@ -82,6 +121,28 @@ function withTimeout(promise, ms) {
 }
 
 export async function notify(title, options = {}) {
+  // 原生端：直接调系统本地通知（立即弹，无视前后台）
+  if (isNativePlatform()) {
+    try {
+      const { route, body } = options
+      const id = 900000 + Math.floor(Math.random() * 1000) // 测试/手动通知专用段，避免被「前台自动取消」逻辑误删
+      await LocalNotifications.schedule({
+        notifications: [
+          {
+            id,
+            title,
+            body: body || '',
+            extra: route ? { route: String(route) } : {}
+          }
+        ]
+      })
+      return true
+    } catch (e) {
+      console.warn('[notify] 原生通知发送失败', e)
+      return false
+    }
+  }
+  // Web / PWA：标准 Notification + Service Worker
   if (!notificationSupported() || Notification.permission !== 'granted') return false
   try {
     /* route 仅用于「点击通知跳转到对应会话」，不是标准 Notification 字段，
