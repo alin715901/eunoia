@@ -78,13 +78,11 @@ export async function scheduleProactiveNotification({ contactId, title, body, at
   }
 }
 
-/* 主动消息在「App 正处于后台（未被划掉）」的瞬间被实时生成 → 立即弹系统通知。
-   前台（用户正在看 App）时不弹，交给应用内 UI。返回是否弹了。 */
+/* 主动消息被实时生成 → 立即弹系统通知（前台与后台都弹，
+   与实时回复一致：用户明确要求无论前后台都要系统弹窗）。返回是否弹了。 */
 export async function fireImmediateNotification({ contactId, title, body }) {
   if (!isNativePlatform()) return false
   try {
-    // 用可靠的 appActive 判定：只有真正在前台(用户看着)才不弹，后台/被杀都弹
-    if (isAppActive()) return false
     await LocalNotifications.schedule({
       notifications: [
         {
@@ -119,22 +117,19 @@ let initialized = false
 setupAppState()
 
 /* 初始化本地通知监听（仅原生、仅一次）：
-   - localNotificationReceived：前台收到（闹钟到点但用户正用 App）→ 立即按 id 取消，避免重复弹窗；
+   - localNotificationReceived：前台收到「计划预约的主动消息」闹钟 → 立即按 id 取消，避免与聊天内已显示内容重复弹窗；
+     实时生成的主动消息(200000+)与测试(900000+)一律保留 → 前台/后台都弹；
    - localNotificationActionPerformed：用户点击通知 → 打开对应会话。 */
 export function initLocalNotifications({ onOpenChat } = {}) {
   setupAppState()
   if (!isNativePlatform() || initialized) return () => {}
   initialized = true
   const offReceived = LocalNotifications.addListener('localNotificationReceived', (n) => {
-    // 只有真正处于前台(用户看着 App)才取消，避免重复弹窗；
-    // 后台/被杀到达的通知一律保留 → 由系统弹出（修复「后台不弹窗」）。
-    if (isAppActive()) {
-      const id = n && n.id
-      // 仅取消「主动消息」预约通知（100000~299999），改由应用内 UI 显示，避免重复弹窗；
-      // 手动测试通知（900000+）不取消，保证即使 App 在前台也能看到系统弹窗。
-      if (id != null && id >= 100000 && id < 300000) {
-        LocalNotifications.cancel({ notifications: [{ id }] }).catch(() => {})
-      }
+    const id = n && n.id
+    // 仅取消「计划预约的主动消息」（100000~199999）：用户正用 App 时，该条已被实时生成并在聊天内显示，
+    // 取消避免重复弹窗。实时生成(200000+)、测试(900000+)与所有实时回复通知一律保留 → 前台/后台都弹。
+    if (id != null && id >= 100000 && id < 200000) {
+      LocalNotifications.cancel({ notifications: [{ id }] }).catch(() => {})
     }
   })
   const offAction = LocalNotifications.addListener('localNotificationActionPerformed', (n) => {
