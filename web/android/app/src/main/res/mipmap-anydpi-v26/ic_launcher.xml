@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <background android:drawable="@color/ic_launcher_background"/>
-    <foreground android:drawable="@mipmap/ic_launcher_foreground"/>
+    <!-- 背景层用应用自己的兔子图（满图），前景透明，从而完整显示原图 -->
+    <background android:drawable="@drawable/app_icon_bg"/>
+    <foreground android:drawable="@drawable/ic_launcher_transparent"/>
 </adaptive-icon>
