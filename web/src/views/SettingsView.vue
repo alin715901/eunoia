@@ -87,7 +87,7 @@
           <span class="ri-icon"><AppIcon name="settings" :size="18" /></span>
           <span class="ri-label">关于</span>
           <span class="spacer"></span>
-          <span class="ri-value">Eunoia字卡 v0.1.0</span>
+          <span class="ri-value">{{ getLocalVersion() }}</span>
           <AppIcon name="chevron-right" :size="16" color="var(--text-soft)" />
         </button>
       </div>
@@ -146,6 +146,7 @@ import { useDesktopStore } from '@/stores/desktop'
 import { useSettingsStore, FONTS, APPEARANCES } from '@/stores/settings'
 import { useKeepAlive } from '@/composables/useKeepAlive'
 import { fmtSyncTime } from '@/utils/syncTime'
+import { getLocalVersion } from '@/composables/useReleaseUpdate'
 
 const router = useRouter()
 const toast = useNotificationsStore()
