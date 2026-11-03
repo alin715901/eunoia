@@ -7,8 +7,8 @@ android {
         applicationId "com.eunoia.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 2
-        versionName "1.1.0"
+        versionCode 3
+        versionName "1.2.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -40,6 +40,8 @@ dependencies {
     implementation project(':capacitor-local-notifications')
     // App 插件——提供可靠的「前后台」状态(isActive)，用于判定是否弹/取消系统通知
     implementation project(':capacitor-app')
+    // Browser 插件——打开外部链接（站点/下载页）走应用内浏览器，不冲掉应用
+    implementation project(':capacitor-browser')
     testImplementation "junit:junit:$junitVersion"
     androidTestImplementation "androidx.test.ext:junit:$androidxJunitVersion"
     androidTestImplementation "androidx.test.espresso:espresso-core:$androidxEspressoCoreVersion"

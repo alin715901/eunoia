@@ -14,13 +14,6 @@
             {{ checking ? '检查中…' : (checkMsg || '检查更新') }}
           </button>
         </div>
-        <div class="au-row">
-          <div class="au-text">
-            <span class="au-label">自动检查更新</span>
-            <span class="au-sub">{{ autoSub }}</span>
-          </div>
-          <ToggleSwitch v-model="autoOn" @update:modelValue="onAutoChange" />
-        </div>
       </div>
 
       <!-- 致谢 -->
@@ -47,38 +40,17 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref } from 'vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
-import ToggleSwitch from '@/components/common/ToggleSwitch.vue'
-import { checkForUpdate, isAutoUpdateEnabled, setAutoUpdate } from '@/composables/useAutoUpdate'
+import { checkForUpdate } from '@/composables/useAutoUpdate'
 import { isNativePlatform } from '@/composables/useLocalNotification'
-import {
-  getLocalVersion,
-  checkReleaseUpdate,
-  promptReleaseIfNeeded,
-  isReleaseAutoCheck,
-  setReleaseAutoCheck
-} from '@/composables/useReleaseUpdate'
+import { getLocalVersion, promptReleaseIfNeeded } from '@/composables/useReleaseUpdate'
 
 const native = isNativePlatform()
 
 const checking = ref(false)
 const checkMsg = ref('')
-
-// 自动检查更新开关：原生壳走「APK 新版本弹窗」开关；网页版走 SW 自动刷新开关
-const autoOn = ref(native ? isReleaseAutoCheck() : isAutoUpdateEnabled())
-const autoSub = computed(() =>
-  native
-    ? '发现新版本会弹窗提示，可手动选择更新或继续使用当前版本'
-    : '发现新版本后自动刷新页面'
-)
-
-function onAutoChange(v) {
-  if (native) setReleaseAutoCheck(v)
-  else setAutoUpdate(v)
-  autoOn.value = v
-}
 
 async function onCheck() {
   if (checking.value) return
@@ -97,7 +69,7 @@ async function onCheck() {
   const r = await checkForUpdate()
   checking.value = false
   if (r === 'latest') checkMsg.value = '已是最新版'
-  else if (r === 'pending') checkMsg.value = autoOn.value ? '发现新版本，资源就绪中，稍后再点即可更新' : '发现新版本，开启「自动检查更新」或重开 App 即可生效'
+  else if (r === 'pending') checkMsg.value = '发现新版本，资源就绪中，稍后再点即可更新'
   else if (r === 'error') checkMsg.value = '检查失败'
 }
 </script>
@@ -109,13 +81,6 @@ async function onCheck() {
 .sec { padding: 14px; }
 .about-hero { display: block; }
 .logo-row { display: flex; align-items: center; gap: 12px; }
-.au-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border);
-}
-.au-text { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
-.au-label { font-size: 14px; font-weight: 600; color: var(--text); }
-.au-sub { font-size: 12px; line-height: 1.5; color: var(--text-soft); }
 .logo-badge {
   width: 52px; height: 52px; border-radius: 14px; flex-shrink: 0;
   background: var(--bg-soft); border: 1px solid var(--border);

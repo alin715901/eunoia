@@ -260,6 +260,7 @@ import { useCinemaStore } from '@/stores/cinema'
 import { sendCinemaInvite, getWatchSeconds, addWatchSeconds } from '@/api/cinema'
 import { getContactMembers, getContactSettings, getDesktop } from '@/api/contacts'
 import { confirmDialog } from '@/utils/dialog'
+import { openExternal } from '@/utils/openExternal'
 
 const toast = useNotificationsStore()
 const sites = useItems('cinema_sites')
@@ -283,9 +284,9 @@ const linkList = computed(() =>
   (Array.isArray(links.items.value) ? links.items.value : []).filter((x) => x && x.body)
 )
 
-/* 点击站点卡片：跳到系统浏览器打开 */
-function openUrl(url) {
-  if (url) window.open(url, '_blank', 'noopener')
+/* 点击站点卡片：原生走「应用内浏览器」（不冲掉应用），网页走新标签页 */
+async function openUrl(url) {
+  await openExternal(url)
 }
 
 /* 解析视频链接的播放方式：

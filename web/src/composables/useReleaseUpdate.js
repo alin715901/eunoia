@@ -1,5 +1,6 @@
 import { isNativePlatform } from '@/composables/useLocalNotification'
 import { confirmDialog } from '@/utils/dialog'
+import { openExternal } from '@/utils/openExternal'
 import { APP_VERSION } from '@/utils/version'
 
 // 仓库（与 git remote 一致）。CI 把每次构建的 APK 发布到该仓库的 Releases。
@@ -110,13 +111,10 @@ export async function promptReleaseIfNeeded() {
   return r
 }
 
-/* 打开浏览器/下载器前往下载（原生 WebView 跳外部浏览器，不强装、不静默替换）。 */
+/* 打开浏览器/下载器前往下载：原生走应用内浏览器（不冲掉应用），网页走新标签页。 */
 export function openReleaseDownload(url) {
   if (!url) return
-  try {
-    const w = window.open(url, '_blank')
-    if (!w) window.location.href = url
-  } catch (e) {
+  openExternal(url).catch(() => {
     try { window.location.href = url } catch (e2) { /* ignore */ }
-  }
+  })
 }
