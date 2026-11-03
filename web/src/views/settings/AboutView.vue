@@ -8,7 +8,7 @@
           <span class="logo-badge"><AppIcon name="cards" :size="26" color="var(--accent)" /></span>
           <div class="logo-main">
             <span class="app-name">Eunoia</span>
-            <span class="app-ver">v0.1.0</span>
+            <span class="app-ver">{{ getLocalVersion() }}</span>
           </div>
           <button class="check-btn" type="button" :disabled="checking" @click="onCheck">
             {{ checking ? '检查中…' : (checkMsg || '检查更新') }}
@@ -17,36 +17,10 @@
         <div class="au-row">
           <div class="au-text">
             <span class="au-label">自动检查更新</span>
-            <span class="au-sub">{{ webviewTip || '发现新版本后自动刷新（关闭可避免套壳 APK 频繁重刷）' }}</span>
+            <span class="au-sub">{{ autoSub }}</span>
           </div>
           <ToggleSwitch v-model="autoOn" @update:modelValue="onAutoChange" />
         </div>
-      </div>
-
-      <!-- 安装到主屏幕：把网站变成手机上的独立 App（图标 + 无浏览器边框），
-           可接收系统通知。Android/桌面用按钮一键安装；iOS 走手动指引。 -->
-      <div class="panel sec">
-        <h3 class="sec-title">安装到主屏幕</h3>
-        <div v-if="installed" class="installed-note">
-          <AppIcon name="check" :size="15" color="var(--accent)" />
-          <span>已安装为应用，可从桌面图标直接进入。</span>
-        </div>
-        <template v-else>
-          <button v-if="canInstall" class="inst-btn" type="button" @click="onInstall">
-            安装到主屏幕 / 添加到应用
-          </button>
-          <div v-else-if="isIos" class="ios-hint">
-            <p class="th-line">iOS 暂不支持一键安装，请手动操作：</p>
-            <p class="th-line">① 点击底部 Safari 工具栏的「分享」图标</p>
-            <p class="th-line">② 下滑找到并点击「添加到主屏幕」</p>
-            <p class="th-line">③ 点「添加」，即可在桌面生成 App 图标</p>
-          </div>
-          <div v-else class="ios-hint">
-            <p class="th-line">在手机浏览器（Chrome/Edge 等）中打开本页面，</p>
-            <p class="th-line">浏览器菜单里选择「安装应用 / 添加到主屏幕」即可。</p>
-            <p class="th-line">（部分浏览器需先访问一次才会显示安装入口）</p>
-          </div>
-        </template>
       </div>
 
       <!-- 致谢 -->
@@ -78,20 +52,31 @@ import AppHeader from '@/components/layout/AppHeader.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import ToggleSwitch from '@/components/common/ToggleSwitch.vue'
 import { checkForUpdate, isAutoUpdateEnabled, setAutoUpdate } from '@/composables/useAutoUpdate'
-import { usePwaInstall } from '@/composables/usePwaInstall'
-import { isWebView } from '@/utils/env'
+import { isNativePlatform } from '@/composables/useLocalNotification'
+import {
+  getLocalVersion,
+  checkReleaseUpdate,
+  promptReleaseIfNeeded,
+  isReleaseAutoCheck,
+  setReleaseAutoCheck
+} from '@/composables/useReleaseUpdate'
 
-const { installed, canInstall, isIos, promptInstall } = usePwaInstall()
+const native = isNativePlatform()
 
 const checking = ref(false)
 const checkMsg = ref('')
-const autoOn = ref(isAutoUpdateEnabled())
 
-/* 套壳 WebView 环境默认关闭自动更新，给出针对性提示 */
-const webviewTip = computed(() => (isWebView() ? '套壳 APK 建议关闭，可避免白屏卡死与反复重刷' : ''))
+// 自动检查更新开关：原生壳走「APK 新版本弹窗」开关；网页版走 SW 自动刷新开关
+const autoOn = ref(native ? isReleaseAutoCheck() : isAutoUpdateEnabled())
+const autoSub = computed(() =>
+  native
+    ? '发现新版本会弹窗提示，可手动选择更新或继续使用当前版本'
+    : '发现新版本后自动刷新页面'
+)
 
 function onAutoChange(v) {
-  setAutoUpdate(v)
+  if (native) setReleaseAutoCheck(v)
+  else setAutoUpdate(v)
   autoOn.value = v
 }
 
@@ -99,15 +84,21 @@ async function onCheck() {
   if (checking.value) return
   checking.value = true
   checkMsg.value = ''
+  if (native) {
+    // 原生 APK：检测 GitHub Releases 新版本，发现则弹「前往更新 / 暂不更新」
+    const r = await promptReleaseIfNeeded()
+    checking.value = false
+    if (r.status === 'latest') checkMsg.value = '已是最新版'
+    else if (r.status === 'update') checkMsg.value = `发现新版本 ${r.tag}`
+    else if (r.status === 'ignored') checkMsg.value = '已忽略该版本'
+    else if (r.status === 'error') checkMsg.value = '检查失败'
+    return
+  }
   const r = await checkForUpdate()
   checking.value = false
   if (r === 'latest') checkMsg.value = '已是最新版'
   else if (r === 'pending') checkMsg.value = autoOn.value ? '发现新版本，资源就绪中，稍后再点即可更新' : '发现新版本，开启「自动检查更新」或重开 App 即可生效'
   else if (r === 'error') checkMsg.value = '检查失败'
-}
-
-async function onInstall() {
-  await promptInstall()
 }
 </script>
 
@@ -151,11 +142,4 @@ async function onInstall() {
 .fb-item { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
 .fb-label { font-size: 14px; color: var(--text); }
 .fb-val { font-size: 13px; color: var(--text-soft); text-align: right; }
-.installed-note { display: flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-soft); }
-.inst-btn {
-  width: 100%; border: 1px solid var(--accent); background: var(--accent); color: #fff;
-  border-radius: 10px; padding: 11px; font-size: 14px; font-weight: 600; cursor: pointer;
-}
-.ios-hint { display: flex; flex-direction: column; gap: 2px; }
-.ios-hint .th-line { margin-bottom: 2px; }
 </style>

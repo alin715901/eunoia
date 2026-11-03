@@ -82,7 +82,8 @@ import MusicLyrics from '@/components/music/MusicLyrics.vue'
 import { connect, disconnect } from '@/composables/useSSE'
 import { useAutoUpdate } from '@/composables/useAutoUpdate'
 import { requestNotificationPermission, notificationPermissionState } from '@/composables/useNotification'
-import { ensureLocalNotificationPermission, initLocalNotifications } from '@/composables/useLocalNotification'
+import { ensureLocalNotificationPermission, initLocalNotifications, isNativePlatform } from '@/composables/useLocalNotification'
+import { promptReleaseIfNeeded, isReleaseAutoCheck } from '@/composables/useReleaseUpdate'
 import router from '@/router'
 import { dbReady, onDbProgress } from '@/local/db'
 import { useSettingsStore } from '@/stores/settings'
@@ -268,6 +269,11 @@ async function boot() {
     await desktop.load()
   } catch (e) {
     /* 忽略 */
+  }
+  /* 原生 APK：启动后自动检测 GitHub Releases 新版本，发现则弹「前往更新 / 暂不更新」。
+     不强制更新：用户选「暂不更新」记录忽略、继续用当前版本；关闭「自动检查更新」则不弹。 */
+  if (isNativePlatform() && isReleaseAutoCheck()) {
+    setTimeout(() => { promptReleaseIfNeeded().catch(() => {}) }, 2500)
   }
 }
 

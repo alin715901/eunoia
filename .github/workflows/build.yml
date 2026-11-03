@@ -75,15 +75,22 @@ jobs:
       - name: Rename APK for release
         run: cp android/app/build/outputs/apk/debug/app-debug.apk eunoia.apk
 
+      - name: Read app version (from source of truth)
+        id: appver
+        run: |
+          VER=$(node -e "const fs=require('fs');const s=fs.readFileSync('src/utils/version.js','utf8');const m=s.match(/APP_VERSION\s*=\s*['\"]([^'\"]+)['\"]/);process.stdout.write(m?m[1]:'v0.0.0')")
+          echo "version=$VER" >> "$GITHUB_OUTPUT"
+
       - name: Publish to GitHub Releases (rolling latest)
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: eunoia-apk
-          name: Eunoia字卡 APK（最新）
+          tag_name: ${{ steps.appver.outputs.version }}
+          name: Eunoia APK ${{ steps.appver.outputs.version }}（最新）
           body: |
             🤖 自动构建的安卓安装包（debug 签名，可直接安装）。
+
             - 安装：手机下载后允许「安装未知应用」即可。
             - 通知：装完请在系统设置里对该 App 关闭「电池优化」（设为不受限制），保证后台通知准时弹出。
-            - 更新：网页/功能改动会随站点自动生效；只有改了原生壳才需重新下载此 APK 重装。
+            - 更新：应用内检测到新版本会弹窗提示，点「前往更新」即可下载安装；选「暂不更新」则继续使用当前版本。
           files: web/eunoia.apk
           make_latest: true
