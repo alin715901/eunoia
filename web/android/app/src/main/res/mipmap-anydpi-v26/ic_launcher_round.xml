@@ -1,5 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
-    <!-- 整张原图作为背景直接显示（不缩进、不加白边），仅由系统把四角收成圆角 -->
-    <background android:drawable="@drawable/app_icon_bg"/>
+    <!-- 整张原图作为前景按原比例内缩(22%)，完整显示、不裁切不放大；
+         背景用原图边缘同色(#FBF6F0)，圆内只露出细环，视觉上就是原图本身 -->
+    <background android:drawable="@color/ic_launcher_background"/>
+    <foreground android:drawable="@drawable/app_icon_fg" android:inset="22%"/>
 </adaptive-icon>

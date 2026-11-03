@@ -6,6 +6,7 @@
 //   这条预约活在 Android 系统层，即使 App 进程被杀（被划掉 / 系统回收内存）也能准时弹出。
 //   App 在前台时收到这条底层通知就立即取消，改由应用内 UI 显示，避免重复弹窗。
 import { LocalNotifications } from '@capacitor/local-notifications'
+import { App } from '@capacitor/app'
 
 /* 是否运行在 Capacitor 原生壳里（Android/iOS）。Web、PWA、普通浏览器一律返回 false，
    保证本地通知逻辑在网页端完全不生效，不干扰现有 SW 通知链路。 */
@@ -15,6 +16,27 @@ export function isNativePlatform() {
   } catch {
     return false
   }
+}
+
+/* 应用是否真正处于「前台且可见」（用户正在看 App）。
+   用 Capacitor 的 App 插件(appStateChange)判定，而不是 document.visibilityState ——
+   因为安卓 WebView 在 App 退到后台时，visibilityState 经常仍然报 'visible'，
+   若用它来决定「是否取消通知/是否弹通知」，会导致后台到达的消息被误取消、从而完全不弹窗。
+   这个标记是修复「联系人消息后台不弹窗」的关键。 */
+let appActive = true
+let appStateListener = null
+function setupAppState() {
+  if (!isNativePlatform() || appStateListener) return
+  try {
+    const apply = (isActive) => { appActive = !!isActive }
+    App.getState().then((s) => apply(s && s.isActive)).catch(() => {})
+    appStateListener = App.addListener('appStateChange', ({ isActive }) => apply(isActive))
+  } catch (e) {
+    /* 退化为始终前台：最坏情况是不取消前台通知（多一次弹窗），不会让后台消息丢失 */
+  }
+}
+export function isAppActive() {
+  return appActive
 }
 
 /* 首启请求通知权限（Android 13+ 会弹系统授权框；12 及以下安装即授权，无需弹框）。
@@ -57,11 +79,12 @@ export async function scheduleProactiveNotification({ contactId, title, body, at
 }
 
 /* 主动消息在「App 正处于后台（未被划掉）」的瞬间被实时生成 → 立即弹系统通知。
-   前台（visibilityState=visible）时不弹，交给应用内 UI。返回是否弹了。 */
+   前台（用户正在看 App）时不弹，交给应用内 UI。返回是否弹了。 */
 export async function fireImmediateNotification({ contactId, title, body }) {
   if (!isNativePlatform()) return false
   try {
-    if (document.visibilityState === 'visible') return false
+    // 用可靠的 appActive 判定：只有真正在前台(用户看着)才不弹，后台/被杀都弹
+    if (isAppActive()) return false
     await LocalNotifications.schedule({
       notifications: [
         {
@@ -91,14 +114,21 @@ export async function cancelScheduledNotifications() {
 }
 
 let initialized = false
+// 模块加载即建立前后台监听（原生环境），确保 isAppActive() 从头就准确，
+// 避免未初始化时默认「前台」导致后台消息被漏弹
+setupAppState()
+
 /* 初始化本地通知监听（仅原生、仅一次）：
    - localNotificationReceived：前台收到（闹钟到点但用户正用 App）→ 立即按 id 取消，避免重复弹窗；
    - localNotificationActionPerformed：用户点击通知 → 打开对应会话。 */
 export function initLocalNotifications({ onOpenChat } = {}) {
+  setupAppState()
   if (!isNativePlatform() || initialized) return () => {}
   initialized = true
   const offReceived = LocalNotifications.addListener('localNotificationReceived', (n) => {
-    if (document.visibilityState === 'visible') {
+    // 只有真正处于前台(用户看着 App)才取消，避免重复弹窗；
+    // 后台/被杀到达的通知一律保留 → 由系统弹出（修复「后台不弹窗」）。
+    if (isAppActive()) {
       const id = n && n.id
       // 仅取消「主动消息」预约通知（100000~299999），改由应用内 UI 显示，避免重复弹窗；
       // 手动测试通知（900000+）不取消，保证即使 App 在前台也能看到系统弹窗。

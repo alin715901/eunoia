@@ -1,5 +1,5 @@
 import db from '../db'
-import { scheduleProactiveNotification, fireImmediateNotification } from '@/composables/useLocalNotification'
+import { scheduleProactiveNotification, fireImmediateNotification, isAppActive } from '@/composables/useLocalNotification'
 import { drawCards, drawCardsForMember, drawPokeCard } from './cardDraw.service'
 import * as notification from './notification.service'
 import * as settingsRepo from '../repositories/settings.repo'
@@ -1741,7 +1741,8 @@ function proactiveTick(opts = {}) {
         setTimeout(() => notification.broadcast('typing', { contactId: cid2, typing: false }), 3000);
         // App 正处于后台（未被划掉）时，实时生成的消息立即弹系统通知；
         // 前台时由应用内 UI 显示（不弹），与预约闹钟互补。
-        if (document.visibilityState === 'hidden') {
+        // 用可靠的 isAppActive() 判定（安卓 WebView 的 visibilityState 退后台仍可能报 visible）
+        if (!isAppActive()) {
           fireImmediateNotification({ contactId: cid, title: info.name, body: '给你发来了一条消息' });
         }
       }
