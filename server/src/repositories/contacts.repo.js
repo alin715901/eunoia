@@ -175,7 +175,8 @@ function getSettings(id) {
 
 function updateSettings(id, fields = {}) {
   const cols = [
-    'reply_min', 'reply_max', 'reply_delay_min', 'reply_delay_max',
+    'reply_min', 'reply_max', 'reply_merge_enabled', 'reply_merge_min', 'reply_merge_max',
+    'reply_delay_min', 'reply_delay_max',
     'answer_delay_min', 'answer_delay_max',
     'cat_weights', 'gen_ratio', 'proactive_enabled', 'proactive_count',
     'proactive_count_min', 'proactive_count_max',
