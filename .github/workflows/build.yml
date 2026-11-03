@@ -15,6 +15,11 @@ concurrency:
   group: apk-build
   cancel-in-progress: true
 
+env:
+  # 让 Gradle 步骤也能读到 Android SDK 路径（之前只在 license 步骤设，Gradle 步骤没拿到）
+  ANDROID_HOME: /usr/local/lib/android/sdk
+  ANDROID_SDK_ROOT: /usr/local/lib/android/sdk
+
 jobs:
   build-apk:
     name: Build & Release APK
@@ -50,10 +55,13 @@ jobs:
         # cap copy 只把 dist 拷贝进 android/app/src/main/assets/public，不重建、不动插件
         run: npx cap copy android
 
-      - name: Accept Android SDK licenses
-        run: yes | sdkmanager --licenses || true
-        env:
-          ANDROID_HOME: /usr/local/lib/android/sdk
+      - name: Set up Android SDK (accept licenses + install platform 34 / build-tools)
+        # 关键修复：先真正接受全部许可证，再显式安装 compileSdk 34 所需的 platform 与 build-tools，
+        # 避免 Gradle 配置阶段因「许可证未接受 / SDK 包缺失」秒退（表现为 45s 左右红叉）。
+        run: |
+          export PATH="$ANDROID_HOME/cmdline-tools/latest/bin:$ANDROID_HOME/platform-tools:$PATH"
+          yes | sdkmanager --licenses
+          sdkmanager --install "platforms;android-34" "build-tools;34.0.0" "platform-tools"
 
       - name: Build APK (debug)
         run: |
