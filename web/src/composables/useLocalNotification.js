@@ -7,6 +7,7 @@
 //   App 在前台时收到这条底层通知就立即取消，改由应用内 UI 显示，避免重复弹窗。
 import { LocalNotifications } from '@capacitor/local-notifications'
 import { App } from '@capacitor/app'
+import router from '@/router'
 
 /* 是否运行在 Capacitor 原生壳里（Android/iOS）。Web、PWA、普通浏览器一律返回 false，
    保证本地通知逻辑在网页端完全不生效，不干扰现有 SW 通知链路。 */
@@ -162,11 +163,17 @@ export function initLocalNotifications({ onOpenChat } = {}) {
   })
   const offAction = LocalNotifications.addListener('localNotificationActionPerformed', (n) => {
     const notif = (n && n.notification) || {}
-    let contactId = (notif.extra && notif.extra.contactId) || null
+    const extra = (notif && notif.extra) || {}
+    let contactId = extra.contactId || null
     const id = notif.id
     // 仅从主动消息预约段（100000~299999）反推 contactId；测试段不反推
     if (!contactId && typeof id === 'number' && id >= 100000 && id < 300000) {
       contactId = String(id - 100000)
+    }
+    // 通知携带了跳转路由（如来电通知指向聊天页）：优先按路由进入，
+    // 再由对应页面的 checkPending 唤起通话界面
+    if (extra.route && typeof router !== 'undefined') {
+      try { router.push(String(extra.route)) } catch (e) { /* ignore */ }
     }
     if (contactId && typeof onOpenChat === 'function') onOpenChat(contactId)
   })

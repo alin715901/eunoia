@@ -124,8 +124,13 @@ export async function notify(title, options = {}) {
   // 原生端：直接调系统本地通知（立即弹，无视前后台）
   if (isNativePlatform()) {
     try {
-      const { route, body } = options
+      const { route, body, contactId } = options
       const id = 900000 + Math.floor(Math.random() * 1000) // 测试/手动通知专用段，避免被「前台自动取消」逻辑误删
+      const extra = {}
+      // route：点击跳转到指定会话页；contactId：点击直接打开对应联系人会话
+      // （来电通知靠它定位到会话，再由 checkPending 唤起通话界面）
+      if (route) extra.route = String(route)
+      if (contactId != null) extra.contactId = String(contactId)
       await LocalNotifications.schedule({
         notifications: [
           {
@@ -133,7 +138,7 @@ export async function notify(title, options = {}) {
             title,
             body: body || '',
             channelId: MESSAGE_CHANNEL_ID,
-            extra: route ? { route: String(route) } : {}
+            extra
           }
         ]
       })

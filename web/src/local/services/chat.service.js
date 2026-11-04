@@ -1,5 +1,5 @@
 import db from '../db'
-import { scheduleProactiveNotification, fireImmediateNotification, isAppActive } from '@/composables/useLocalNotification'
+import { scheduleProactiveNotification } from '@/composables/useLocalNotification'
 import { drawCards, drawCardsForMember, drawPokeCard } from './cardDraw.service'
 import * as notification from './notification.service'
 import * as settingsRepo from '../repositories/settings.repo'
@@ -1739,12 +1739,9 @@ function proactiveTick(opts = {}) {
         notification.broadcast('badge_update', settingsRepo.getBadges());
         const cid2 = cid;
         setTimeout(() => notification.broadcast('typing', { contactId: cid2, typing: false }), 3000);
-        // App 正处于后台（未被划掉）时，实时生成的消息立即弹系统通知；
-        // 前台时由应用内 UI 显示（不弹），与预约闹钟互补。
-        // 用可靠的 isAppActive() 判定（安卓 WebView 的 visibilityState 退后台仍可能报 visible）
-        if (!isAppActive()) {
-          fireImmediateNotification({ contactId: cid, title: info.name, body: '给你发来了一条消息' });
-        }
+        // 后台/前台的系统通知统一由 useSSE 的 new_messages 处理器里的 notify() 负责
+        // （原生壳无视前后台都会弹，且带真实消息内容）；这里不再单独补发「给你发来了一条消息」
+        // 占位通知——那行写死文案既缺内容、又和 new_messages 的通知重复，是「后台不显示内容」的根因。
       }
     }
   } catch (e) {

@@ -3,6 +3,8 @@ import { getContactSettings } from '@/api/contacts'
 import { sendCallRecord } from '@/api/chat'
 import { useChatStore } from './chat'
 import { useNotificationsStore } from './notifications'
+import { notify } from '@/composables/useNotification'
+import { isNativePlatform } from '@/composables/useLocalNotification'
 import router from '@/router'
 
 /* 全局通话状态：独立于路由，挂在任何页面都会保持（挂断前的悬浮窗跨页面可见、可拖动）。
@@ -135,21 +137,33 @@ export const useCallStore = defineStore('call', {
         // 就在该会话的聊天页：直接弹出通话界面（接听/拒绝）
         this.activateIncoming(invite)
       } else {
-        // 其他页面：先弹通知，点击后跳转该聊天页并弹出通话界面
+        // 其他页面：先暂存来电，再弹通知
         this.pending = invite
-        const notifications = useNotificationsStore()
-        notifications.pushToast({
-          title: isGroup ? `${memberName || name || '群聊'}邀请群聊通话` : `${name || '对方'}来电`,
-          text: isGroup ? '邀请你群聊语音通话，点击查看' : '邀请你语音通话，点击查看',
-          avatar,
-          type: 'message',
-          duration: 10000,
-          route: `/contacts/${sessionId}/chat`
-        })
+        const title = isGroup ? `${memberName || name || '群聊'}邀请群聊通话` : `${name || '对方'}来电`
+        const text = isGroup ? '邀请你群聊语音通话，点击查看' : '邀请你语音通话，点击查看'
+        if (isNativePlatform()) {
+          // 原生壳：发系统通知（HIGH 渠道，前后台都会悬浮弹出）；
+          // 点通知 → 进入聊天页 → checkPending 唤起通话界面。
+          // 来电比普通消息多给时间（45s），让用户切到后台也能发现并点开
+          notify(title, { body: text, contactId: String(sessionId) })
+        } else {
+          // Web：应用内 toast 提示
+          const notifications = useNotificationsStore()
+          notifications.pushToast({
+            title,
+            text,
+            avatar,
+            type: 'message',
+            duration: 10000,
+            route: `/contacts/${sessionId}/chat`
+          })
+        }
       }
-      // 15 秒没人接也没拒：来电作废，落库「未接听」
+      // 来电超时未响应：作废并落库「未接听」。
+      // 原生（走系统通知）给 45s —— 后台发现、解锁、点开通知需要时间；
+      // 其余（已在聊天页直接弹界面 / Web）保持 15s
       clearTimeout(inviteTimer)
-      inviteTimer = setTimeout(() => { this.missIncoming(invite) }, 15000)
+      inviteTimer = setTimeout(() => { this.missIncoming(invite) }, isNativePlatform() ? 45000 : 15000)
     },
 
     /* 来电超时未响应：取消来电，并记一条「未接听」的通话记录 */
