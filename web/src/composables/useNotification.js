@@ -3,7 +3,7 @@
 //   - Web / PWA / 普通浏览器：走标准 Notification API + Service Worker
 import { ref } from 'vue'
 import { LocalNotifications } from '@capacitor/local-notifications'
-import { isNativePlatform, ensureLocalNotificationPermission } from '@/composables/useLocalNotification'
+import { isNativePlatform, ensureLocalNotificationPermission, MESSAGE_CHANNEL_ID } from '@/composables/useLocalNotification'
 
 export function notificationSupported() {
   // 原生壳里 WebView 没有 Notification API，但本地通知插件可用 → 视为「支持」
@@ -132,6 +132,7 @@ export async function notify(title, options = {}) {
             id,
             title,
             body: body || '',
+            channelId: MESSAGE_CHANNEL_ID,
             extra: route ? { route: String(route) } : {}
           }
         ]

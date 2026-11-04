@@ -18,6 +18,27 @@ export function isNativePlatform() {
   }
 }
 
+/* 高重要性通知渠道：安卓 8+ 只有 HIGH(4) 才会以「悬浮通知」直接弹在屏幕顶部，
+   插件默认渠道是 DEFAULT(3)（只进通知栏、需下拉才能看到）。
+   渠道一旦创建重要性就不可改（安卓规定），故单独建一个 messages 渠道，
+   所有消息通知都走它，既解决「只在通知栏不弹」的问题，前台会话内也照样悬浮弹出。 */
+export const MESSAGE_CHANNEL_ID = 'messages'
+
+export async function ensureNotificationChannel() {
+  if (!isNativePlatform()) return
+  try {
+    await LocalNotifications.createChannel({
+      id: MESSAGE_CHANNEL_ID,
+      name: '消息',
+      description: '联系人消息与主动消息提醒',
+      importance: 4, // IMPORTANCE_HIGH → 悬浮通知直接弹出
+      vibration: true
+    })
+  } catch (e) {
+    console.warn('[ln] 创建通知渠道失败', e)
+  }
+}
+
 /* 应用是否真正处于「前台且可见」（用户正在看 App）。
    用 Capacitor 的 App 插件(appStateChange)判定，而不是 document.visibilityState ——
    因为安卓 WebView 在 App 退到后台时，visibilityState 经常仍然报 'visible'，
@@ -44,6 +65,8 @@ export function isAppActive() {
 export async function ensureLocalNotificationPermission() {
   if (!isNativePlatform()) return { granted: false, native: false }
   try {
+    // 先确保高重要性渠道存在（否则即使授权也只能进通知栏、不悬浮）
+    await ensureNotificationChannel()
     const cur = await LocalNotifications.checkPermissions()
     if (cur.display === 'granted') return { granted: true }
     const res = await LocalNotifications.requestPermissions()
@@ -69,6 +92,7 @@ export async function scheduleProactiveNotification({ contactId, title, body, at
           title: title || '新消息',
           body: body || '给你发来了一条消息',
           schedule: { at: new Date(atTimeSec * 1000), allowWhileIdle: true },
+          channelId: MESSAGE_CHANNEL_ID,
           extra: { contactId: String(contactId) }
         }
       ]
@@ -89,6 +113,7 @@ export async function fireImmediateNotification({ contactId, title, body }) {
           id: 200000 + Number(contactId),
           title: title || '新消息',
           body: body || '给你发来了一条消息',
+          channelId: MESSAGE_CHANNEL_ID,
           extra: { contactId: String(contactId) }
         }
       ]
@@ -122,7 +147,10 @@ setupAppState()
    - localNotificationActionPerformed：用户点击通知 → 打开对应会话。 */
 export function initLocalNotifications({ onOpenChat } = {}) {
   setupAppState()
-  if (!isNativePlatform() || initialized) return () => {}
+  if (!isNativePlatform()) return () => {}
+  // 确保高重要性渠道已创建（首启即建好，之后幂等）
+  ensureNotificationChannel().catch(() => {})
+  if (initialized) return () => {}
   initialized = true
   const offReceived = LocalNotifications.addListener('localNotificationReceived', (n) => {
     const id = n && n.id
