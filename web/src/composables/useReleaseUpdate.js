@@ -106,7 +106,7 @@ export async function promptReleaseIfNeeded() {
     okText: '前往更新',
     cancelText: '暂不更新'
   })
-  if (ok) startUpdate(r.apkUrl || r.htmlUrl)
+  if (ok) startUpdate(r.apkUrl, r.htmlUrl)
   else ignoreRelease(r.tag)
   return r
 }
