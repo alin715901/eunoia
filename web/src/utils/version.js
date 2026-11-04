@@ -4,4 +4,4 @@
 //   - CI 构建时读取此处作为 Release 的 tag（见 .github/workflows/build.yml）
 // 注意：网页版部署仍用 scripts/version.mjs 注入时间戳作为「构建号」，
 // 那套用于网页自动刷新，与 APK 的语义化版本互不影响。
-export const APP_VERSION = 'v1.2.8'
+export const APP_VERSION = 'v1.2.9'
