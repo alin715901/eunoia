@@ -24,6 +24,19 @@ import java.net.URL;
 public class UpdaterPlugin extends Plugin {
 
     @PluginMethod()
+    public void getNativeVersion(final PluginCall call) {
+        try {
+            String ver = getActivity().getPackageManager()
+                    .getPackageInfo(getActivity().getPackageName(), 0).versionName;
+            JSObject ret = new JSObject();
+            ret.put("version", ver != null ? ver : "");
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject(e != null ? e.getMessage() : "getNativeVersion failed");
+        }
+    }
+
+    @PluginMethod()
     public void downloadAndInstall(final PluginCall call) {
         final String url = call.getString("url");
         if (url == null || url.isEmpty()) {

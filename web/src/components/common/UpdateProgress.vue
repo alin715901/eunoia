@@ -30,6 +30,7 @@
             <button class="up-btn up-ghost" type="button" @click="onClose">关闭</button>
             <button class="up-btn up-primary" type="button" @click="onRetry">重试</button>
           </div>
+          <button class="up-btn up-link" type="button" @click="onManual">前往手动更新</button>
         </template>
       </div>
     </div>
@@ -37,7 +38,7 @@
 </template>
 
 <script setup>
-import { useUpdater, closeUpdateOverlay, retryUpdate } from '@/composables/useUpdater'
+import { useUpdater, closeUpdateOverlay, retryUpdate, openManualUpdate } from '@/composables/useUpdater'
 
 const { visible, progress, status, errorMsg, downloaded, total } = useUpdater()
 
@@ -46,6 +47,9 @@ function onClose() {
 }
 function onRetry() {
   retryUpdate()
+}
+function onManual() {
+  openManualUpdate()
 }
 function fmt(bytes) {
   if (!bytes) return '0 B'
@@ -154,6 +158,16 @@ function fmt(bytes) {
   background: transparent;
   border-color: var(--border, #ddd);
   color: var(--text, #333);
+}
+.up-link {
+  width: 100%;
+  margin-top: 10px;
+  background: transparent;
+  border: none;
+  color: var(--accent, #c5a47e);
+  font-size: 13px;
+  text-decoration: underline;
+  cursor: pointer;
 }
 .up-spin {
   width: 30px;

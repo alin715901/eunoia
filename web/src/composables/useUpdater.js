@@ -1,6 +1,9 @@
 import { ref } from 'vue'
 import { registerPlugin } from '@capacitor/core'
+import { App } from '@capacitor/app'
 import { isNativePlatform } from '@/composables/useLocalNotification'
+import { openExternal } from '@/utils/openExternal'
+import { APP_VERSION } from '@/utils/version'
 
 // 原生插件：应用内下载 APK + 拉起系统安装器
 const Updater = registerPlugin('Updater')
@@ -15,6 +18,7 @@ const total = ref(0)
 
 let progressListener = null
 let lastUrl = ''
+let installTriggered = false // 已拉起系统安装器，等待用户回应用后校验是否装上新版
 
 export function useUpdater() {
   return { visible, progress, status, errorMsg, downloaded, total }
@@ -27,6 +31,34 @@ export function closeUpdateOverlay() {
 export async function retryUpdate() {
   if (lastUrl) startUpdate(lastUrl)
 }
+
+/* 自动更新失败时，跳转浏览器手动下载（点击「前往手动更新」） */
+export function openManualUpdate() {
+  if (!lastUrl) return
+  openExternal(lastUrl).catch(() => {
+    try { window.location.href = lastUrl } catch (e2) { /* ignore */ }
+  })
+}
+
+/* 安装器返回应用后：若已装上更高版本，刷新 WebView 加载新前端资源（即「重刷进入」） */
+async function checkAndReloadIfUpdated() {
+  try {
+    const r = await Updater.getNativeVersion()
+    const nv = (r && r.version) || ''
+    const cur = APP_VERSION.replace(/^v/i, '')
+    if (nv && nv !== cur) {
+      setTimeout(() => { location.reload() }, 300)
+    }
+  } catch (e) { /* 读取失败则不强刷 */ }
+}
+
+// 监听前后台：安装器是独立 Activity，用户装完返回即触发 active
+App.addListener('appStateChange', (state) => {
+  if (state && state.isActive && installTriggered) {
+    installTriggered = false
+    checkAndReloadIfUpdated()
+  }
+}).catch(() => {})
 
 /**
  * 开始更新：原生端在应用内下载 APK（带进度）并拉起系统安装器；
@@ -43,7 +75,6 @@ export async function startUpdate(apkUrl) {
 
   // 网页端：没有原生安装能力，退回浏览器下载（不显示进度浮层）
   if (!isNativePlatform()) {
-    const { openExternal } = await import('@/utils/openExternal')
     openExternal(lastUrl).catch(() => {
       try { window.location.href = lastUrl } catch (e2) { /* ignore */ }
     })
@@ -68,6 +99,7 @@ export async function startUpdate(apkUrl) {
     }
     await Updater.downloadAndInstall({ url: lastUrl })
     // 下载完成、已拉起系统安装器，剩下的交给系统
+    installTriggered = true
     status.value = 'installing'
   } catch (e) {
     status.value = 'error'
