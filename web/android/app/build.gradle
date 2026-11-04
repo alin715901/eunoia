@@ -7,8 +7,8 @@ android {
         applicationId "com.eunoia.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 7
-        versionName "1.2.4"
+        versionCode 8
+        versionName "1.2.5"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,10 +16,25 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
+    // 固定签名密钥：仓库内置 eunoia.keystore，保证每次 CI 构建使用同一签名，
+    // 从而支持「原地覆盖升级」（否则每次临时 debug 密钥不同，安卓会报「签名冲突」必须卸载重装）。
+    // 密钥与密码随仓库提交（debug 分发用途，非 Play 商店发布）。
+    signingConfigs {
+        eunoia {
+            storeFile file('eunoia.keystore')
+            storePassword 'eunoia123'
+            keyAlias 'eunoia'
+            keyPassword 'eunoia123'
+        }
+    }
     buildTypes {
         release {
+            signingConfig signingConfigs.eunoia
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+        debug {
+            signingConfig signingConfigs.eunoia
         }
     }
 }

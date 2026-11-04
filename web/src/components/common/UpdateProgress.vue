@@ -8,12 +8,13 @@
         <template v-if="status === 'downloading'">
           <p class="up-sub">正在下载更新包，请保持应用在前台…</p>
           <div class="up-track">
-            <div class="up-fill" :style="{ width: progress + '%' }"></div>
+            <div v-if="progress >= 0" class="up-fill" :style="{ width: progress + '%' }"></div>
+            <div v-else class="up-fill up-indeterminate"></div>
           </div>
           <div class="up-meta">
-            <span>{{ progress }}%</span>
-            <span v-if="total > 0">{{ fmt(downloaded) }} / {{ fmt(total) }}</span>
+            <span v-if="progress >= 0">{{ progress }}%</span>
             <span v-else>下载中…</span>
+            <span>{{ fmt(downloaded) }}<template v-if="total > 0"> / {{ fmt(total) }}</template></span>
           </div>
         </template>
 
@@ -128,6 +129,14 @@ function fmt(bytes) {
   border-radius: 999px;
   background: linear-gradient(90deg, color-mix(in oklab, var(--accent, #c5a47e) 70%, transparent), var(--accent, #c5a47e));
   transition: width 0.25s ease;
+}
+.up-indeterminate {
+  width: 40%;
+  animation: up-slide 1.1s ease-in-out infinite;
+}
+@keyframes up-slide {
+  0% { margin-left: -40%; }
+  100% { margin-left: 100%; }
 }
 .up-meta {
   display: flex;

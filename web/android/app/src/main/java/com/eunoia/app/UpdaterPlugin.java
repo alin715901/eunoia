@@ -63,17 +63,38 @@ public class UpdaterPlugin extends Plugin {
     }
 
     private void download(String urlStr, File target) throws Exception {
-        HttpURLConnection conn = (HttpURLConnection) new URL(urlStr).openConnection();
-        conn.setRequestMethod("GET");
-        conn.setInstanceFollowRedirects(true);
-        conn.setRequestProperty("User-Agent", "EunoiaApp");
-        conn.setConnectTimeout(20000);
-        conn.setReadTimeout(20000);
-        conn.connect();
-        int code = conn.getResponseCode();
-        if (code != 200) {
-            conn.disconnect();
-            throw new Exception("HTTP " + code);
+        // 手动跟随 3xx 重定向（GitHub releases/download 会 302 到 CDN），
+        // 避免系统 HttpURLConnection 自动跟随时偶发拿不到最终 Content-Length。
+        int redirects = 0;
+        String currentUrl = urlStr;
+        HttpURLConnection conn = null;
+        while (redirects < 10) {
+            URL u = new URL(currentUrl);
+            conn = (HttpURLConnection) u.openConnection();
+            conn.setInstanceFollowRedirects(false);
+            conn.setRequestMethod("GET");
+            conn.setRequestProperty("User-Agent", "EunoiaApp/Android");
+            conn.setRequestProperty("Accept", "*/*");
+            conn.setConnectTimeout(20000);
+            conn.setReadTimeout(20000);
+            conn.connect();
+            int code = conn.getResponseCode();
+            if (code == HttpURLConnection.HTTP_MOVED_PERM
+                    || code == HttpURLConnection.HTTP_MOVED_TEMP
+                    || code == 307 || code == 308) {
+                String loc = conn.getHeaderField("Location");
+                conn.disconnect();
+                if (loc == null || loc.isEmpty()) throw new Exception("重定向缺少 Location");
+                if (loc.startsWith("/")) loc = u.getProtocol() + "://" + u.getHost() + loc;
+                currentUrl = loc;
+                redirects++;
+                continue;
+            }
+            if (code != 200) {
+                conn.disconnect();
+                throw new Exception("HTTP " + code);
+            }
+            break;
         }
         int total = conn.getContentLength();
         InputStream in = new BufferedInputStream(conn.getInputStream());
@@ -88,12 +109,15 @@ public class UpdaterPlugin extends Plugin {
                 int pct = (int) (downloaded * 100 / total);
                 if (pct > 100) pct = 100;
                 notifyProgress(pct, downloaded, total);
+            } else {
+                // 未知总大小：仍按已下载字节回传，便于界面显示进度（无百分比条）
+                notifyProgress(-1, downloaded, -1);
             }
         }
         in.close();
         out.close();
         conn.disconnect();
-        notifyProgress(100, downloaded, total);
+        notifyProgress(100, downloaded, total > 0 ? total : downloaded);
     }
 
     private void notifyProgress(int pct, long downloaded, long total) {
