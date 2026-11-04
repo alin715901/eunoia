@@ -327,7 +327,7 @@ function continueTalk(dbRef, contactId) {
       // 抽到图片字卡（表情包）→ 按字卡消息落库（前端渲染为图）；纯文字字卡 → 文本消息
       const m = conv
         ? insertConvertedVoice(d, contactId, conv, card, memberId)
-        : card && card.asset_path
+        : card && (card.asset_path || card.category === 'voice')
           ? insertContactCard(d, contactId, card, memberId)
           : insertContactText(d, contactId, card?.content || '…', null, memberId);
       notification.broadcast('typing', { contactId, typing: false });
@@ -847,8 +847,10 @@ function insertContactText(d, contactId, text, seq, memberId = null) {
    其余（主字卡/emoji/颜文字/语音等）保持 card。带文字的卡仍走 card 分支（图+文字一起显示） */
 function cardContentType(card) {
   if (!card) return 'card';
-  /* 语音卡：内容是「转写文案」，消息类型仍为 voice（前端渲染语音条 + 转文字） */
-  if (card.category === 'voice' && card.asset_path) return 'voice';
+  /* 语音字卡恒为 voice：文字只是「转写文案」，无论是否带音频都不当作独立文本消息发出。
+     之前要求 card.asset_path 才判定为 voice，导致「没带音频的语音字卡」被回落成 text，
+     把用户输入的文字当成一条文字消息发出去——这与「文字只用于语音字卡转文字」相悖。 */
+  if (card.category === 'voice') return 'voice';
   /* 按字卡板块恒定类型：图片字卡恒为 image、表情包字卡恒为 sticker 无框气泡，
      与是否带文字无关（带文字的图片/表情包字卡不再回落成带框 card，保持类型恒定）。
      仅当确实带图资源时才降级，避免误标分类却无资源的空白气泡。 */
