@@ -3,6 +3,7 @@ package com.eunoia.app;
 import android.content.Intent;
 import android.net.Uri;
 import androidx.core.content.FileProvider;
+import com.getcapacitor.JSArray;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
@@ -14,6 +15,8 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.util.ArrayList;
+import java.util.List;
 
 /**
  * 应用内自更新：下载 APK（带进度回调）+ 拉起系统安装器。
@@ -43,21 +46,44 @@ public class UpdaterPlugin extends Plugin {
             call.reject("missing url");
             return;
         }
+        // 可选镜像列表：主地址连不上时依次尝试，用于国内网络访问 GitHub 受限的场景。
+        // mirrors 为字符串数组，形如 ["https://ghproxy.net/https://github.com/...", ...]
+        List<String> urls = new ArrayList<>();
+        urls.add(url);
+        try {
+            JSArray mirrors = call.getArray("mirrors");
+            if (mirrors != null) {
+                for (Object m : mirrors.toList()) {
+                    if (m != null) {
+                        String s = m.toString().trim();
+                        if (!s.isEmpty()) urls.add(s);
+                    }
+                }
+            }
+        } catch (Exception ignore) { /* 镜像解析失败时忽略，仅用主地址 */ }
+
         call.setKeepAlive(true);
         final File dir = getActivity().getExternalFilesDir(null);
         final File target = new File(dir, "eunoia-update.apk");
+        final List<String> finalUrls = urls;
         new Thread(new Runnable() {
             @Override
             public void run() {
-                try {
-                    download(url, target);
-                    install(target);
-                    JSObject ret = new JSObject();
-                    ret.put("status", "installed");
-                    call.resolve(ret);
-                } catch (final Exception e) {
-                    call.reject(e != null ? e.getMessage() : "download failed");
+                Exception lastErr = null;
+                for (String u : finalUrls) {
+                    try {
+                        downloadWithRetry(u, target, 2);
+                        install(target);
+                        JSObject ret = new JSObject();
+                        ret.put("status", "installed");
+                        call.resolve(ret);
+                        return;
+                    } catch (final Exception e) {
+                        lastErr = e;
+                        // 该地址失败，继续尝试下一个镜像
+                    }
                 }
+                call.reject(lastErr != null ? lastErr.getMessage() : "download failed");
             }
         }).start();
     }
@@ -75,8 +101,8 @@ public class UpdaterPlugin extends Plugin {
             conn.setRequestMethod("GET");
             conn.setRequestProperty("User-Agent", "EunoiaApp/Android");
             conn.setRequestProperty("Accept", "*/*");
-            conn.setConnectTimeout(20000);
-            conn.setReadTimeout(20000);
+            conn.setConnectTimeout(30000);
+            conn.setReadTimeout(60000);
             conn.connect();
             int code = conn.getResponseCode();
             if (code == HttpURLConnection.HTTP_MOVED_PERM
@@ -118,6 +144,26 @@ public class UpdaterPlugin extends Plugin {
         out.close();
         conn.disconnect();
         notifyProgress(100, downloaded, total > 0 ? total : downloaded);
+    }
+
+    /* 带重试的下载：单个地址最多尝试 (retries+1) 次，失败后退避重试；全部失败抛出最后一次异常。 */
+    private void downloadWithRetry(String urlStr, File target, int retries) throws Exception {
+        Exception last = null;
+        for (int attempt = 0; attempt <= retries; attempt++) {
+            try {
+                download(urlStr, target);
+                return;
+            } catch (Exception e) {
+                last = e;
+                if (attempt < retries) {
+                    try { Thread.sleep(1000L * (attempt + 1)); } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                }
+            }
+        }
+        throw last;
     }
 
     private void notifyProgress(int pct, long downloaded, long total) {

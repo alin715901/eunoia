@@ -19,6 +19,7 @@ const total = ref(0)
 let progressListener = null
 let lastUrl = '' // 自动更新用的 APK 直接下载直链
 let lastHtmlUrl = '' // 手动更新兜底用的 Releases 页面地址
+let lastMirrors = [] // 镜像直链列表（国内网络直连 GitHub 受限时的兜底下载源）
 let installTriggered = false // 已拉起系统安装器，等待用户回应用后校验是否装上新版
 
 export function useUpdater() {
@@ -30,7 +31,7 @@ export function closeUpdateOverlay() {
 }
 
 export async function retryUpdate() {
-  if (lastUrl) startUpdate(lastUrl)
+  if (lastUrl) startUpdate(lastUrl, undefined, lastMirrors)
 }
 
 /* 自动更新失败时，跳转浏览器打开 Releases 页面手动下载（点击「前往手动更新」）。
@@ -68,9 +69,10 @@ App.addListener('appStateChange', (state) => {
  * 开始更新：原生端在应用内下载 APK（带进度）并拉起系统安装器；
  * 网页端无原生安装能力，退回到浏览器下载。
  */
-export async function startUpdate(apkUrl, htmlUrl) {
+export async function startUpdate(apkUrl, htmlUrl, mirrors) {
   if (apkUrl) lastUrl = apkUrl
   if (htmlUrl) lastHtmlUrl = htmlUrl
+  if (Array.isArray(mirrors)) lastMirrors = mirrors
   if (!lastUrl) {
     status.value = 'error'
     errorMsg.value = '未找到安装包地址'
@@ -102,7 +104,7 @@ export async function startUpdate(apkUrl, htmlUrl) {
         if (typeof e.total === 'number') total.value = e.total
       })
     }
-    await Updater.downloadAndInstall({ url: lastUrl })
+    await Updater.downloadAndInstall({ url: lastUrl, mirrors: lastMirrors })
     // 下载完成、已拉起系统安装器，剩下的交给系统
     installTriggered = true
     status.value = 'installing'

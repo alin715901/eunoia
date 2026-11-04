@@ -66,9 +66,19 @@ async function fetchLatestRelease() {
     const data = await res.json()
     const tag = data.tag_name || ''
     const apk = (data.assets || []).find((a) => /\.apk$/i.test(a.name || ''))
+    const apkUrl = apk ? apk.browser_download_url : ''
+    // 国内网络常无法直连 github.com 下载 APK：自动生成 GitHub 代理镜像作为兜底下载源。
+    // 原生 UpdaterPlugin 会依次尝试 主地址 → 镜像，任一成功即安装。
+    const apkMirrors = apkUrl
+      ? [
+          'https://ghproxy.net/' + apkUrl,
+          'https://gh-proxy.com/' + apkUrl
+        ]
+      : []
     return {
       tag,
-      apkUrl: apk ? apk.browser_download_url : '',
+      apkUrl,
+      apkMirrors,
       htmlUrl: data.html_url || '',
       notes: data.body || ''
     }
@@ -106,7 +116,7 @@ export async function promptReleaseIfNeeded() {
     okText: '前往更新',
     cancelText: '暂不更新'
   })
-  if (ok) startUpdate(r.apkUrl, r.htmlUrl)
+  if (ok) startUpdate(r.apkUrl, r.htmlUrl, r.apkMirrors)
   else ignoreRelease(r.tag)
   return r
 }
