@@ -6,6 +6,7 @@
  * 一并收进 ref 表，导入时 ref 表只做 INSERT OR IGNORE 或同名匹配，保证自洽。
  */
 import db from '../db'
+import { CARE_TEXTS_KEY } from '../../utils/careTexts'
 
 const FORMAT = 'eunoia-backup'
 const VERSION = 1
@@ -278,7 +279,7 @@ export function buildBackup(scope) {
     for (const t of EXPORT_TABLES) if (tableExists(t)) tables[t] = allRows(t)
   }
   autoInclude(tables, ref, partial)
-  return {
+  const out = {
     app: 'eunoia',
     format: FORMAT,
     version: VERSION,
@@ -287,6 +288,17 @@ export function buildBackup(scope) {
     ref,
     tables
   }
+  /* 关怀文案（经期特殊关怀）存在 localStorage，不落数据库，备份表天然不含它；
+     为保障「云端同步 / 导出再导入」不丢失，把当前自定义文案随全量备份一起带走。
+     仅全量备份携带（按板块 / 按联系人导出是局部数据，不该夹带全局配置）；
+     导入时若有该字段则写回 localStorage（见 importBackup）。 */
+  if (type !== 'feature' && type !== 'contacts') {
+    try {
+      const raw = localStorage.getItem(CARE_TEXTS_KEY)
+      if (raw) out.care_texts = JSON.parse(raw)
+    } catch (e) { /* 解析失败则不带，不阻断备份 */ }
+  }
+  return out
 }
 
 /* ─────────── 导入 ─────────── */
@@ -517,6 +529,10 @@ export function importBackup(payload, mode) {
     var inserted = run()
   } finally {
     db.exec('PRAGMA foreign_keys = ON')
+  }
+  /* 写回关怀文案（见 buildBackup）：有该字段才覆盖本地，局部导出备份不含它则不动 */
+  if (payload.care_texts) {
+    try { localStorage.setItem(CARE_TEXTS_KEY, JSON.stringify(payload.care_texts)) } catch (e) { /* 存储失败忽略 */ }
   }
   const parts = Object.entries(inserted)
     .filter(([, n]) => n > 0)
