@@ -13,6 +13,7 @@
     "@capacitor/app": "^6.0.3",
     "@capacitor/browser": "^6.0.0",
     "@capacitor/core": "^6.2.0",
+    "@capacitor/filesystem": "^6.0.4",
     "@capacitor/local-notifications": "^6.1.0",
     "axios": "^1.7.7",
     "js-md5": "^0.9.2",

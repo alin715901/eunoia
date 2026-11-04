@@ -51,6 +51,86 @@ async function idbPut(key, value) {
   })
 }
 
+/* ── App 私有文件镜像（耐久存储兜底）──
+ * 主存储仍是 WebView 的 IndexedDB；但系统 / WebView 升级、ROM 清理、部分机型的
+ * 「释放存储空间」会把 WebView 数据目录清空，导致 IndexedDB 读不到 → 旧数据丢失
+ * （这正是「更新后数据全没了」的根因：APK 是原地升级、文件目录本应保留，
+ * 偏偏 WebView 自己的 IndexedDB 被清空，db.js 误判为「首次」建了空库并覆盖回去）。
+ * 因此额外把 sql.js 全量快照镜像到 App 私有文件目录
+ * （/data/data/com.eunoia.app/files/，与应用共存、随 APK 原地升级保留，
+ * 且不受 WebView 数据清空影响）。
+ * 启动恢复顺序：IndexedDB → 文件 → 都为空才是真·首次。
+ * 全部读写包在 try/catch 与动态 import 里，即便插件缺失也回落为「仅 IndexedDB」，不回归。 */
+
+const NATIVE = typeof window !== 'undefined' && !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform())
+const DB_FILE_NAME = 'eunoia-db.sqlite'
+const FILE_THROTTLE = 15000
+let lastFileMirror = 0
+let fsMod = null
+
+async function ensureFS() {
+  if (fsMod !== null) return fsMod
+  try {
+    fsMod = await import('@capacitor/filesystem')
+  } catch (e) {
+    fsMod = false
+  }
+  return fsMod
+}
+
+function u8ToB64(bytes) {
+  let bin = ''
+  const chunk = 0x8000
+  for (let i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk))
+  }
+  return btoa(bin)
+}
+function b64ToU8(b64) {
+  const bin = atob(b64)
+  const out = new Uint8Array(bin.length)
+  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
+  return out
+}
+
+async function readDbFile() {
+  if (!NATIVE) return null
+  const fs = await ensureFS()
+  if (!fs || !fs.Filesystem) return null
+  try {
+    const r = await fs.Filesystem.readFile({ path: DB_FILE_NAME, directory: fs.Directory.Data })
+    if (r && r.data) return b64ToU8(r.data)
+  } catch (e) { /* 文件不存在 = 尚未镜像，忽略 */ }
+  return null
+}
+
+async function writeDbFile(bytes) {
+  if (!NATIVE) return false
+  const fs = await ensureFS()
+  if (!fs || !fs.Filesystem) return false
+  try {
+    await fs.Filesystem.writeFile({ path: DB_FILE_NAME, data: u8ToB64(bytes), directory: fs.Directory.Data, recursive: true })
+    return true
+  } catch (e) { return false }
+}
+
+/* 把当前库快照镜像到 App 私有文件（节流；force=true 无视节流，用于切后台/关闭前保底）。
+   注意 export() 会重建底层连接、令已编译语句失效，故导出后清缓存并恢复外键约束。 */
+function tryMirrorToFile(force, bytes) {
+  if (!NATIVE || !state.raw) return
+  const now = Date.now()
+  if (!force && now - lastFileMirror < FILE_THROTTLE) return
+  lastFileMirror = now
+  try {
+    const b = bytes || state.raw.export()
+    if (!bytes) {
+      stmtCache.clear()
+      try { state.raw.exec('PRAGMA foreign_keys = ON') } catch (e) {}
+    }
+    writeDbFile(b)
+  } catch (e) { /* 镜像失败不影响主流程 */ }
+}
+
 /* ── 参数规整：sql.js 的 bind 只接受 number / string / null / Uint8Array ── */
 
 function toBindable(v) {
@@ -140,6 +220,8 @@ async function flush() {
          这里显式恢复，保证导出不会悄悄削弱数据完整性约束。 */
       try { state.raw.exec('PRAGMA foreign_keys = ON') } catch (e) { /* ignore */ }
       await idbPut(IDB_KEY, bytes)
+      // 额外镜像一份到 App 私有文件（扛 WebView/系统升级清掉 IndexedDB 的情况）
+      tryMirrorToFile(false, bytes)
       state.lastBytes = bytes.byteLength
       savedSeq = ver
       state.dirty = dirtySeq !== savedSeq
@@ -170,11 +252,17 @@ export async function flushNow() {
 }
 
 if (typeof window !== 'undefined') {
-  // 切到后台/关闭页面前尽力落盘（debounce 之外的保险）
+  // 切到后台/关闭页面前尽力落盘（debounce 之外的保险），并把快照保底镜像到 App 私有文件
   window.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') flush()
+    if (document.visibilityState === 'hidden') {
+      flush()
+      if (state.raw && state.inTx === 0) tryMirrorToFile(true)
+    }
   })
-  window.addEventListener('pagehide', () => flush())
+  window.addEventListener('pagehide', () => {
+    flush()
+    if (state.raw && state.inTx === 0) tryMirrorToFile(true)
+  })
 }
 
 /* ── better-sqlite3 风格门面 ── */
@@ -313,8 +401,15 @@ export async function initDb() {
   setDbProgress(45)
   const saved = await idbGet(IDB_KEY)
   setDbProgress(65)
-  const fresh = !saved || !saved.byteLength
-  state.raw = fresh ? new SQL.Database() : new SQL.Database(new Uint8Array(saved))
+  let fresh = !saved || !saved.byteLength
+  let bytes = fresh ? null : saved
+  let fromFile = false
+  if (fresh) {
+    // IndexedDB 空：尝试从 App 私有文件恢复（扛 WebView/系统升级清掉 IndexedDB 的情况）
+    const fb = await readDbFile()
+    if (fb && fb.byteLength) { bytes = fb; fresh = false; fromFile = true }
+  }
+  state.raw = fresh ? new SQL.Database() : new SQL.Database(new Uint8Array(bytes))
   state.raw.exec('PRAGMA foreign_keys = ON')
   if (fresh) {
     // 首次打开：建表
@@ -327,10 +422,20 @@ export async function initDb() {
     // 首次打开：种子数据（默认联系人 TA、字卡分组、塔罗牌库、全局设置）
     runSeed()
     markDirty()
-    await flush()
+    await flushNow() // 落 IndexedDB + 镜像到文件
     console.log('[db] 首次初始化：建表 + migrate + 种子数据完成')
   } else {
-    console.log('[db] 已从 IndexedDB 恢复本地数据')
+    // 恢复自文件：把数据写回 IndexedDB，避免以后每次启动都走文件恢复
+    if (fromFile) {
+      const b = state.raw.export()
+      try { stmtCache.clear(); state.raw.exec('PRAGMA foreign_keys = ON') } catch (e) {}
+      try { await idbPut(IDB_KEY, b) } catch (e) {}
+      tryMirrorToFile(true, b)
+    } else {
+      // 恢复自 IndexedDB：补一份文件镜像，保证二者一致
+      tryMirrorToFile(true)
+    }
+    console.log('[db] 已从' + (fromFile ? '本地文件' : 'IndexedDB') + '恢复本地数据')
   }
   setDbProgress(100)
   return db
