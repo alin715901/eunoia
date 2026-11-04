@@ -57,6 +57,9 @@
     <!-- 全局歌词页：独立于路由，全屏覆盖 -->
     <MusicLyrics />
 
+    <!-- 应用内自更新进度浮层：下载 APK 进度 + 引导系统安装 -->
+    <UpdateProgress />
+
     <!-- 全局「有新版本」提示条：自动更新关闭（套壳 APK 默认）时，探测到新版本
          只通知不强制重刷，用户点一下才刷新——避免白屏卡死与反复重刷 -->
     <Transition name="up-banner">
@@ -79,6 +82,7 @@ import NoticeDialog from '@/components/common/NoticeDialog.vue'
 import CallOverlay from '@/components/chat/CallOverlay.vue'
 import MusicFloat from '@/components/music/MusicFloat.vue'
 import MusicLyrics from '@/components/music/MusicLyrics.vue'
+import UpdateProgress from '@/components/common/UpdateProgress.vue'
 import { connect, disconnect } from '@/composables/useSSE'
 import { useAutoUpdate } from '@/composables/useAutoUpdate'
 import { requestNotificationPermission, notificationPermissionState } from '@/composables/useNotification'

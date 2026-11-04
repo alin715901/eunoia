@@ -1,6 +1,6 @@
 import { isNativePlatform } from '@/composables/useLocalNotification'
 import { confirmDialog } from '@/utils/dialog'
-import { openExternal } from '@/utils/openExternal'
+import { startUpdate } from '@/composables/useUpdater'
 import { APP_VERSION } from '@/utils/version'
 
 // 仓库（与 git remote 一致）。CI 把每次构建的 APK 发布到该仓库的 Releases。
@@ -102,19 +102,11 @@ export async function promptReleaseIfNeeded() {
   if (r.status !== 'update') return r
   const ok = await confirmDialog({
     title: '发现新版本',
-    text: `已有新版本 ${r.tag} 可用。\n是否前往更新？\n（选「暂不更新」将继续使用当前版本 ${APP_VERSION}）`,
+    text: `已有新版本 ${r.tag} 可用。\n是否前往更新？`,
     okText: '前往更新',
     cancelText: '暂不更新'
   })
-  if (ok) openReleaseDownload(r.apkUrl || r.htmlUrl)
+  if (ok) startUpdate(r.apkUrl || r.htmlUrl)
   else ignoreRelease(r.tag)
   return r
-}
-
-/* 打开浏览器/下载器前往下载：原生走应用内浏览器（不冲掉应用），网页走新标签页。 */
-export function openReleaseDownload(url) {
-  if (!url) return
-  openExternal(url).catch(() => {
-    try { window.location.href = url } catch (e2) { /* ignore */ }
-  })
 }

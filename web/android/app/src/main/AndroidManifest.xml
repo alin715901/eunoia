@@ -48,4 +48,6 @@
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
     <!-- 引导关闭电池优化，避免被系统杀后台导致闹钟失效（代码中可主动请求） -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- 应用内自更新：下载 APK 后拉起系统安装器（Android 8+ 必需此权限，否则安装器拒绝） -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 </manifest>
