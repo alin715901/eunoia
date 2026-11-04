@@ -175,9 +175,10 @@ export function connect() {
       }
 
       // ── 系统通知 + 列表预览 + 角标刷新 ──
-      // 未免打扰 + 全局开启 → 始终弹系统通知，**前台且正在该会话也要弹**（用户明确要求）。
-      // 之前前台在该会话被 markRead 分支拦截、完全没调 notify——这正是「前台会话内不弹窗」的根因。
-      // 原生 APK：notify() 在系统层自行校验权限，前台（含正在该会话）/后台都弹；
+      // 未免打扰 + 全局开启 → 始终发系统通知；但「是否悬浮弹窗」由 notify() 按前后台决定：
+      //   前台（正在用 App）→ 只进通知栏、不悬浮打断；
+      //   后台 / 离开 App → 悬浮窗直接弹出。
+      //   （满足用户要求：在应用内不弹系统弹窗、切到后台才弹。）
       // Web/PWA：保留旧行为（仅页面非聚焦 + 已授权时弹），避免前台重复打扰。
       if (!muted) {
         const last = (messages || []).slice(-1)[0]
@@ -200,7 +201,7 @@ export function connect() {
           }
         }
         const preview = last ? previewOf(last) : ''
-        // 原生：前台（含正在该会话）/后台都弹；Web：仅未聚焦弹
+        // 原生：始终发通知，但前台只进通知栏、后台才悬浮弹；Web：仅未聚焦弹
         if (inc > 0 && notifyOn && permOk && (native || !isPageFocused()) && !quiet) {
           notify(title, { body: preview, route: `/contacts/${contactId}/chat` })
         }

@@ -3,7 +3,7 @@
 //   - Web / PWA / 普通浏览器：走标准 Notification API + Service Worker
 import { ref } from 'vue'
 import { LocalNotifications } from '@capacitor/local-notifications'
-import { isNativePlatform, ensureLocalNotificationPermission, MESSAGE_CHANNEL_ID } from '@/composables/useLocalNotification'
+import { isNativePlatform, ensureLocalNotificationPermission, foregroundMessageChannel } from '@/composables/useLocalNotification'
 
 export function notificationSupported() {
   // 原生壳里 WebView 没有 Notification API，但本地通知插件可用 → 视为「支持」
@@ -121,7 +121,9 @@ function withTimeout(promise, ms) {
 }
 
 export async function notify(title, options = {}) {
-  // 原生端：直接调系统本地通知（立即弹，无视前后台）
+  // 原生端：直接调系统本地通知。
+  // 渠道按前后台选择：前台只进通知栏（不打断操作），后台/离开才悬浮弹出——
+  // 即「在应用内不弹系统弹窗、切到后台才弹」。
   if (isNativePlatform()) {
     try {
       const { route, body, contactId } = options
@@ -137,7 +139,7 @@ export async function notify(title, options = {}) {
             id,
             title,
             body: body || '',
-            channelId: MESSAGE_CHANNEL_ID,
+            channelId: foregroundMessageChannel(),
             extra
           }
         ]

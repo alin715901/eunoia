@@ -19,21 +19,39 @@ export function isNativePlatform() {
   }
 }
 
-/* 高重要性通知渠道：安卓 8+ 只有 HIGH(4) 才会以「悬浮通知」直接弹在屏幕顶部，
-   插件默认渠道是 DEFAULT(3)（只进通知栏、需下拉才能看到）。
-   渠道一旦创建重要性就不可改（安卓规定），故单独建一个 messages 渠道，
-   所有消息通知都走它，既解决「只在通知栏不弹」的问题，前台会话内也照样悬浮弹出。 */
+/* 两个消息渠道（安卓 8+ 渠道重要性一旦创建就不可改，故用两个渠道分别承载两种行为）：
+   - MESSAGE_CHANNEL_ID('messages')：HIGH(4) 重要性 → 悬浮通知直接弹在屏幕顶部（离开 App 时用）。
+   - MESSAGE_CHANNEL_SILENT_ID('messages_fg')：DEFAULT(3) 重要性 → 只进通知栏、不悬浮弹窗（在 App 内时用，
+     不打断当前操作，但仍保留一条可下拉查看的通知）。 */
 export const MESSAGE_CHANNEL_ID = 'messages'
+export const MESSAGE_CHANNEL_SILENT_ID = 'messages_fg'
+
+/* 按「App 是否在前台」选择消息渠道：
+   - 前台（正在用 App）：返回 messages_fg（DEFAULT）→ 不弹悬浮窗，只在通知栏留一条；
+   - 后台 / 离开：返回 messages（HIGH）→ 悬浮窗直接弹出。
+   这样满足「前台不弹系统弹窗、只进通知栏；切到后台才弹系统弹窗」。 */
+export function foregroundMessageChannel() {
+  return isAppActive() ? MESSAGE_CHANNEL_SILENT_ID : MESSAGE_CHANNEL_ID
+}
 
 export async function ensureNotificationChannel() {
   if (!isNativePlatform()) return
   try {
+    // 后台/离开用的高重要性渠道（悬浮弹出）
     await LocalNotifications.createChannel({
       id: MESSAGE_CHANNEL_ID,
       name: '消息',
-      description: '联系人消息与主动消息提醒',
+      description: '联系人消息与主动消息提醒（离开应用时悬浮弹出）',
       importance: 4, // IMPORTANCE_HIGH → 悬浮通知直接弹出
       vibration: true
+    })
+    // 前台用的普通重要性渠道（只进通知栏、不悬浮）
+    await LocalNotifications.createChannel({
+      id: MESSAGE_CHANNEL_SILENT_ID,
+      name: '消息（应用内）',
+      description: '在应用内时仅存入通知栏、不悬浮打断',
+      importance: 3, // IMPORTANCE_DEFAULT → 只进通知栏，无悬浮窗
+      vibration: false
     })
   } catch (e) {
     console.warn('[ln] 创建通知渠道失败', e)
@@ -103,8 +121,8 @@ export async function scheduleProactiveNotification({ contactId, title, body, at
   }
 }
 
-/* 主动消息被实时生成 → 立即弹系统通知（前台与后台都弹，
-   与实时回复一致：用户明确要求无论前后台都要系统弹窗）。返回是否弹了。 */
+/* 主动消息被实时生成 → 立即弹系统通知。
+   渠道按前后台选择：前台只进通知栏（不打断），后台/离开才悬浮弹出。 */
 export async function fireImmediateNotification({ contactId, title, body }) {
   if (!isNativePlatform()) return false
   try {
@@ -114,7 +132,7 @@ export async function fireImmediateNotification({ contactId, title, body }) {
           id: 200000 + Number(contactId),
           title: title || '新消息',
           body: body || '给你发来了一条消息',
-          channelId: MESSAGE_CHANNEL_ID,
+          channelId: foregroundMessageChannel(),
           extra: { contactId: String(contactId) }
         }
       ]
