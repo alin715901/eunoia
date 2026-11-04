@@ -472,8 +472,27 @@ export const useMusicStore = defineStore('music', {
             songTitle: inv.songTitle, songArtist: inv.songArtist, songCover: inv.songCover
           }
           this._startListenClock()
+          /* 接受即切换到对方邀请的那首歌并开始播放（用户刚点「一起听」，手势有效可自动播放） */
+          this._playInvitedSong(inv)
         }
       this.incomingListen = null
+    },
+    /* 接受对方邀请后：切换到对方邀请的那首歌并开始播放。
+       优先在本机曲库里找真实歌曲对象（含音频/源），找不到则用邀请元数据 + 后端音频地址兜底。 */
+    _playInvitedSong(inv) {
+      const id = Number(inv?.songId ?? inv?.song_id)
+      if (!id) return
+      let song = (this.songs || []).find((s) => s.id === id) || null
+      if (!song) {
+        song = {
+          id,
+          title: inv.songTitle || inv.song_title || '未知歌曲',
+          artist: inv.songArtist || inv.song_artist || '',
+          cover: inv.songCover || inv.song_cover || '',
+          audio: streamUrl(id)
+        }
+      }
+      if (song) this.playSong(song)
     },
     async endListenSession() {
       const s = this.listenSession
@@ -575,6 +594,7 @@ export const useMusicStore = defineStore('music', {
           contactName: inv.contact_name || '对方',
           contactAvatar: inv.contact_avatar || '',
           myAvatar: inv.my_avatar || '',
+          songId: inv.song_id ?? inv.songId,
           songTitle: inv.song_title || '', songArtist: inv.song_artist || '', songCover: inv.song_cover || ''
         }
         toast.pushToast({
@@ -649,6 +669,7 @@ export const useMusicStore = defineStore('music', {
           this.incomingListen = {
             id: theirs.id, contactId: theirs.contact_id, contactName: theirs.contact_name || '对方',
             contactAvatar: theirs.contact_avatar || '', myAvatar: theirs.my_avatar || '',
+            songId: theirs.song_id,
             songTitle: theirs.song_title, songArtist: theirs.song_artist, songCover: theirs.song_cover
           }
         }
