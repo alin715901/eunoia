@@ -170,6 +170,7 @@ import {
 } from '@/api/settings'
 import { fmtBackupTime, backupScopeText, backupTotalRows, backupFeatureSummary } from '@/utils/backupInfo'
 import { BACKUP_FORMAT } from '@/local/services/backup.service'
+import { exportJsonFile } from '@/utils/exportFile'
 import { confirmDialog } from '@/utils/dialog'
 import { useNotificationsStore } from '@/stores/notifications'
 
@@ -249,17 +250,12 @@ function downloadBackup(data) {
   if (!data || typeof data !== 'object' || data.format !== BACKUP_FORMAT || !data.tables) {
     throw new Error('备份数据生成失败，请重试')
   }
-  const blob = new Blob([JSON.stringify(data)], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
   const d = new Date()
   const pad = (n) => String(n).padStart(2, '0')
-  a.href = url
-  a.download = `eunoia-backup-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.json`
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  setTimeout(() => URL.revokeObjectURL(url), 2000)
+  const filename = `eunoia-backup-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.json`
+  // 经原生落盘到系统「下载」目录（Android WebView 不支持 <a download> 写文件），
+  // 并返回可见位置，UI 据此明确告知用户文件去哪了。
+  return exportJsonFile(filename, JSON.stringify(data))
 }
 
 /* 全部导出：无需选择，直接下载 */
@@ -267,8 +263,8 @@ async function exportAll() {
   try {
     /* buildBackup 同步返回；await 防御底层若改成 async 时 Promise 被
        JSON.stringify 成 {} 的历史 bug（导出空文件不可用） */
-    downloadBackup(await buildBackup({ type: 'full' }))
-    toast.pushToast({ title: '已导出备份文件' })
+    const location = await downloadBackup(await buildBackup({ type: 'full' }))
+    toast.pushToast({ title: '已导出备份文件', text: '已保存到 ' + location })
   } catch (e) {
     toast.pushToast({ title: '导出失败', text: e.message })
   }
@@ -281,10 +277,10 @@ async function doExport(scope) {
         ? { type: 'feature', features: picked.value.features }
         : { type: 'contacts', contacts: picked.value.contacts }
     )
-    downloadBackup(data)
+    const location = await downloadBackup(data)
     if (scope === 'feature') featureOpen.value = false
     else contactsOpen.value = false
-    toast.pushToast({ title: '已导出备份文件' })
+    toast.pushToast({ title: '已导出备份文件', text: '已保存到 ' + location })
   } catch (e) {
     toast.pushToast({ title: '导出失败', text: e.message })
   }

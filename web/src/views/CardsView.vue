@@ -435,6 +435,7 @@ const vSquareGrid = {
 }
 import * as cardsApi from '@/api/cards'
 import { compressImage } from '@/utils/image'
+import { exportJsonFile } from '@/utils/exportFile'
 
 const props = defineProps({
   contactId: { type: [String, Number], default: null }
@@ -1314,13 +1315,10 @@ function buildExportData(pickedGroups, ungroupedCards) {
   return data
 }
 function downloadJson(data, filename) {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  a.click()
-  URL.revokeObjectURL(url)
+  // 经共享工具落盘：原生壳走系统「下载」目录（Android WebView 不支持 <a download>），网页版走浏览器下载
+  exportJsonFile(filename, JSON.stringify(data, null, 2))
+    .then((r) => { if (r && r.location) toast.pushToast({ title: '已导出字卡库', text: '已保存到 ' + r.location }) })
+    .catch((e) => toast.pushToast({ title: '导出失败', text: e && e.message ? e.message : '导出失败' }))
 }
 /* 按分组导出：仅导出勾选的分组 */
 function doExportGroups() {
