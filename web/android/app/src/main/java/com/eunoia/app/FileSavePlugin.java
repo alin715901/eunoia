@@ -106,14 +106,15 @@ public class FileSavePlugin extends Plugin {
             currentOut.flush();
             currentOut.close();
             currentOut = null;
-            String location = writeToDownloads(currentFilename, currentFile);
+            String savedName = currentFilename; // 先捕获，避免下方置空后丢失文件名
+            String location = writeToDownloads(savedName, currentFile);
             //noinspection ResultOfMethodCallIgnored
             currentFile.delete();
             currentFile = null;
             currentFilename = null;
             JSObject r = new JSObject();
             r.put("saved", true);
-            r.put("location", location != null ? location : ("下载/" + filename));
+            r.put("location", location != null ? location : ("下载/" + savedName));
             call.resolve(r);
         } catch (Exception e) {
             call.reject("保存失败：" + msg(e));
