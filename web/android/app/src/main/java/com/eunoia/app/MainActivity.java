@@ -13,6 +13,7 @@ public class MainActivity extends BridgeActivity {
         // 插件进不了初始化流程，JS 侧永远拿不到 "Updater"，调用即报
         // "Updater plugin is not implemented on android"（且无进度条）。
         registerPlugin(UpdaterPlugin.class);
+        registerPlugin(FileSavePlugin.class);
         super.onCreate(savedInstanceState);
     }
 }
