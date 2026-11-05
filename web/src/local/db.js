@@ -147,7 +147,7 @@ function toBindable(v) {
   }
 }
 
-const state = { raw: null, dirty: false, flushing: false, timer: null, lastBytes: 0, inTx: 0, flushPromise: null }
+const state = { raw: null, dirty: false, flushing: false, timer: null, lastBytes: 0, inTx: 0, flushPromise: null, importing: false, pendingFlush: false }
 /* 写入版本号：每次写操作 ++dirtySeq，落盘成功后记 savedSeq。
    用于判断「导出快照之后是否又发生了新写入」——
    早先的实现用布尔 dirty 标记，await idbPut() 期间的新写入会被
@@ -172,6 +172,10 @@ function getStmt(sql) {
 function markDirty() {
   state.dirty = true
   dirtySeq++
+  /* 导入进行中：不排 debounce 落盘。导入会把整库撑大，自动 flush 会导出整个
+     巨大库、长时间阻塞主线程 → 触发 ANR 卡退。落盘推迟到 importBackup 结束
+     后的 flushNow 一次性完成。 */
+  if (state.importing) return
   if (state.timer) return
   state.timer = setTimeout(() => {
     state.timer = null
@@ -195,6 +199,12 @@ async function flush() {
     if (!state.timer) {
       state.timer = setTimeout(() => { state.timer = null; flush() }, 400)
     }
+    return
+  }
+  if (state.importing) {
+    /* 导入进行中（批间 inTx 已归零）：抑制自动落盘，避免导出被撑大的整库
+       阻塞主线程。由 importBackup 结束后复位 importing 时统一 flush。 */
+    state.pendingFlush = true
     return
   }
   if (state.flushing) {
@@ -249,6 +259,13 @@ export async function flushNow() {
     console.error('[db] 立即落盘失败', e)
     return false
   }
+}
+
+/* 导入开关：导入期间抑制自动落盘（见 markDirty / flush 的 importing 分支）。
+   reset 时若仍有待落盘，立即补一次 flush。 */
+export function setImporting(v) {
+  state.importing = !!v
+  if (!v && (state.dirty || state.pendingFlush)) flush()
 }
 
 if (typeof window !== 'undefined') {

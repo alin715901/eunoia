@@ -1293,7 +1293,7 @@ export function buildBackup(scope) {
 // 若不等待写完 IndexedDB 就刷新页面，数据会停留在内存里没进库，
 // 表现为「提示导入成功、刷新后还是原来的数据」。
 export async function importBackup(payload, mode) {
-  const r = backupService.importBackup(payload, mode)
+  const r = await backupService.importBackup(payload, mode)
   const ok = await flushNow()
   if (!ok) throw new Error('数据已导入内存，但写入本地数据库失败，请重试或检查浏览器存储空间')
   return r

@@ -5,7 +5,7 @@
  * 关联数据自动带入：板块导出时会把引用到的联系人 / 字卡 / 歌曲 / 聊天记录等
  * 一并收进 ref 表，导入时 ref 表只做 INSERT OR IGNORE 或同名匹配，保证自洽。
  */
-import db from '../db'
+import db, { setImporting } from '../db'
 import { CARE_TEXTS_KEY } from '../../utils/careTexts'
 
 const FORMAT = 'eunoia-backup'
@@ -336,11 +336,11 @@ function matchSong(row) {
   return hit ? hit.id : null
 }
 
-/* 覆盖模式：先删后灌 */
-function applyOverwrite(tables, known, refTables, scope) {
+/* 覆盖模式：先删后灌（删除 / 插入均分批，批间让出主线程，避免长阻塞） */
+async function applyOverwrite(tables, known, refTables, scope) {
   const type = (scope && scope.type) || 'full'
   if (type === 'full') {
-    for (const t of known) db.prepare(`DELETE FROM ${t}`).run()
+    for (const t of known) await batchDelete(t, null)
   } else if (type === 'feature') {
     const plain = new Set()
     const modSets = new Map()
@@ -354,53 +354,59 @@ function applyOverwrite(tables, known, refTables, scope) {
       }
     }
     for (const t of known) {
-      if (plain.has(t)) db.prepare(`DELETE FROM ${t}`).run()
-      else if (modSets.has(t)) db.prepare(`DELETE FROM ${t} WHERE module IN (${modIN(modSets.get(t))})`).run()
+      if (plain.has(t)) await batchDelete(t, null)
+      else if (modSets.has(t)) await batchDelete(t, `module IN (${modIN(modSets.get(t))})`)
     }
   } else if (type === 'contacts') {
     const ids = (scope.contacts || []).map(Number).filter((n) => Number.isFinite(n) && n > 0)
-    if (ids.length) scopedDelete(ids)
+    if (ids.length) await scopedDelete(ids)
   }
   const inserted = {}
   for (const t of known) {
     const rows = tables[t]
     if (!rows || !rows.length) continue
-    inserted[t] = insertRows(t, rows, refTables.has(t))
+    inserted[t] = await insertChunked(t, rows, refTables.has(t))
   }
   return inserted
 }
 
-/* 按联系人分区删除（外键已关，不走级联，全部手动删） */
-function scopedDelete(ids) {
+/* 按联系人分区删除（外键已关，不走级联，全部手动删）。
+   每条 DELETE 后让出主线程，避免该联系人数据量大时阻塞 UI 线程。 */
+async function scopedDelete(ids) {
   const IN = `(${ids.join(',')})`
-  const run = (sql) => { try { db.prepare(sql).run() } catch (e) { /* 表不存在则跳过 */ } }
-  run(`DELETE FROM moment_interactions WHERE contact_id IN ${IN} OR moment_id IN (SELECT id FROM moments WHERE contact_id IN ${IN} OR author_contact_id IN ${IN})`)
-  run(`DELETE FROM moments WHERE contact_id IN ${IN} OR author_contact_id IN ${IN}`)
-  run(`DELETE FROM companion_invites WHERE contact_id IN ${IN}`)
-  run(`DELETE FROM listen_together WHERE contact_id IN ${IN}`)
-  run(`DELETE FROM cinema_together WHERE contact_id IN ${IN}`)
-  run(`DELETE FROM song_favs WHERE contact_id IN ${IN}`)
-  run(`DELETE FROM letters WHERE contact_id IN ${IN}`)
-  run(`DELETE FROM app_items WHERE contact_id IN ${IN}`)
-  run(`DELETE FROM cards WHERE owner_contact_id IN ${IN} OR group_id IN (SELECT id FROM card_groups WHERE owner_contact_id IN ${IN})`)
-  run(`DELETE FROM card_groups WHERE owner_contact_id IN ${IN}`)
-  run(`DELETE FROM contact_members WHERE group_id IN ${IN} OR member_id IN ${IN}`)
-  run(`DELETE FROM group_member_settings WHERE group_id IN ${IN} OR member_id IN ${IN}`)
-  run(`DELETE FROM chat_messages WHERE contact_id IN ${IN}`)
-  run(`DELETE FROM favorites WHERE contact_id IN ${IN}`)
-  run(`DELETE FROM divinations WHERE contact_id IN ${IN}`)
-  run(`DELETE FROM anniversaries WHERE contact_id IN ${IN}`)
-  run(`DELETE FROM proactive_jobs WHERE contact_id IN ${IN}`)
-  run(`DELETE FROM contact_settings WHERE contact_id IN ${IN}`)
-  run(`DELETE FROM contact_desktop WHERE contact_id IN ${IN}`)
-  run(`DELETE FROM wallets WHERE contact_id IN ${IN}`)
-  run(`DELETE FROM contacts WHERE id IN ${IN}`)
+  const stmts = [
+    `DELETE FROM moment_interactions WHERE contact_id IN ${IN} OR moment_id IN (SELECT id FROM moments WHERE contact_id IN ${IN} OR author_contact_id IN ${IN})`,
+    `DELETE FROM moments WHERE contact_id IN ${IN} OR author_contact_id IN ${IN}`,
+    `DELETE FROM companion_invites WHERE contact_id IN ${IN}`,
+    `DELETE FROM listen_together WHERE contact_id IN ${IN}`,
+    `DELETE FROM cinema_together WHERE contact_id IN ${IN}`,
+    `DELETE FROM song_favs WHERE contact_id IN ${IN}`,
+    `DELETE FROM letters WHERE contact_id IN ${IN}`,
+    `DELETE FROM app_items WHERE contact_id IN ${IN}`,
+    `DELETE FROM cards WHERE owner_contact_id IN ${IN} OR group_id IN (SELECT id FROM card_groups WHERE owner_contact_id IN ${IN})`,
+    `DELETE FROM card_groups WHERE owner_contact_id IN ${IN}`,
+    `DELETE FROM contact_members WHERE group_id IN ${IN} OR member_id IN ${IN}`,
+    `DELETE FROM group_member_settings WHERE group_id IN ${IN} OR member_id IN ${IN}`,
+    `DELETE FROM chat_messages WHERE contact_id IN ${IN}`,
+    `DELETE FROM favorites WHERE contact_id IN ${IN}`,
+    `DELETE FROM divinations WHERE contact_id IN ${IN}`,
+    `DELETE FROM anniversaries WHERE contact_id IN ${IN}`,
+    `DELETE FROM proactive_jobs WHERE contact_id IN ${IN}`,
+    `DELETE FROM contact_settings WHERE contact_id IN ${IN}`,
+    `DELETE FROM contact_desktop WHERE contact_id IN ${IN}`,
+    `DELETE FROM wallets WHERE contact_id IN ${IN}`,
+    `DELETE FROM contacts WHERE id IN ${IN}`
+  ]
+  for (const sql of stmts) {
+    try { db.prepare(sql).run() } catch (e) { /* 表不存在则跳过 */ }
+    await yieldToMain()
+  }
 }
 
-/* 合并模式：id 重映射 + 同名归并 */
-function applyMerge(tables, known, refTables) {
-  /* pass 1：为新 id 建映射；联系人按「类型+名字」、歌曲按「来源+ID」匹配本地已有行，
-   * 匹配上则复用本地 id 且不插入（避免同一个人 / 同一首歌被复制一份） */
+/* 合并模式：id 重映射 + 同名归并。
+ * pass1 先建映射（同步，不写库，仅遍历备份行）；pass2 分批插入，
+ * 每 IMPORT_CHUNK 行一个事务、批间让出主线程，避免长阻塞导致 ANR 卡退。 */
+async function applyMerge(tables, known, refTables) {
   const maps = {}
   const skip = new Set()
   for (const t of known) {
@@ -422,7 +428,6 @@ function applyMerge(tables, known, refTables) {
     }
     maps[t] = map
   }
-  /* pass 2：逐行转换外键并插入 */
   const inserted = {}
   for (const t of known) {
     const rows = tables[t]
@@ -438,41 +443,70 @@ function applyMerge(tables, known, refTables) {
     if (t === 'global_settings') verb = 'INSERT OR REPLACE'
     else if (!pk || t === 'contact_settings' || t === 'contact_desktop' || t === 'wallets') verb = 'INSERT OR IGNORE'
     let n = 0
-    for (const row of rows) {
-      if (pk && skip.has(`${t}:${row[pk]}`)) continue
-      const cols = localCols(t)
-      const refs = REFS[t] || {}
-      const useCols = Object.keys(row).filter((c) => cols.has(c))
-      const sql = `${verb} INTO ${t} (${useCols.join(',')}) VALUES (${useCols.map(() => '?').join(',')})`
-      const vals = useCols.map((c) => {
-        /* 主键列换成新分配的 id（跳过同名归并的行） */
-        if (pk && c === pk) {
-          const mapped = maps[t].get(row[pk])
-          return mapped === undefined ? toBind(row[c]) : mapped
+    for (let i = 0; i < rows.length; i += IMPORT_CHUNK) {
+      const piece = rows.slice(i, i + IMPORT_CHUNK)
+      db.transaction(() => {
+        const cols = localCols(t)
+        const refs = REFS[t] || {}
+        const useCols = Object.keys(piece[0]).filter((c) => cols.has(c))
+        const sql = `${verb} INTO ${t} (${useCols.join(',')}) VALUES (${useCols.map(() => '?').join(',')})`
+        const stmt = db.prepare(sql)
+        for (const row of piece) {
+          if (pk && skip.has(`${t}:${row[pk]}`)) continue
+          const vals = useCols.map((c) => {
+            if (pk && c === pk) {
+              const mapped = maps[t].get(row[pk])
+              return mapped === undefined ? toBind(row[c]) : mapped
+            }
+            const target = refs[c]
+            let v = row[c]
+            if (target !== undefined) {
+              if (v === null || v === undefined || v === '') return null
+              const nv = Number(v)
+              if (target === 'contacts') {
+                return maps.contacts && maps.contacts.has(nv) ? maps.contacts.get(nv) : zeroOrNull(t, c)
+              }
+              if (maps[target] && maps[target].has(nv)) return maps[target].get(nv)
+              return zeroOrNull(t, c) // 目标表不在备份里 → 断开引用
+            }
+            return toBind(v === undefined ? null : v)
+          })
+          stmt.run(...vals)
+          n++
         }
-        const target = refs[c]
-        let v = row[c]
-        if (target !== undefined) {
-          if (v === null || v === undefined || v === '') return null
-          const nv = Number(v)
-          if (target === 'contacts') {
-            return maps.contacts && maps.contacts.has(nv) ? maps.contacts.get(nv) : zeroOrNull(t, c)
-          }
-          if (maps[target] && maps[target].has(nv)) return maps[target].get(nv)
-          return zeroOrNull(t, c) // 目标表不在备份里 → 断开引用
-        }
-        return toBind(v === undefined ? null : v)
-      })
-      db.prepare(sql).run(...vals)
-      n++
+      })()
+      await yieldToMain()
     }
     if (n) inserted[t] = n
   }
   return inserted
 }
 
-/* 通用插行（覆盖模式用，保留原 id） */
-function insertRows(t, rows, orIgnore) {
+/* ── 分批导入辅助 ──
+ * 导入动辄上万行（聊天记录 + 图片 / 音频 dataURL），若一次性同步写进单个事务，
+ * 主线程会被长时间阻塞 → Android WebView 触发 ANR（应用无响应被系统杀掉，
+ * 即用户看到的「导入过程中卡退、重新进入也进不去」）。
+ * 改为：每 IMPORT_CHUNK 行一个事务，批间让出主线程，让事件循环得以处理输入。 */
+const IMPORT_CHUNK = 1000
+
+/* setTimeout(0) 让出主线程：当前宏任务结束、事件循环处理 pending 输入。
+   WebView 长任务拆分的通用做法，能重置 ANR 计时、避免被系统杀掉。 */
+function yieldToMain() {
+  return new Promise((resolve) => setTimeout(resolve, 0))
+}
+
+/* 分批删除：每 5000 行一批，批间让出主线程，避免大表 DELETE 阻塞主线程。 */
+async function batchDelete(t, where) {
+  const cond = where ? `WHERE ${where}` : ''
+  for (;;) {
+    const r = db.prepare(`DELETE FROM ${t} ${cond} AND rowid IN (SELECT rowid FROM ${t} ${cond} LIMIT 5000)`).run()
+    if (!r.changes) break
+    await yieldToMain()
+  }
+}
+
+/* 分批插入（覆盖模式用，保留原 id）：每 IMPORT_CHUNK 行一个事务，批间让出主线程。 */
+async function insertChunked(t, rows, orIgnore) {
   const cols = localCols(t)
   const useCols = Object.keys(rows[0]).filter((c) => cols.has(c))
   if (!useCols.length) fail(`表 ${t} 没有可导入的字段`)
@@ -483,13 +517,17 @@ function insertRows(t, rows, orIgnore) {
   }
   const verb = orIgnore ? 'INSERT OR IGNORE' : 'INSERT'
   const sql = `${verb} INTO ${t} (${useCols.join(',')}) VALUES (${useCols.map(() => '?').join(',')})`
-  const stmt = db.prepare(sql)
-  let n = 0
-  for (const r of rows) {
-    stmt.run(...useCols.map((c) => toBind(r[c] === undefined ? null : r[c])))
-    n++
+  for (let i = 0; i < rows.length; i += IMPORT_CHUNK) {
+    const piece = rows.slice(i, i + IMPORT_CHUNK)
+    db.transaction(() => {
+      const stmt = db.prepare(sql)
+      for (const r of piece) {
+        stmt.run(...useCols.map((c) => toBind(r[c] === undefined ? null : r[c])))
+      }
+    })()
+    await yieldToMain()
   }
-  return n
+  return rows.length
 }
 
 /* 修正自增序列，避免后续新建记录撞已恢复的 id */
@@ -506,7 +544,7 @@ function fixSequences(tables) {
 }
 
 /* mode: 'merge' | 'overwrite' */
-export function importBackup(payload, mode) {
+export async function importBackup(payload, mode) {
   const err = validateBackup(payload)
   if (err) fail(err)
   const m = mode === 'overwrite' ? 'overwrite' : 'merge'
@@ -517,18 +555,19 @@ export function importBackup(payload, mode) {
   const unknown = names.filter((t) => !known.includes(t))
   if (!known.length) fail('备份里没有可导入的数据表')
   colCache.clear()
+  /* 导入期间抑制自动落盘：导入会把整库撑大，自动 flush 会导出整个巨大库、
+     长时间阻塞主线程 → 触发 ANR。落盘推迟到此处结束后由调用方 flushNow 统一完成。 */
+  setImporting(true)
   db.exec('PRAGMA foreign_keys = OFF')
+  let inserted
   try {
-    const run = db.transaction(() => {
-      const inserted = m === 'overwrite'
-        ? applyOverwrite(tables, known, refTables, payload.scope)
-        : applyMerge(tables, known, refTables)
-      fixSequences(known)
-      return inserted
-    })
-    var inserted = run()
+    inserted = m === 'overwrite'
+      ? await applyOverwrite(tables, known, refTables, payload.scope)
+      : await applyMerge(tables, known, refTables)
+    fixSequences(known)
   } finally {
     db.exec('PRAGMA foreign_keys = ON')
+    setImporting(false) // 复位：若有未落盘数据，setImporting 内部会补一次 flush
   }
   /* 写回关怀文案（见 buildBackup）：有该字段才覆盖本地，局部导出备份不含它则不动 */
   if (payload.care_texts) {
