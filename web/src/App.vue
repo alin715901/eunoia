@@ -22,12 +22,13 @@
         </Transition>
       </div>
     </div>
-    <!-- 数据库初始化失败：错误页 + 重试 -->
+    <!-- 数据库初始化失败：错误页 + 重试（显示真实异常，不再一概归咎网络） -->
     <div v-else-if="dbErr" class="frame boot-frame">
       <div class="screen boot-screen">
         <BootBrand />
         <div class="boot-text boot-err-text">数据初始化失败</div>
-        <div class="boot-tip">可能是网络不佳导致组件加载失败，请重试</div>
+        <div class="boot-tip boot-err-detail" v-if="dbErrMsg">{{ dbErrMsg }}</div>
+        <div class="boot-tip">可先点「重新加载」重试；若多次失败，多为本地数据库损坏，可重装应用后再从「云端备份」恢复。</div>
         <button class="boot-retry" @click="reload">重新加载</button>
       </div>
     </div>
@@ -67,6 +68,16 @@
         <span class="up-dot" />发现新版本，点击更新
       </div>
     </Transition>
+
+    <!-- 启动告警（如本地数据损坏已重建空白库）：置顶持久提示 + 去云端恢复 -->
+    <Transition name="up-banner">
+      <div v-if="showInitWarning" class="init-warn">
+        <span class="init-warn-dot" />
+        <span class="init-warn-text">{{ showInitWarning }}</span>
+        <button class="init-warn-btn" @click="goCloudRestore">去云端恢复</button>
+        <button class="init-warn-close" @click="showInitWarning = ''" aria-label="关闭">×</button>
+      </div>
+    </Transition>
   </div>
 </template>
 
@@ -89,7 +100,7 @@ import { requestNotificationPermission, notificationPermissionState } from '@/co
 import { ensureLocalNotificationPermission, initLocalNotifications, isNativePlatform } from '@/composables/useLocalNotification'
 import { checkReleaseUpdate, promptRelease, isReleaseAutoCheck } from '@/composables/useReleaseUpdate'
 import router from '@/router'
-import { dbReady, onDbProgress } from '@/local/db'
+import { dbReady, onDbProgress, getInitWarning } from '@/local/db'
 import { useSettingsStore } from '@/stores/settings'
 import { useContactsStore } from '@/stores/contacts'
 import { useCompanionStore } from '@/stores/companion'
@@ -105,6 +116,10 @@ const desktop = useDesktopStore()
 /* 数据库就绪状态：就绪前显示骨架屏，失败显示错误页 */
 const dbOk = ref(false)
 const dbErr = ref(false)
+/* 启动错误页展示的真实异常信息（不再一律归咎「网络不佳」） */
+const dbErrMsg = ref('')
+/* 启动期非致命告警（如「本地数据损坏已重建空白库」），由 db.js 透传，置顶提示 */
+const showInitWarning = ref('')
 
 /* 开屏进度条：db 初始化各阶段 0-100，就绪后满格并稍停片刻再进入应用。
    起步值 52 = index.html 静态骨架动画的终点：挂载瞬间无缝衔接静态条，
@@ -245,10 +260,15 @@ dbReady
   .then(() => {
     /* 先让进度条平滑涨到 100%，画满瞬间才进入应用 */
     bootProgress.value = 100
+    /* 若启动时发生了非致命告警（如本地数据损坏已重建空白库），置顶提示用户从云端恢复 */
+    const warn = getInitWarning()
+    if (warn) showInitWarning.value = warn
     whenBarFull(enterApp)
   })
   .catch((e) => {
     console.error('[app] 数据库初始化失败', e)
+    /* 展示真实异常，便于判断是 wasm 加载 / 数据库损坏 / 迁移出错，而非一律说「网络不佳」 */
+    dbErrMsg.value = e && e.message ? e.message : String(e)
     dbErr.value = true
   })
 
@@ -298,6 +318,12 @@ async function boot() {
 /* 数据初始化失败页的「重新加载」按钮 */
 function reload() {
   location.reload()
+}
+
+/* 启动告警「去云端恢复」：跳到设置页（云端备份入口） */
+function goCloudRestore() {
+  showInitWarning.value = ''
+  try { router.push('/settings') } catch (e) { /* ignore */ }
 }
 
 onMounted(() => {
@@ -515,6 +541,18 @@ html[data-theme='dark'] .boot-screen {
   text-align: center;
   line-height: 1.7;
 }
+/* 错误页真实异常明细：等宽、可折行，便于看清是 wasm 加载 / 库损坏 / 迁移出错 */
+.boot-err-detail {
+  max-width: 300px;
+  color: #b4543a;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 11px;
+  line-height: 1.6;
+  word-break: break-word;
+  background: color-mix(in oklab, #b4543a 8%, transparent);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
 .boot-retry {
   margin-top: 6px;
   border: none;
@@ -559,4 +597,61 @@ html[data-theme='dark'] .boot-screen {
 }
 .up-banner-enter-active, .up-banner-leave-active { transition: all .25s ease; }
 .up-banner-enter-from, .up-banner-leave-to { opacity: 0; transform: translate(-50%, 12px); }
+
+/* 启动告警（本地数据损坏已重建空白库等）：顶部红条 + 去云端恢复 + 关闭 */
+.init-warn {
+  position: fixed;
+  left: 50%;
+  top: 14px;
+  transform: translateX(-50%);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: min(680px, 94vw);
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: #fff4f1;
+  color: #b4543a;
+  font-size: 13px;
+  line-height: 1.5;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, .16);
+  border: 1px solid color-mix(in oklab, #b4543a 30%, transparent);
+}
+html[data-theme='dark'] .init-warn {
+  background: #3a201b;
+  color: #ffb4a1;
+  border-color: color-mix(in oklab, #ffb4a1 30%, transparent);
+}
+.init-warn-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e0563a;
+  animation: up-pulse 1.4s ease-in-out infinite;
+}
+.init-warn-text { flex: 1 1 auto; min-width: 0; }
+.init-warn-btn {
+  flex: 0 0 auto;
+  border: none;
+  background: #e0563a;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 6px 14px;
+  cursor: pointer;
+}
+.init-warn-close {
+  flex: 0 0 auto;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+  opacity: .7;
+}
+.init-warn-close:hover { opacity: 1; }
 </style>

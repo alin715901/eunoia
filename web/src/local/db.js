@@ -446,73 +446,121 @@ function setDbProgress(p) {
   dbProgressSubs.forEach((f) => f(p))
 }
 
+/* 启动期间的非致命告警（如「本地数据损坏已重建空白库」），由 App.vue 在 dbReady
+   之后读取并提示用户，避免被「数据初始化失败」掩盖真实原因。null 表示一切正常。 */
+let lastInitWarning = null
+export function getInitWarning() { return lastInitWarning }
+
+/* 建一个全新的空库（建表 + 种子 + 落盘 + 镜像），供「真·首次」与「损坏兜底重建」复用。 */
+async function buildFreshDb(SQL) {
+  state.raw = new SQL.Database()
+  state.raw.exec('PRAGMA foreign_keys = ON')
+  state.raw.exec(schemaSql)
+  runSeed()
+  markDirty()
+  await flushNow() // 落 IndexedDB + 镜像到文件
+  tryMirrorToFile(true) // 延迟镜像，不阻塞启动
+  console.log('[db] 已重建空白库（建表 + migrate + 种子数据完成）')
+}
+
 export async function initDb() {
+  lastInitWarning = null
   setDbProgress(8)
   const SQL = await loadSqlJs()
   setDbProgress(45)
-  let fresh = false
-  let fromFile = false
+  /* 优先 IndexedDB，其次 App 私有文件；两者任取其一即可启动。
+     读取出错（瞬时）一律当作「本来源无可用数据」，往下走另一来源；
+     只有真正拿到字节却解析失败才算「损坏」。 */
   let bytes = null
-  /* 优先 IndexedDB，其次 App 私有文件；两者任取其一即可启动 */
+  let fromFile = false
+  let hadData = false
   try {
     const saved = await idbGet(IDB_KEY)
-    if (saved && saved.byteLength) bytes = saved
+    if (saved && saved.byteLength) { bytes = saved; hadData = true }
   } catch (e) { /* IndexedDB 读取异常不致命，往下走文件来源 */ }
   if (!bytes) {
-    const fb = await readDbFile()
-    if (fb && fb.byteLength) { bytes = fb; fromFile = true }
-  }
-  if (!bytes) {
-    // 真·首次：建空库
-    fresh = true
-    state.raw = new SQL.Database()
-    state.raw.exec('PRAGMA foreign_keys = ON')
-  } else {
     try {
-      state.raw = new SQL.Database(new Uint8Array(bytes))
-      state.raw.exec('PRAGMA foreign_keys = ON')
+      const fb = await readDbFile()
+      if (fb && fb.byteLength) { bytes = fb; fromFile = true; hadData = true }
+    } catch (e) { /* 文件读取异常不致命 */ }
+  }
+
+  /* 尝试打开拿到的字节；主来源坏则尝试备用来源兜底，避免「进不去应用」死循环。
+     注意：只把「拿到字节但解析失败」判为损坏，瞬时不读不算（避免误删好数据）。 */
+  let loadedRaw = null
+  if (bytes) {
+    try {
+      const t = new SQL.Database(new Uint8Array(bytes))
+      t.exec('PRAGMA foreign_keys = ON')
+      loadedRaw = t
     } catch (e) {
-      /* 主来源解析失败（库文件损坏）：尝试另一个来源兜底，避免「进不去应用」死循环 */
-      console.error('[db] 主来源加载失败，尝试备用来源', e)
-      const alt = fromFile ? await idbGet(IDB_KEY) : await readDbFile()
+      console.error('[db] 主来源解析失败，尝试备用来源', e)
+      const alt = fromFile ? await idbGet(IDB_KEY) : await readDbFileSafe()
       if (alt && alt.byteLength) {
         try {
-          state.raw = new SQL.Database(new Uint8Array(alt))
-          state.raw.exec('PRAGMA foreign_keys = ON')
-          fromFile = !fromFile // 已切换来源
+          const t = new SQL.Database(new Uint8Array(alt))
+          t.exec('PRAGMA foreign_keys = ON')
+          loadedRaw = t
+          fromFile = !fromFile // 已切换到另一来源
         } catch (e2) {
-          throw new Error('所有来源的数据库均无法加载')
+          console.error('[db] 备用来源也解析失败', e2)
         }
-      } else {
-        throw new Error('数据库文件损坏且无可恢复来源')
       }
     }
   }
-  setDbProgress(82)
-  // 与服务器一致：每次启动都跑 migrate（幂等，补齐新表新列）
-  migrate()
-  if (fresh) {
-    // 首次打开：建表 + 种子数据（默认联系人 TA、字卡分组、塔罗牌库、全局设置）
-    state.raw.exec(schemaSql)
-    runSeed()
-    markDirty()
-    await flushNow() // 落 IndexedDB + 镜像到文件
-    console.log('[db] 首次初始化：建表 + migrate + 种子数据完成')
-  } else {
-    // 恢复自文件：把数据写回 IndexedDB，避免以后每次启动都走文件恢复
+
+  if (loadedRaw) {
+    state.raw = loadedRaw
+    setDbProgress(82)
+    /* 跑 migrate（幂等，补齐新表新列）。即便 migrate 抛错也尽量保留已加载的本地数据，
+       仅在告警里提示，不让结构迁移异常把用户挡在门外。 */
+    try {
+      migrate()
+    } catch (e) {
+      console.error('[db] migrate 出错（已尽量保留本地数据）', e)
+      lastInitWarning = '本地数据已加载，但结构升级时出错：' + (e && e.message ? e.message : e) + '。若部分功能异常，建议从「云端备份」恢复。'
+    }
+    // 同步双来源（延迟非阻塞），保证二者一致
     if (fromFile) {
       const b = state.raw.export()
       try { stmtCache.clear(); state.raw.exec('PRAGMA foreign_keys = ON') } catch (e) {}
       try { await idbPut(IDB_KEY, b) } catch (e) {}
-      tryMirrorToFile(true, b) // 延迟镜像，不阻塞启动
+      tryMirrorToFile(true, b)
     } else {
-      // 恢复自 IndexedDB：补一份文件镜像，保证二者一致（延迟，不阻塞启动）
       tryMirrorToFile(true)
     }
     console.log('[db] 已从' + (fromFile ? '本地文件' : 'IndexedDB') + '恢复本地数据')
+    setDbProgress(100)
+    return db
   }
+
+  /* ── 两份来源都拿不到 / 都损坏：绝不把用户永久关在门外 ──
+     若存在过数据（hadData）但都坏了，先把损坏字节存到侧车文件留作人工恢复，
+     再重建空白库，并给出明确告警（用户可从云端备份恢复）；
+     若本就无任何数据（真·首次），直接建空库、不告警。 */
+  console.error('[db] 本地数据不可用，重建空白库（hadData=' + hadData + '）')
+  if (hadData) {
+    try {
+      const bad = fromFile ? await idbGet(IDB_KEY) : await readDbFileSafe()
+      if (bad && bad.byteLength && NATIVE) {
+        const fs = await ensureFS()
+        if (fs && fs.Filesystem) {
+          try {
+            await fs.Filesystem.writeFile({ path: 'eunoia-db.corrupt', data: u8ToB64(bad), directory: fs.Directory.Data, recursive: true })
+          } catch (e) { /* ignore */ }
+        }
+      }
+    } catch (e) { /* ignore */ }
+    lastInitWarning = '本地数据文件已损坏且无法恢复，已为你重建一个空白账户。此前的数据无法自动找回——请尽快从「设置 → 云端备份 → 从云端恢复」恢复。'
+  }
+  await buildFreshDb(SQL)
   setDbProgress(100)
   return db
+}
+
+/* 读取文件镜像、忽略异常（兜底路径用，异常一律当作「无可用数据」） */
+async function readDbFileSafe() {
+  try { return await readDbFile() } catch (e) { return null }
 }
 
 /* 从持久化来源（IndexedDB → 文件镜像）重新读入并重建内存库，用于「导入失败回滚」：
