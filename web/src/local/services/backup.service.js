@@ -336,17 +336,17 @@ function matchSong(row) {
   return hit ? hit.id : null
 }
 
-/* 覆盖模式：先删后灌（删除 / 插入均分批，批间让出主线程，避免长阻塞） */
+/* 覆盖模式：先删后灌（删除 / 插入均分批，批间让出主线程，避免长阻塞）。
+   删除阶段的行数也计入进度总量，让进度条在「清理旧数据」阶段就有反馈。 */
 async function applyOverwrite(tables, known, refTables, scope, ctx) {
   const type = (scope && scope.type) || 'full'
-  if (type === 'full') {
-    for (const t of known) {
-      emitProgress(ctx, 'delete', `正在清理${LABELS[t] || t}…`)
-      await batchDelete(t, null)
-    }
-  } else if (type === 'feature') {
-    const plain = new Set()
-    const modSets = new Map()
+  const countRows = (t, extra) => {
+    try { return db.prepare(`SELECT COUNT(*) c FROM ${t}${extra ? ` WHERE ${extra}` : ''}`).get().c } catch (e) { return 0 }
+  }
+  let deleteTotal = 0
+  const plain = new Set()
+  const modSets = new Map()
+  if (type === 'feature') {
     for (const k of scope.features || []) {
       const f = BACKUP_FEATURES.find((x) => x.key === k)
       if (!f) continue
@@ -357,9 +357,25 @@ async function applyOverwrite(tables, known, refTables, scope, ctx) {
       }
     }
     for (const t of known) {
+      if (plain.has(t)) deleteTotal += countRows(t)
+      else if (modSets.has(t)) deleteTotal += countRows(t, `module IN (${modIN(modSets.get(t))})`)
+    }
+  } else if (type === 'full') {
+    for (const t of known) deleteTotal += countRows(t)
+  }
+  /* 把删除行数并入进度总量（联系人分区删除条数难精确预估，略，占比小） */
+  if (ctx) ctx.total += deleteTotal
+
+  if (type === 'full') {
+    for (const t of known) {
       emitProgress(ctx, 'delete', `正在清理${LABELS[t] || t}…`)
-      if (plain.has(t)) await batchDelete(t, null)
-      else if (modSets.has(t)) await batchDelete(t, `module IN (${modIN(modSets.get(t))})`)
+      await batchDelete(t, null, ctx)
+    }
+  } else if (type === 'feature') {
+    for (const t of known) {
+      emitProgress(ctx, 'delete', `正在清理${LABELS[t] || t}…`)
+      if (plain.has(t)) await batchDelete(t, null, ctx)
+      else if (modSets.has(t)) await batchDelete(t, `module IN (${modIN(modSets.get(t))})`, ctx)
     }
   } else if (type === 'contacts') {
     emitProgress(ctx, 'delete', '正在清理旧数据…')
@@ -514,12 +530,16 @@ function emitProgress(ctx, phase, label) {
   } catch (e) { /* 回调异常不应中断导入 */ }
 }
 
-/* 分批删除：每 5000 行一批，批间让出主线程，避免大表 DELETE 阻塞主线程。 */
-async function batchDelete(t, where) {
-  const cond = where ? `WHERE ${where}` : ''
+/* 分批删除：每 5000 行一批，批间让出主线程，避免大表 DELETE 阻塞主线程。
+   where 为空（null）表示删整表，SQL 不能拼出「WHERE  AND …」——必须先判空。 */
+async function batchDelete(t, where, ctx) {
+  const w = where ? ` WHERE ${where}` : ''
   for (;;) {
-    const r = db.prepare(`DELETE FROM ${t} ${cond} AND rowid IN (SELECT rowid FROM ${t} ${cond} LIMIT 5000)`).run()
+    const sel = `SELECT rowid FROM ${t}${w} LIMIT 5000`
+    const cond = where ? `(${where}) AND rowid IN (${sel})` : `rowid IN (${sel})`
+    const r = db.prepare(`DELETE FROM ${t} WHERE ${cond}`).run()
     if (!r.changes) break
+    if (ctx) { ctx.done += r.changes; emitProgress(ctx, 'delete', `正在清理${LABELS[t] || t}…`) }
     await yieldToMain()
   }
 }
