@@ -6,7 +6,7 @@
         <h3 class="up-h">应用更新</h3>
 
         <template v-if="status === 'downloading'">
-          <p class="up-sub">正在下载更新包，请保持应用在前台…</p>
+          <p class="up-sub">{{ stageText || '正在下载更新包，请保持应用在前台…' }}</p>
           <div class="up-track">
             <div v-if="progress >= 0" class="up-fill" :style="{ width: progress + '%' }"></div>
             <div v-else class="up-fill up-indeterminate"></div>
@@ -16,6 +16,7 @@
             <span v-else>下载中…</span>
             <span>{{ fmt(downloaded) }}<template v-if="total > 0"> / {{ fmt(total) }}</template></span>
           </div>
+          <p class="up-tip">若长时间无进展，多半是网络限制导致连不上更新服务器，可点右上角关闭后改用「前往手动更新」。</p>
         </template>
 
         <template v-else-if="status === 'installing'">
@@ -41,7 +42,7 @@
 <script setup>
 import { useUpdater, closeUpdateOverlay, retryUpdate, openManualUpdate } from '@/composables/useUpdater'
 
-const { visible, progress, status, errorMsg, downloaded, total } = useUpdater()
+const { visible, progress, stageText, status, errorMsg, downloaded, total } = useUpdater()
 
 function onClose() {
   closeUpdateOverlay()

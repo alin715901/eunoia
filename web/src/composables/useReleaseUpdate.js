@@ -67,14 +67,11 @@ async function fetchLatestRelease() {
     const tag = data.tag_name || ''
     const apk = (data.assets || []).find((a) => /\.apk$/i.test(a.name || ''))
     const apkUrl = apk ? apk.browser_download_url : ''
-    // 国内网络常无法直连 github.com 下载 APK：自动生成 GitHub 代理镜像作为兜底下载源。
-    // 原生 UpdaterPlugin 会依次尝试 主地址 → 镜像，任一成功即安装。
-    const apkMirrors = apkUrl
-      ? [
-          'https://ghproxy.net/' + apkUrl,
-          'https://gh-proxy.com/' + apkUrl
-        ]
-      : []
+    // 国内下载源：不再依赖已普遍失效的 ghproxy 公共镜像。
+    // 真正可用的国内通道由 useUpdater 的「通用 URL 代理」（本项目 Cloudflare Worker，
+    // ?url= 任意网址）提供——若用户部署并配置了该代理，原生端会优先走代理代拉 GitHub。
+    // 此处仅把直连地址交付，mirrors 留空（无代理时直连失败会快速报错并引导手动下载）。
+    const apkMirrors = []
     return {
       tag,
       apkUrl,

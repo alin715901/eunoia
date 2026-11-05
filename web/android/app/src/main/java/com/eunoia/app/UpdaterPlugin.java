@@ -15,6 +15,7 @@ import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.net.URLEncoder;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -22,9 +23,21 @@ import java.util.List;
  * 应用内自更新：下载 APK（带进度回调）+ 拉起系统安装器。
  * 不跳转浏览器，下载进度通过 "progress" 事件回传 JS 层显示。
  * 安装步骤由 Android 系统安装器接管（侧载 APK 的标准做法，不可静默替换）。
+ *
+ * 中国用户注意：GitHub 的 release 资产 CDN 在大陆常被墙，直连会长时间连不上。
+ * 故支持 proxy 参数：传入一个「通用 URL 代理」（如本项目已有的 Cloudflare Worker
+ * 音乐代理，形如 https://worker.xxx.workers.dev/?url=），插件会优先用
+ *   proxy + encodeURIComponent(真实地址)
+ * 让服务端代拉 GitHub，从而在国内也能正常下载。
  */
 @CapacitorPlugin(name = "Updater")
 public class UpdaterPlugin extends Plugin {
+
+    // 超时与上限（毫秒）：避免「连不上却空转十几分钟、进度永远 0%」。
+    private static final int CONNECT_TIMEOUT = 15000;   // 建立连接
+    private static final int FIRST_BYTE_TIMEOUT = 20000; // 首字节（连接成功但迟迟不下发）
+    private static final int READ_TIMEOUT = 30000;       // 后续每批读取
+    private static final int GLOBAL_CAP = 90000;         // 整体操作硬上限（约 90s 后直接报错）
 
     @PluginMethod()
     public void getNativeVersion(final PluginCall call) {
@@ -46,8 +59,16 @@ public class UpdaterPlugin extends Plugin {
             call.reject("missing url");
             return;
         }
-        // 可选镜像列表：主地址连不上时依次尝试，用于国内网络访问 GitHub 受限的场景。
-        // mirrors 为字符串数组，形如 ["https://ghproxy.net/https://github.com/...", ...]
+        // 可选代理：通用 URL 代理基址（结尾是否带 ? 都兼容）。国内直连 GitHub 失败时的兜底下载源。
+        String proxy = call.getString("proxy");
+        if (proxy != null) {
+            proxy = proxy.trim();
+            if (!proxy.isEmpty() && !proxy.endsWith("?") && !proxy.endsWith("&")
+                    && !proxy.contains("url=")) {
+                proxy = proxy + (proxy.contains("?") ? "&" : "?") + "url=";
+            }
+        }
+        // 候选主地址列表：主地址 + 镜像
         List<String> urls = new ArrayList<>();
         urls.add(url);
         try {
@@ -66,26 +87,53 @@ public class UpdaterPlugin extends Plugin {
         final File dir = getActivity().getExternalFilesDir(null);
         final File target = new File(dir, "eunoia-update.apk");
         final List<String> finalUrls = urls;
+        final String finalProxy = (proxy != null && !proxy.isEmpty()) ? proxy : null;
+        final long opStart = System.currentTimeMillis();
         new Thread(new Runnable() {
             @Override
             public void run() {
                 Exception lastErr = null;
                 for (String u : finalUrls) {
-                    try {
-                        downloadWithRetry(u, target, 2);
-                        install(target);
-                        JSObject ret = new JSObject();
-                        ret.put("status", "installed");
-                        call.resolve(ret);
+                    if (System.currentTimeMillis() - opStart > GLOBAL_CAP) {
+                        call.reject("下载超时：始终无法连接更新服务器。请检查网络后重试，或点「前往手动更新」在浏览器中下载安装");
                         return;
-                    } catch (final Exception e) {
-                        lastErr = e;
-                        // 该地址失败，继续尝试下一个镜像
+                    }
+                    // 候选顺序：先走代理（国内可达），再直连
+                    String[] candidates = (finalProxy != null)
+                            ? new String[]{ finalProxy + encode(u), u }
+                            : new String[]{ u };
+                    for (String c : candidates) {
+                        if (System.currentTimeMillis() - opStart > GLOBAL_CAP) {
+                            call.reject("下载超时：始终无法连接更新服务器。请检查网络后重试，或点「前往手动更新」在浏览器中下载安装");
+                            return;
+                        }
+                        try {
+                            boolean viaProxy = finalProxy != null && c.startsWith(finalProxy);
+                            notifyStage(viaProxy ? "正在通过代理下载更新包…" : "正在连接更新服务器…");
+                            download(c, target);
+                            install(target);
+                            JSObject ret = new JSObject();
+                            ret.put("status", "installed");
+                            call.resolve(ret);
+                            return;
+                        } catch (final Exception e) {
+                            lastErr = e;
+                            // 该候选失败，继续尝试下一个
+                        }
                     }
                 }
-                call.reject(lastErr != null ? lastErr.getMessage() : "download failed");
+                String detail = (lastErr != null && lastErr.getMessage() != null) ? lastErr.getMessage() : "未知错误";
+                call.reject("下载失败：" + detail + "。若网络受限，请点「前往手动更新」在浏览器中下载安装");
             }
         }).start();
+    }
+
+    private static String encode(String s) {
+        try {
+            return URLEncoder.encode(s, "UTF-8");
+        } catch (Exception e) {
+            return s;
+        }
     }
 
     private void download(String urlStr, File target) throws Exception {
@@ -101,8 +149,8 @@ public class UpdaterPlugin extends Plugin {
             conn.setRequestMethod("GET");
             conn.setRequestProperty("User-Agent", "EunoiaApp/Android");
             conn.setRequestProperty("Accept", "*/*");
-            conn.setConnectTimeout(30000);
-            conn.setReadTimeout(60000);
+            conn.setConnectTimeout(CONNECT_TIMEOUT);
+            conn.setReadTimeout(FIRST_BYTE_TIMEOUT); // 首字节超时短，连上却不下发就快速失败
             conn.connect();
             int code = conn.getResponseCode();
             if (code == HttpURLConnection.HTTP_MOVED_PERM
@@ -128,50 +176,43 @@ public class UpdaterPlugin extends Plugin {
         byte[] buf = new byte[16384];
         int len;
         long downloaded = 0;
+        boolean first = true;
         while ((len = in.read(buf)) > 0) {
+            if (first) {
+                first = false;
+                // 首字节已到：放宽后续读取超时，避免大文件正常传输被掐断
+                try { conn.setReadTimeout(READ_TIMEOUT); } catch (Exception ignore) { /* ignore */ }
+            }
             out.write(buf, 0, len);
             downloaded += len;
             if (total > 0) {
                 int pct = (int) (downloaded * 100 / total);
                 if (pct > 100) pct = 100;
-                notifyProgress(pct, downloaded, total);
+                notifyProgress(pct, downloaded, total, null);
             } else {
                 // 未知总大小：仍按已下载字节回传，便于界面显示进度（无百分比条）
-                notifyProgress(-1, downloaded, -1);
+                notifyProgress(-1, downloaded, -1, null);
             }
         }
         in.close();
         out.close();
         conn.disconnect();
-        notifyProgress(100, downloaded, total > 0 ? total : downloaded);
+        notifyProgress(100, downloaded, total > 0 ? total : downloaded, null);
     }
 
-    /* 带重试的下载：单个地址最多尝试 (retries+1) 次，失败后退避重试；全部失败抛出最后一次异常。 */
-    private void downloadWithRetry(String urlStr, File target, int retries) throws Exception {
-        Exception last = null;
-        for (int attempt = 0; attempt <= retries; attempt++) {
-            try {
-                download(urlStr, target);
-                return;
-            } catch (Exception e) {
-                last = e;
-                if (attempt < retries) {
-                    try { Thread.sleep(1000L * (attempt + 1)); } catch (InterruptedException ie) {
-                        Thread.currentThread().interrupt();
-                        break;
-                    }
-                }
-            }
-        }
-        throw last;
-    }
-
-    private void notifyProgress(int pct, long downloaded, long total) {
+    /* 进度回报：percent=-1 表示未知百分比（仅显示已下载字节）；stage 为阶段文案（可空）。 */
+    private void notifyProgress(int pct, long downloaded, long total, String stage) {
         JSObject p = new JSObject();
         p.put("percent", pct);
         p.put("downloaded", downloaded);
         p.put("total", total);
+        if (stage != null) p.put("stage", stage);
         notifyListeners("progress", p);
+    }
+
+    /* 仅回报阶段文案（如「正在连接更新服务器…」），让界面在等待时也有反馈，不像卡死。 */
+    private void notifyStage(String stage) {
+        notifyProgress(-1, 0, -1, stage);
     }
 
     private void install(final File apk) {

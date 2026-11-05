@@ -11,6 +11,7 @@ const Updater = registerPlugin('Updater')
 // 全局进度状态（供 UpdateProgress 浮层读取）
 const visible = ref(false)
 const progress = ref(0) // 0-100
+const stageText = ref('') // 阶段文案（正在连接…/正在通过代理下载…）
 const status = ref('idle') // idle | downloading | installing | error
 const errorMsg = ref('')
 const downloaded = ref(0)
@@ -22,8 +23,24 @@ let lastHtmlUrl = '' // 手动更新兜底用的 Releases 页面地址
 let lastMirrors = [] // 镜像直链列表（国内网络直连 GitHub 受限时的兜底下载源）
 let installTriggered = false // 已拉起系统安装器，等待用户回应用后校验是否装上新版
 
+/* 国内下载代理（可选）：
+   复用本项目已有的 Cloudflare Worker 通用代理（音乐代理那个，?url= 任意网址）。
+   若该 Worker 已部署且填到了「音乐 → 解析服务」或运行时配置 apkProxy/musicProxy，
+   则应用内更新会优先走代理服务端代拉 GitHub，大陆也能正常下载安装。
+   优先级：运行时配置 apkProxy → musicProxy → 构建环境变量 VITE_APK_PROXY。 */
+function resolveProxy() {
+  try {
+    const cfg = (typeof window !== 'undefined' && window.__EUNOIA_CONFIG__) || {}
+    const fromEnv = (import.meta.env && import.meta.env.VITE_APK_PROXY) || ''
+    const p = (cfg.apkProxy || cfg.musicProxy || fromEnv || '').trim()
+    return p
+  } catch (e) {
+    return ''
+  }
+}
+
 export function useUpdater() {
-  return { visible, progress, status, errorMsg, downloaded, total }
+  return { visible, progress, stageText, status, errorMsg, downloaded, total }
 }
 
 export function closeUpdateOverlay() {
@@ -31,7 +48,7 @@ export function closeUpdateOverlay() {
 }
 
 export async function retryUpdate() {
-  if (lastUrl) startUpdate(lastUrl, undefined, lastMirrors)
+  if (lastUrl) startUpdate(lastUrl, lastHtmlUrl, lastMirrors)
 }
 
 /* 自动更新失败时，跳转浏览器打开 Releases 页面手动下载（点击「前往手动更新」）。
@@ -45,7 +62,7 @@ export function openManualUpdate() {
   })
 }
 
-/* 安装器返回应用后：若已装上更高版本，刷新 WebView 加载新前端资源（即「重刷进入」） */
+/* 安装器返回应用后：若已装上更高版本，刷新 WebView 加载新前端资源（即「重刷进入」 */
 async function checkAndReloadIfUpdated() {
   try {
     const r = await Updater.getNativeVersion()
@@ -90,6 +107,7 @@ export async function startUpdate(apkUrl, htmlUrl, mirrors) {
 
   status.value = 'downloading'
   progress.value = 0
+  stageText.value = '正在连接更新服务器…'
   downloaded.value = 0
   total.value = 0
   errorMsg.value = ''
@@ -102,9 +120,11 @@ export async function startUpdate(apkUrl, htmlUrl, mirrors) {
         if (typeof e.percent === 'number') progress.value = e.percent
         if (typeof e.downloaded === 'number') downloaded.value = e.downloaded
         if (typeof e.total === 'number') total.value = e.total
+        if (typeof e.stage === 'string' && e.stage) stageText.value = e.stage
       })
     }
-    await Updater.downloadAndInstall({ url: lastUrl, mirrors: lastMirrors })
+    const proxy = resolveProxy()
+    await Updater.downloadAndInstall({ url: lastUrl, mirrors: lastMirrors, proxy })
     // 下载完成、已拉起系统安装器，剩下的交给系统
     installTriggered = true
     status.value = 'installing'

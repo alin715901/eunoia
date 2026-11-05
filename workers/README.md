@@ -70,3 +70,15 @@ GET /?url=<encodeURIComponent(目标URL)>
 ```bash
 npx wrangler deploy -c workers/wrangler.toml
 ```
+
+## 兼作「应用内更新」的国内下载代理（中国大陆用户必看）
+
+GitHub 的 release 资产 CDN 在中国大陆常被墙，App 内点「前往更新」会一直卡 0%、无法下载。
+本 Worker 是通用 URL 代理，可顺带代拉 GitHub 的 APK：
+
+- 部署好上面的 Worker 后，只要把它的地址填进「设置 → 音乐 → 解析服务」（即 `musicProxy`），
+  **应用内更新会自动复用同一个代理**（代码里 `apkProxy` 优先级高于 `musicProxy`，两者填其一即可）。
+- 也可单独配置：运行时 `config.js` 写 `window.__EUNOIA_CONFIG__ = { apkProxy: 'https://你的worker.workers.dev' }`，
+  或构建变量 `VITE_APK_PROXY`。
+- 配置后，App 会优先 `worker/?url=<github apk 直链>` 让服务端代拉，国内即可正常下载安装；
+  没配置则直连 GitHub，连不上会快速报错并提示「前往手动更新」（系统浏览器下载）。
