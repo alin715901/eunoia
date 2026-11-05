@@ -111,7 +111,7 @@ function fmt(bytes) {
   color: var(--text, #333);
 }
 .up-tip {
-  margin: -6px 0 14px;
+  margin: 12px 0 14px;
   font-size: 11.5px;
   line-height: 1.55;
   color: var(--text-soft, #999);

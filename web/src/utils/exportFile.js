@@ -10,6 +10,17 @@ const yieldToMain = () => new Promise((r) => setTimeout(r, 0))
 
 const MAX = 1024 * 1024 // 每块 ≤1MB
 
+/* 原生写入串行锁：beginFile →（多次）appendFile → finishFile 共用插件实例的 currentOut 字段。
+   若并发导出交错（如「全部导出」按钮被快速连点），一个流的 finishFile 把 currentOut 置空后，
+   另一个流的 appendFile 才到达，会报「未开始写入，请先调用 beginFile」。用 Promise 链把导出
+   串行化，后一个导出会等前一个彻底结束（finishFile 完成）后再从 beginFile 重新开始，彻底消除竞态。 */
+let writeToken = Promise.resolve()
+function serializeNativeWrite(task) {
+  const run = writeToken.then(task, task) // 无论上一个成功或失败，都执行本次导出
+  writeToken = run.then(() => {}, () => {}) // 隔离上一个任务的 rejection，避免击穿链
+  return run
+}
+
 /* 把一个字符串分块（每块 ≤1MB）追加写入原生，避免单次 bridge 序列化巨大字符串。 */
 async function writeChunks(str) {
   for (let i = 0; i < str.length; i += MAX) {
@@ -49,13 +60,16 @@ async function streamBackupChunks(backup, emit) {
   await emit('}')
 }
 
-/* 原生壳：流式生成 + 分块写原生「下载」目录，避免主线程 ANR 卡退。 */
-async function streamBackupToNative(filename, backup) {
-  await FileSave.beginFile({ filename })
-  await streamBackupChunks(backup, writeChunks)
-  const r = await FileSave.finishFile({})
-  if (r && r.saved) return { ok: true, location: r.location || '下载/' + filename }
-  throw new Error('保存到下载目录失败')
+/* 原生壳：流式生成 + 分块写原生「下载」目录，避免主线程 ANR 卡退。
+   整体用 serializeNativeWrite 串行化，避免并发导出交错导致 currentOut 竞态。 */
+function streamBackupToNative(filename, backup) {
+  return serializeNativeWrite(async () => {
+    await FileSave.beginFile({ filename })
+    await streamBackupChunks(backup, writeChunks)
+    const r = await FileSave.finishFile({})
+    if (r && r.saved) return { ok: true, location: r.location || '下载/' + filename }
+    throw new Error('保存到下载目录失败')
+  })
 }
 
 /* 导出 JSON 备份文件。
@@ -88,12 +102,14 @@ export async function exportJsonFile(filename, content) {
     return { ok: true, location: filename }
   }
   if (typeof content === 'string') {
-    // 已是完整 JSON 字符串：直接分块写入原生
-    await FileSave.beginFile({ filename })
-    await writeChunks(content)
-    const r = await FileSave.finishFile({})
-    if (r && r.saved) return { ok: true, location: r.location || '下载/' + filename }
-    throw new Error('保存到下载目录失败')
+    // 已是完整 JSON 字符串：直接分块写入原生（同样串行化，避免竞态）
+    return serializeNativeWrite(async () => {
+      await FileSave.beginFile({ filename })
+      await writeChunks(content)
+      const r = await FileSave.finishFile({})
+      if (r && r.saved) return { ok: true, location: r.location || '下载/' + filename }
+      throw new Error('保存到下载目录失败')
+    })
   }
   // 对象：流式生成，避免一次性 stringify 巨型对象阻塞主线程
   return streamBackupToNative(filename, content)
