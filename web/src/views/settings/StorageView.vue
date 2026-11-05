@@ -253,9 +253,9 @@ function downloadBackup(data) {
   const d = new Date()
   const pad = (n) => String(n).padStart(2, '0')
   const filename = `eunoia-backup-${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}-${pad(d.getHours())}${pad(d.getMinutes())}.json`
-  // 经原生落盘到系统「下载」目录（Android WebView 不支持 <a download> 写文件），
-  // 并返回可见位置，UI 据此明确告知用户文件去哪了。
-  return exportJsonFile(filename, JSON.stringify(data))
+  // 直接传对象给 exportJsonFile：原生壳走「流式生成 + 分块写入」，不一次性 stringify 巨对象，
+  // 避免主线程被占住触发 ANR 卡退；并返回可见位置，UI 据此明确告知用户文件去哪了。
+  return exportJsonFile(filename, data)
 }
 
 /* 全部导出：无需选择，直接下载 */
