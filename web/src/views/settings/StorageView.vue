@@ -106,7 +106,7 @@
     </Modal>
 
     <!-- 导入弹窗 -->
-    <Modal :show="importOpen" title="导入数据" width="360px" @close="importOpen = false">
+    <Modal :show="importOpen" title="导入数据" width="360px" @close="onImportClose">
       <template v-if="parseError">
         <p class="imp-err">{{ parseError }}</p>
       </template>
@@ -127,7 +127,18 @@
           </div>
           <p v-if="!featSummary.features.length && !featSummary.others.length" class="exp-empty">（空备份）</p>
         </div>
-        <div class="imp-modes">
+        <!-- 导入中：显示进度（正在导入什么 + 进度条），替代下方按钮 -->
+        <div v-if="importing" class="imp-progress">
+          <div class="imp-prog-label">{{ progress.label || '正在导入…' }}</div>
+          <div class="imp-prog-bar" :class="{ indeterminate: importIndeterminate }">
+            <span :style="{ width: importPercent + '%' }"></span>
+          </div>
+          <div class="imp-prog-count" v-if="!importIndeterminate">
+            {{ progress.done }} / {{ progress.total }} 条（{{ importPercent }}%）
+          </div>
+          <div class="imp-prog-count" v-else>数据较多时可能需要几分钟，请保持应用在前台…</div>
+        </div>
+        <div v-else class="imp-modes">
           <button class="imp-btn" :disabled="importing" @click="doImport('merge')">
             <b>合并到当前数据</b>
             <span>保留当前数据，备份内容作为新条目加入；同名联系人、同源歌曲会自动归并到已有条目</span>
@@ -139,7 +150,7 @@
         </div>
       </template>
       <template #footer>
-        <button class="mini-btn" @click="importOpen = false">取消</button>
+        <button class="mini-btn" :disabled="importing" @click="importOpen = false">取消</button>
       </template>
     </Modal>
   </div>
@@ -285,6 +296,20 @@ const importOpen = ref(false)
 const importing = ref(false)
 const pending = ref(null)
 const parseError = ref('')
+/* 导入进度：{ phase, label, done, total }，由 importBackup 的 onProgress 回调实时填充，
+   用于展示「正在导入 X」与进度条（避免导入中界面无反馈、不知是否在跑）。 */
+const progress = ref({ phase: 'prepare', label: '', done: 0, total: 0 })
+const importPercent = computed(() => {
+  const p = progress.value
+  if (!p.total) return 0
+  return Math.min(100, Math.max(0, Math.round((p.done / p.total) * 100)))
+})
+/* 清理 / 保存阶段无总行数，进度条走不确定动画 */
+const importIndeterminate = computed(() => {
+  const p = progress.value
+  return p.phase !== 'import' || !p.total
+})
+function onImportProgress(p) { progress.value = p }
 
 function pickFile() {
   if (fileEl.value) fileEl.value.click()
@@ -335,8 +360,12 @@ const featSummary = computed(() => backupFeatureSummary(pending.value))
 async function doImport(mode) {
   if (!pending.value || importing.value) return
   importing.value = true
+  progress.value = { phase: 'prepare', label: '正在准备数据…', done: 0, total: 0 }
   try {
-    const r = await importBackup(pending.value, mode)
+    const r = await importBackup(pending.value, mode, onImportProgress)
+    /* 显示「导入完成」短暂停顿，让用户明确看到成功，再刷新页面 */
+    progress.value = { phase: 'done', label: '导入完成 ✓', done: 0, total: 0 }
+    await new Promise((resolve) => setTimeout(resolve, 800))
     importOpen.value = false
     toast.pushToast({ title: mode === 'overwrite' ? '已覆盖导入' : '已合并导入', text: r.text })
     /* importBackup 内部已等待写盘完成（await flushNow），这里只需给一点刷新缓冲 */
@@ -356,6 +385,12 @@ async function askOverwrite() {
     okText: '覆盖'
   })
   if (ok) doImport('overwrite')
+}
+
+/* 导入中不允许关闭弹窗（避免误触打断导入） */
+function onImportClose() {
+  if (importing.value) return
+  importOpen.value = false
 }
 
 /* ─────────── 重置数据 ─────────── */
@@ -483,4 +518,27 @@ onMounted(load)
 .imp-btn.danger { border-color: #c0576b; }
 .imp-btn.danger b { color: #c0576b; }
 .imp-btn:disabled { opacity: 0.6; }
+
+/* 导入进度：取代按钮区，显示「正在导入 X」+ 进度条 + 计数 */
+.imp-progress { display: flex; flex-direction: column; gap: 10px; padding: 4px 2px; }
+.imp-prog-label { font-size: 14px; font-weight: 600; color: var(--text); text-align: center; }
+.imp-prog-bar {
+  position: relative; height: 8px; border-radius: 5px;
+  background: var(--bg-soft); overflow: hidden; border: 1px solid var(--border);
+}
+.imp-prog-bar > span {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 0;
+  background: var(--accent); border-radius: 5px;
+  transition: width 0.2s ease;
+}
+/* 清理 / 保存阶段无总行数：走不确定的流动动画，表示「在跑但不知百分比」 */
+.imp-prog-bar.indeterminate > span {
+  width: 35% !important; transition: none;
+  animation: imp-indet 1.1s ease-in-out infinite;
+}
+@keyframes imp-indet {
+  0% { left: -35%; }
+  100% { left: 100%; }
+}
+.imp-prog-count { font-size: 12px; color: var(--text-soft); text-align: center; }
 </style>

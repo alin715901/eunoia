@@ -337,9 +337,10 @@ function matchSong(row) {
 }
 
 /* 覆盖模式：先删后灌（删除 / 插入均分批，批间让出主线程，避免长阻塞） */
-async function applyOverwrite(tables, known, refTables, scope) {
+async function applyOverwrite(tables, known, refTables, scope, ctx) {
   const type = (scope && scope.type) || 'full'
   if (type === 'full') {
+    emitProgress(ctx, 'delete', '正在清理旧数据…')
     for (const t of known) await batchDelete(t, null)
   } else if (type === 'feature') {
     const plain = new Set()
@@ -353,11 +354,13 @@ async function applyOverwrite(tables, known, refTables, scope) {
         for (const m of mods) modSets.get(t).add(m)
       }
     }
+    emitProgress(ctx, 'delete', '正在清理旧数据…')
     for (const t of known) {
       if (plain.has(t)) await batchDelete(t, null)
       else if (modSets.has(t)) await batchDelete(t, `module IN (${modIN(modSets.get(t))})`)
     }
   } else if (type === 'contacts') {
+    emitProgress(ctx, 'delete', '正在清理旧数据…')
     const ids = (scope.contacts || []).map(Number).filter((n) => Number.isFinite(n) && n > 0)
     if (ids.length) await scopedDelete(ids)
   }
@@ -365,7 +368,7 @@ async function applyOverwrite(tables, known, refTables, scope) {
   for (const t of known) {
     const rows = tables[t]
     if (!rows || !rows.length) continue
-    inserted[t] = await insertChunked(t, rows, refTables.has(t))
+    inserted[t] = await insertChunked(t, rows, refTables.has(t), ctx)
   }
   return inserted
 }
@@ -406,7 +409,7 @@ async function scopedDelete(ids) {
 /* 合并模式：id 重映射 + 同名归并。
  * pass1 先建映射（同步，不写库，仅遍历备份行）；pass2 分批插入，
  * 每 IMPORT_CHUNK 行一个事务、批间让出主线程，避免长阻塞导致 ANR 卡退。 */
-async function applyMerge(tables, known, refTables) {
+async function applyMerge(tables, known, refTables, ctx) {
   const maps = {}
   const skip = new Set()
   for (const t of known) {
@@ -432,6 +435,7 @@ async function applyMerge(tables, known, refTables) {
   for (const t of known) {
     const rows = tables[t]
     if (!rows.length) continue
+    emitProgress(ctx, 'import', `正在导入${LABELS[t] || t}…`)
     const pk = ID_TABLES[t]
     /* 合并时的写入策略：
      * global_settings 同 key 覆盖值；
@@ -475,6 +479,10 @@ async function applyMerge(tables, known, refTables) {
           n++
         }
       })()
+      if (ctx) {
+        ctx.done += piece.length
+        emitProgress(ctx, 'import', `正在导入${LABELS[t] || t}…`)
+      }
       await yieldToMain()
     }
     if (n) inserted[t] = n
@@ -495,6 +503,15 @@ function yieldToMain() {
   return new Promise((resolve) => setTimeout(resolve, 0))
 }
 
+/* 导入进度回报：把当前阶段 / 正在导入的表中文名 / 已完成行数回传给 UI。
+   onProgress 由调用方传入（UI 用于展示进度条与「正在导入 X」文案）。 */
+function emitProgress(ctx, phase, label) {
+  if (!ctx || !ctx.onProgress) return
+  try {
+    ctx.onProgress({ phase, label, done: ctx.done, total: ctx.total })
+  } catch (e) { /* 回调异常不应中断导入 */ }
+}
+
 /* 分批删除：每 5000 行一批，批间让出主线程，避免大表 DELETE 阻塞主线程。 */
 async function batchDelete(t, where) {
   const cond = where ? `WHERE ${where}` : ''
@@ -506,7 +523,7 @@ async function batchDelete(t, where) {
 }
 
 /* 分批插入（覆盖模式用，保留原 id）：每 IMPORT_CHUNK 行一个事务，批间让出主线程。 */
-async function insertChunked(t, rows, orIgnore) {
+async function insertChunked(t, rows, orIgnore, ctx) {
   const cols = localCols(t)
   const useCols = Object.keys(rows[0]).filter((c) => cols.has(c))
   if (!useCols.length) fail(`表 ${t} 没有可导入的字段`)
@@ -517,6 +534,7 @@ async function insertChunked(t, rows, orIgnore) {
   }
   const verb = orIgnore ? 'INSERT OR IGNORE' : 'INSERT'
   const sql = `${verb} INTO ${t} (${useCols.join(',')}) VALUES (${useCols.map(() => '?').join(',')})`
+  emitProgress(ctx, 'import', `正在导入${LABELS[t] || t}…`)
   for (let i = 0; i < rows.length; i += IMPORT_CHUNK) {
     const piece = rows.slice(i, i + IMPORT_CHUNK)
     db.transaction(() => {
@@ -525,6 +543,10 @@ async function insertChunked(t, rows, orIgnore) {
         stmt.run(...useCols.map((c) => toBind(r[c] === undefined ? null : r[c])))
       }
     })()
+    if (ctx) {
+      ctx.done += piece.length
+      emitProgress(ctx, 'import', `正在导入${LABELS[t] || t}…`)
+    }
     await yieldToMain()
   }
   return rows.length
@@ -543,8 +565,11 @@ function fixSequences(tables) {
   }
 }
 
-/* mode: 'merge' | 'overwrite' */
-export async function importBackup(payload, mode) {
+/* mode: 'merge' | 'overwrite'
+   onProgress({ phase, label, done, total })：导入进度回调，phase 取值
+   'prepare'(准备) | 'delete'(清理旧数据) | 'import'(正在导入某表) | 'save'(落盘保存)。
+   UI 用它展示进度条与「正在导入 X」文案；传 null 则静默（无 UI 场景）。 */
+export async function importBackup(payload, mode, onProgress) {
   const err = validateBackup(payload)
   if (err) fail(err)
   const m = mode === 'overwrite' ? 'overwrite' : 'merge'
@@ -554,6 +579,13 @@ export async function importBackup(payload, mode) {
   const known = names.filter((t) => /^[a-z_]+$/.test(t) && tableExists(t))
   const unknown = names.filter((t) => !known.includes(t))
   if (!known.length) fail('备份里没有可导入的数据表')
+  /* 总行数（用于进度百分比）。合并模式可能有同名归并跳过，但占比极小，忽略不影响观感。 */
+  let total = 0
+  for (const t of known) {
+    const rows = tables[t]
+    if (rows && rows.length) total += rows.length
+  }
+  const ctx = { onProgress, total, done: 0 }
   colCache.clear()
   /* 导入期间抑制自动落盘：导入会把整库撑大，自动 flush 会导出整个巨大库、
      长时间阻塞主线程 → 触发 ANR。落盘推迟到此处结束后由调用方 flushNow 统一完成。 */
@@ -561,9 +593,10 @@ export async function importBackup(payload, mode) {
   db.exec('PRAGMA foreign_keys = OFF')
   let inserted
   try {
+    emitProgress(ctx, 'prepare', '正在准备数据…')
     inserted = m === 'overwrite'
-      ? await applyOverwrite(tables, known, refTables, payload.scope)
-      : await applyMerge(tables, known, refTables)
+      ? await applyOverwrite(tables, known, refTables, payload.scope, ctx)
+      : await applyMerge(tables, known, refTables, ctx)
     fixSequences(known)
   } finally {
     db.exec('PRAGMA foreign_keys = ON')

@@ -1292,10 +1292,19 @@ export function buildBackup(scope) {
 // 导入后立即强制落盘（await flushNow）：备份动辄几十上百 MB，
 // 若不等待写完 IndexedDB 就刷新页面，数据会停留在内存里没进库，
 // 表现为「提示导入成功、刷新后还是原来的数据」。
-export async function importBackup(payload, mode) {
-  const r = await backupService.importBackup(payload, mode)
+export async function importBackup(payload, mode, onProgress) {
+  if (onProgress) {
+    try { onProgress({ phase: 'prepare', label: '正在准备数据…', done: 0, total: 0 }) } catch (e) { /* ignore */ }
+  }
+  const r = await backupService.importBackup(payload, mode, onProgress)
+  if (onProgress) {
+    try { onProgress({ phase: 'save', label: '正在保存数据…', done: 0, total: 0 }) } catch (e) { /* ignore */ }
+  }
   const ok = await flushNow()
   if (!ok) throw new Error('数据已导入内存，但写入本地数据库失败，请重试或检查浏览器存储空间')
+  if (onProgress) {
+    try { onProgress({ phase: 'done', label: '导入完成', done: 0, total: 0 }) } catch (e) { /* ignore */ }
+  }
   return r
 }
 
@@ -1586,9 +1595,9 @@ export async function markOssCloudSeen() {
 /* 从云端恢复梦角数据到本浏览器（下载备份 JSON → 按 mode 导入）。
    mode: 'merge' 合并到当前数据 / 'overwrite' 覆盖（默认，兼容旧调用方）。
    成功后调用方需整页刷新，让全部 store/服务基于新数据重新初始化 */
-export async function restoreFromOss(mode = 'overwrite') {
+export async function restoreFromOss(mode = 'overwrite', onProgress) {
   const payload = await downloadOssBackup()
-  return importBackup(payload, mode)
+  return importBackup(payload, mode, onProgress)
 }
 
 export async function getBadges() {

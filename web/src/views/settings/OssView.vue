@@ -80,7 +80,7 @@
     </div>
 
     <!-- 从云端恢复：下载备份后选择合并 / 覆盖 -->
-    <Modal :show="restoreOpen" title="从云端恢复" width="360px" @close="restoreOpen = false">
+    <Modal :show="restoreOpen" title="从云端恢复" width="360px" @close="onRestoreClose">
       <template v-if="restorePending">
         <div class="imp-info">
           <div class="imp-row"><span>备份时间</span><span>{{ fmtTime(restorePending.created_at) }}</span></div>
@@ -97,7 +97,18 @@
           </div>
           <p v-if="!featSummary.features.length && !featSummary.others.length" class="exp-empty">（空备份）</p>
         </div>
-        <div class="imp-modes">
+        <!-- 导入中：显示进度（正在导入什么 + 进度条），替代下方按钮 -->
+        <div v-if="importing" class="imp-progress">
+          <div class="imp-prog-label">{{ progress.label || '正在导入…' }}</div>
+          <div class="imp-prog-bar" :class="{ indeterminate: importIndeterminate }">
+            <span :style="{ width: importPercent + '%' }"></span>
+          </div>
+          <div class="imp-prog-count" v-if="!importIndeterminate">
+            {{ progress.done }} / {{ progress.total }} 条（{{ importPercent }}%）
+          </div>
+          <div class="imp-prog-count" v-else>数据较多时可能需要几分钟，请保持应用在前台…</div>
+        </div>
+        <div v-else class="imp-modes">
           <button class="imp-btn" :disabled="importing" @click="doRestore('merge')">
             <b>合并到当前数据</b>
             <span>保留本浏览器当前数据，云端备份作为新条目加入；同名联系人、同源歌曲会自动归并到已有条目</span>
@@ -109,7 +120,7 @@
         </div>
       </template>
       <template #footer>
-        <button class="mini-btn" @click="restoreOpen = false">取消</button>
+        <button class="mini-btn" :disabled="importing" @click="restoreOpen = false">取消</button>
       </template>
     </Modal>
 
@@ -202,6 +213,20 @@ const restoring = ref(false)
 const restoreOpen = ref(false)
 const restorePending = ref(null)
 const importing = ref(false)
+/* 导入进度：{ phase, label, done, total }，由 importBackup 的 onProgress 回调实时填充，
+   用于展示「正在导入 X」与进度条（避免导入中界面无反馈、不知是否在跑）。 */
+const progress = ref({ phase: 'prepare', label: '', done: 0, total: 0 })
+const importPercent = computed(() => {
+  const p = progress.value
+  if (!p.total) return 0
+  return Math.min(100, Math.max(0, Math.round((p.done / p.total) * 100)))
+})
+/* 清理 / 保存阶段无总行数，进度条走不确定动画 */
+const importIndeterminate = computed(() => {
+  const p = progress.value
+  return p.phase !== 'import' || !p.total
+})
+function onImportProgress(p) { progress.value = p }
 /* 云端历史备份（archive）列表：进入页面自动拉一次 */
 const archList = ref([])
 const listing = ref(false)
@@ -414,11 +439,15 @@ async function openRestore() {
 async function doRestore(mode) {
   if (!restorePending.value || importing.value) return
   importing.value = true
+  progress.value = { phase: 'prepare', label: '正在准备数据…', done: 0, total: 0 }
   try {
-    const r = await importBackup(restorePending.value, mode)
+    const r = await importBackup(restorePending.value, mode, onImportProgress)
     /* 本机已把云端这一版看进本地了 → 记下版本号，之后本机上传不会被误判冲突 */
     markOssCloudSeen().catch(() => {})
     const n = r && r.inserted ? Object.values(r.inserted).reduce((a, b) => a + b, 0) : null
+    /* 显示「导入完成」短暂停顿，让用户明确看到成功，再刷新页面 */
+    progress.value = { phase: 'done', label: '导入完成 ✓', done: 0, total: 0 }
+    await new Promise((resolve) => setTimeout(resolve, 800))
     restoreOpen.value = false
     msgOk.value = true
     isErr.value = false
@@ -442,6 +471,12 @@ async function askOverwriteRestore() {
     okText: '覆盖'
   })
   if (ok) doRestore('overwrite')
+}
+
+/* 导入中不允许关闭弹窗（避免误触打断导入） */
+function onRestoreClose() {
+  if (importing.value) return
+  restoreOpen.value = false
 }
 
 /* 迁移本地图片到云端：逐张上传并替换字段，完成后汇报成功/失败数 */
@@ -604,6 +639,29 @@ function fmtKb(n) {
 .imp-btn.danger { border-color: #c0576b; }
 .imp-btn.danger b { color: #c0576b; }
 .imp-btn:disabled { opacity: 0.6; }
+
+/* 导入进度：取代按钮区，显示「正在导入 X」+ 进度条 + 计数 */
+.imp-progress { display: flex; flex-direction: column; gap: 10px; padding: 4px 2px; }
+.imp-prog-label { font-size: 14px; font-weight: 600; color: var(--text); text-align: center; }
+.imp-prog-bar {
+  position: relative; height: 8px; border-radius: 5px;
+  background: var(--bg-soft); overflow: hidden; border: 1px solid var(--border);
+}
+.imp-prog-bar > span {
+  position: absolute; left: 0; top: 0; bottom: 0; width: 0;
+  background: var(--accent); border-radius: 5px;
+  transition: width 0.2s ease;
+}
+/* 清理 / 保存阶段无总行数：走不确定的流动动画，表示「在跑但不知百分比」 */
+.imp-prog-bar.indeterminate > span {
+  width: 35% !important; transition: none;
+  animation: imp-indet 1.1s ease-in-out infinite;
+}
+@keyframes imp-indet {
+  0% { left: -35%; }
+  100% { left: 100%; }
+}
+.imp-prog-count { font-size: 12px; color: var(--text-soft); text-align: center; }
 
 /* 云端历史备份区块：列出被覆盖前自动留存的旧备份，可下载找回 */
 .hist-block {
