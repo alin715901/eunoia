@@ -106,9 +106,10 @@ export async function checkReleaseUpdate() {
   return { status: 'update', ...latest }
 }
 
-/* 检测到新版本后弹选择框：前往更新 → 打开下载；暂不更新 → 记录忽略、继续用旧版。 */
-export async function promptReleaseIfNeeded() {
-  const r = await checkReleaseUpdate()
+/* 针对「已查到的检查结果」弹选择框：前往更新 → 打开下载；暂不更新 → 记录忽略、继续用旧版。
+   与 promptReleaseIfNeeded 的区别：不重新拉取网络，直接复用传入的 r，
+   便于在「应用挂载即并行发起检查」的场景下，等检查结果回来再弹窗（避免重复请求）。 */
+export async function promptRelease(r) {
   if (r.status !== 'update') return r
   const ok = await confirmDialog({
     title: '发现新版本',
@@ -119,4 +120,10 @@ export async function promptReleaseIfNeeded() {
   if (ok) startUpdate(r.apkUrl, r.htmlUrl, r.apkMirrors)
   else ignoreRelease(r.tag)
   return r
+}
+
+/* 检查 + 弹窗（组合上一层）。保留给「手动检查更新」按钮等需要现查现弹的场景。 */
+export async function promptReleaseIfNeeded() {
+  const r = await checkReleaseUpdate()
+  return promptRelease(r)
 }

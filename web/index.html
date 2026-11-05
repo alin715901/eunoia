@@ -44,7 +44,6 @@
       <div class="boot-static">
         <div class="boot-brand">
           Eunoia
-          <img class="boot-ears" src="/boot-ears.png" alt="" aria-hidden="true" />
         </div>
         <div class="boot-progress"><span class="boot-progress-bar"></span></div>
         <div class="boot-text">正在恢复数据…</div>
@@ -66,11 +65,6 @@
         position: relative;
         font-family: 'Songti SC', 'STSong', 'Noto Serif CJK SC', 'Noto Serif SC', 'SimSun', serif;
         font-size: 30px; font-weight: 700; letter-spacing: 0.12em; color: #c5a47e; line-height: 1;
-      }
-      /* 兔耳：透明底 PNG 切图，绝对定位于字母 a 上方探出（与 BootBrand.vue 相同参数） */
-      .boot-static .boot-ears {
-        position: absolute; right: -5px; top: -20px; width: 28px; height: auto;
-        pointer-events: none;
       }
       .boot-static .boot-progress {
         width: 176px; height: 6px; border-radius: 999px;

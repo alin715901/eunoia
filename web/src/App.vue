@@ -87,7 +87,7 @@ import { connect, disconnect } from '@/composables/useSSE'
 import { useAutoUpdate } from '@/composables/useAutoUpdate'
 import { requestNotificationPermission, notificationPermissionState } from '@/composables/useNotification'
 import { ensureLocalNotificationPermission, initLocalNotifications, isNativePlatform } from '@/composables/useLocalNotification'
-import { promptReleaseIfNeeded, isReleaseAutoCheck } from '@/composables/useReleaseUpdate'
+import { checkReleaseUpdate, promptRelease, isReleaseAutoCheck } from '@/composables/useReleaseUpdate'
 import router from '@/router'
 import { dbReady, onDbProgress } from '@/local/db'
 import { useSettingsStore } from '@/stores/settings'
@@ -190,6 +190,9 @@ function onNoticeEnter() {
 }
 
 let bootEntered = false
+/* 应用挂载即并行发起的「新版本检查」结果（与开屏/数据加载同时进行）。
+   置于 enterApp 中：结果一回来就弹窗，避免之前「boot 内等 2.5s + 重活 await」导致的迟弹。 */
+let releaseCheckPromise = null
 function enterApp() {
   if (bootEntered) return
   bootEntered = true
@@ -199,6 +202,13 @@ function enterApp() {
   try {
     if (!localStorage.getItem(NOTICE_KEY)) showNotice.value = true
   } catch (e) { /* 隐私模式等场景降级为每次弹出 */ showNotice.value = true }
+  /* 应用进入即按检查结果弹「新版本」提示：检查请求在 onMounted 已并行发出，
+     此处结果回来就弹（未回则随后回来再弹），不再叠加 boot 内的 2.5s 延迟与耗时加载阻塞。 */
+  if (releaseCheckPromise) {
+    releaseCheckPromise
+      .then((r) => { if (r && r.status === 'update') promptRelease(r) })
+      .catch(() => {})
+  }
 }
 
 /* 进度条真正画满再进应用：宽度过渡 0.45s，若到点（420ms）就替换骨架屏，
@@ -245,6 +255,15 @@ dbReady
 /* 自动检测新版本并刷新：部署后无需手动清缓存/换链接即可生效 */
 useAutoUpdate()
 
+/* 应用挂载即并行发起「新版本检查」（仅原生 APK 且开启自动检查），
+   与开屏进度条/数据加载同时进行；结果在 enterApp 进入应用时弹窗。
+   这样去掉了之前「boot 内先 await 一堆加载、再等 2.5s」导致的迟弹。 */
+onMounted(() => {
+  if (isNativePlatform() && isReleaseAutoCheck()) {
+    releaseCheckPromise = checkReleaseUpdate()
+  }
+})
+
 /* 开屏选择联系人的开关已从设置页移除，启动直接进入当前桌面。
    db 就绪后调用（dbReady.then → whenBarFull → enterApp → boot）。 */
 async function boot() {
@@ -273,11 +292,6 @@ async function boot() {
     await desktop.load()
   } catch (e) {
     /* 忽略 */
-  }
-  /* 原生 APK：启动后自动检测 GitHub Releases 新版本，发现则弹「前往更新 / 暂不更新」。
-     不强制更新：用户选「暂不更新」记录忽略、继续用当前版本；关闭「自动检查更新」则不弹。 */
-  if (isNativePlatform() && isReleaseAutoCheck()) {
-    setTimeout(() => { promptReleaseIfNeeded().catch(() => {}) }, 2500)
   }
 }
 
