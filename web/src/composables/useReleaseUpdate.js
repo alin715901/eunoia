@@ -50,52 +50,68 @@ export function setReleaseAutoCheck(on) {
   try { localStorage.setItem('eunoia.releaseAutoCheck', on ? '1' : '0') } catch (e) { /* ignore */ }
 }
 
-/* 拉取 GitHub Releases 最新版本（带 8s 超时；失败静默，绝不影响主流程）。
-   国内访问 api.github.com 可能慢/失败，这里失败就当「无更新」，不弹窗、不报错。
-   若配置了通用 URL 代理（Worker），检测接口也走代理，避免 api.github.com 被墙时检测不到更新。 */
-async function fetchLatestRelease() {
-  const url = `https://api.github.com/repos/${REPO}/releases/latest`
-  const proxy = resolveProxy()
-  let apiUrl = url
-  if (proxy) {
-    let base = proxy.replace(/\/+$/, '').replace(/[?&]url=.*$/, '')
-    apiUrl = base.includes('?') ? `${base}&url=${encodeURIComponent(url)}` : `${base}?url=${encodeURIComponent(url)}`
-  }
+/* 单次 fetch（带独立超时），失败（超时/网络错误/非 2xx）返回 null。 */
+async function fetchWithTimeout(url, ms) {
   const ctrl = new AbortController()
-  const timer = setTimeout(() => ctrl.abort(), 8000)
+  const timer = setTimeout(() => ctrl.abort(), ms)
   try {
-    const res = await fetch(apiUrl, {
+    const res = await fetch(url, {
       signal: ctrl.signal,
       cache: 'no-store',
       headers: { Accept: 'application/vnd.github+json' }
     })
     if (!res.ok) return null
-    const data = await res.json()
-    const tag = data.tag_name || ''
-    const apk = (data.assets || []).find((a) => /\.apk$/i.test(a.name || ''))
-    const apkUrl = apk ? apk.browser_download_url : ''
-    // 国内下载兜底：公共 GitHub 代理（截至发版仍可连通）。原生端在无「通用 URL 代理」
-    // （本项目 Cloudflare Worker，见 useUpdater.resolveProxy）配置时，会依次尝试
-    //   直连 GitHub → ghproxy.net → gh-proxy.com
-    // 任一成功即下载安装；公共代理在大陆连通性时有波动，故仅作兜底，最稳的通道仍是用户
-    // 自行部署的 Worker 代理（填到「设置 → 音乐 → 解析服务」后更新自动复用）。
-    const apkMirrors = apkUrl
-      ? [
-          'https://ghproxy.net/' + apkUrl,
-          'https://gh-proxy.com/' + apkUrl
-        ]
-      : []
-    return {
-      tag,
-      apkUrl,
-      apkMirrors,
-      htmlUrl: data.html_url || '',
-      notes: data.body || ''
-    }
+    return await res.json()
   } catch (e) {
     return null
   } finally {
     clearTimeout(timer)
+  }
+}
+
+/* 拉取 GitHub Releases 最新版本。
+   国内访问 api.github.com 常被墙，故按候选链依次尝试（每个请求独立短超时）：
+     1) 若配置了通用 URL 代理（Worker）→ 优先 worker?url=<api直链>（最稳的国内通道）
+     2) 直连 api.github.com
+     3) 公共 GitHub 代理 ghproxy.net / gh-proxy.com（作为未配代理时的兜底）
+   任一成功即返回；全部失败才返回 null（上层表现为「检查失败」）。 */
+async function fetchLatestRelease() {
+  const apiUrl = `https://api.github.com/repos/${REPO}/releases/latest`
+  const proxy = resolveProxy()
+  const candidates = []
+  if (proxy) {
+    const base = proxy.replace(/\/+$/, '').replace(/[?&]url=.*$/, '')
+    candidates.push(base.includes('?') ? `${base}&url=${encodeURIComponent(apiUrl)}` : `${base}?url=${encodeURIComponent(apiUrl)}`)
+  }
+  candidates.push(apiUrl)
+  candidates.push('https://ghproxy.net/' + apiUrl)
+  candidates.push('https://gh-proxy.com/' + apiUrl)
+  let data = null
+  for (const c of candidates) {
+    data = await fetchWithTimeout(c, 8000)
+    if (data) break
+  }
+  if (!data || !data.tag_name) return null
+  const tag = data.tag_name || ''
+  const apk = (data.assets || []).find((a) => /\.apk$/i.test(a.name || ''))
+  const apkUrl = apk ? apk.browser_download_url : ''
+  // 国内下载兜底：公共 GitHub 代理（截至发版仍可连通）。原生端在无「通用 URL 代理」
+  // （本项目 Cloudflare Worker，见 useUpdater.resolveProxy）配置时，会依次尝试
+  //   直连 GitHub → ghproxy.net → gh-proxy.com
+  // 任一成功即下载安装；公共代理在大陆连通性时有波动，故仅作兜底，最稳的通道仍是用户
+  // 自行部署的 Worker 代理（填到「设置 → 音乐 → 解析服务」后更新自动复用）。
+  const apkMirrors = apkUrl
+    ? [
+        'https://ghproxy.net/' + apkUrl,
+        'https://gh-proxy.com/' + apkUrl
+      ]
+    : []
+  return {
+    tag,
+    apkUrl,
+    apkMirrors,
+    htmlUrl: data.html_url || '',
+    notes: data.body || ''
   }
 }
 
