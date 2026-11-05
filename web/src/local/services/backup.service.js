@@ -5,7 +5,7 @@
  * 关联数据自动带入：板块导出时会把引用到的联系人 / 字卡 / 歌曲 / 聊天记录等
  * 一并收进 ref 表，导入时 ref 表只做 INSERT OR IGNORE 或同名匹配，保证自洽。
  */
-import db, { setImporting } from '../db'
+import db, { setImporting, reloadFromStorage } from '../db'
 import { CARE_TEXTS_KEY } from '../../utils/careTexts'
 
 const FORMAT = 'eunoia-backup'
@@ -340,8 +340,10 @@ function matchSong(row) {
 async function applyOverwrite(tables, known, refTables, scope, ctx) {
   const type = (scope && scope.type) || 'full'
   if (type === 'full') {
-    emitProgress(ctx, 'delete', '正在清理旧数据…')
-    for (const t of known) await batchDelete(t, null)
+    for (const t of known) {
+      emitProgress(ctx, 'delete', `正在清理${LABELS[t] || t}…`)
+      await batchDelete(t, null)
+    }
   } else if (type === 'feature') {
     const plain = new Set()
     const modSets = new Map()
@@ -354,8 +356,8 @@ async function applyOverwrite(tables, known, refTables, scope, ctx) {
         for (const m of mods) modSets.get(t).add(m)
       }
     }
-    emitProgress(ctx, 'delete', '正在清理旧数据…')
     for (const t of known) {
+      emitProgress(ctx, 'delete', `正在清理${LABELS[t] || t}…`)
       if (plain.has(t)) await batchDelete(t, null)
       else if (modSets.has(t)) await batchDelete(t, `module IN (${modIN(modSets.get(t))})`)
     }
@@ -598,9 +600,14 @@ export async function importBackup(payload, mode, onProgress) {
       ? await applyOverwrite(tables, known, refTables, payload.scope, ctx)
       : await applyMerge(tables, known, refTables, ctx)
     fixSequences(known)
+  } catch (e) {
+    /* 导入中途失败：回滚内存库到最后一次成功落盘的状态，避免把「被删空 / 半成品」的库
+       随后被 flush 持久化到磁盘（那样下次启动载入的就是坏数据 / 空库，表现为「进不去」）。 */
+    try { await reloadFromStorage() } catch (_) { /* 回滚失败也继续抛出原错误 */ }
+    throw e
   } finally {
     db.exec('PRAGMA foreign_keys = ON')
-    setImporting(false) // 复位：若有未落盘数据，setImporting 内部会补一次 flush
+    setImporting(false) // 复位：若有未落盘数据，setImporting 内部会登记一次延迟 flush（由 flushNow 真正 await 完成）
   }
   /* 写回关怀文案（见 buildBackup）：有该字段才覆盖本地，局部导出备份不含它则不动 */
   if (payload.care_texts) {

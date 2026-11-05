@@ -1301,7 +1301,7 @@ export async function importBackup(payload, mode, onProgress) {
     try { onProgress({ phase: 'save', label: '正在保存数据…', done: 0, total: 0 }) } catch (e) { /* ignore */ }
   }
   const ok = await flushNow()
-  if (!ok) throw new Error('数据已导入内存，但写入本地数据库失败，请重试或检查浏览器存储空间')
+  if (!ok) throw new Error('数据已导入内存，但写入本地存储失败（可能是设备存储空间不足），请清理空间后重试')
   if (onProgress) {
     try { onProgress({ phase: 'done', label: '导入完成', done: 0, total: 0 }) } catch (e) { /* ignore */ }
   }

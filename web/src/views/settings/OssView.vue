@@ -97,8 +97,38 @@
           </div>
           <p v-if="!featSummary.features.length && !featSummary.others.length" class="exp-empty">（空备份）</p>
         </div>
-        <!-- 导入中：显示进度（正在导入什么 + 进度条），替代下方按钮 -->
-        <div v-if="importing" class="imp-progress">
+        <!-- 选完合并 / 覆盖后，该弹窗会先收起，进度在独立的「导入数据」弹窗展示 -->
+        <div class="imp-modes">
+          <button class="imp-btn" @click="doRestore('merge')">
+            <b>合并到当前数据</b>
+            <span>保留本浏览器当前数据，云端备份作为新条目加入；同名联系人、同源歌曲会自动归并到已有条目</span>
+          </button>
+          <button class="imp-btn danger" @click="askOverwriteRestore">
+            <b>覆盖导入</b>
+            <span>先删除本浏览器当前全部数据，再用云端备份替换，不可恢复</span>
+          </button>
+        </div>
+      </template>
+      <template #footer>
+        <button class="mini-btn" @click="restoreOpen = false">取消</button>
+      </template>
+    </Modal>
+
+    <!-- 导入数据：选完合并 / 覆盖后独立弹出的进度弹窗（与「从云端恢复」分离）。
+         合并与覆盖都走这里，实时显示「正在导入 X」+ 进度条 + 百分比；出错时弹窗内显示错误。 -->
+    <Modal :show="importOpen" title="导入数据" width="360px" @close="onImportClose">
+      <div class="imp-progress">
+        <!-- 出错 -->
+        <template v-if="importErr">
+          <div class="imp-prog-label err">{{ importErr }}</div>
+          <p class="imp-err-tip">导入已中止，本机原有数据未受影响。可关闭后重试，或改用「本地导入」。</p>
+        </template>
+        <!-- 成功 -->
+        <template v-else-if="progress.phase === 'done'">
+          <div class="imp-prog-label ok">{{ progress.label || '导入完成 ✓' }}</div>
+        </template>
+        <!-- 进行中 -->
+        <template v-else>
           <div class="imp-prog-label">{{ progress.label || '正在导入…' }}</div>
           <div class="imp-prog-bar" :class="{ indeterminate: importIndeterminate }">
             <span :style="{ width: importPercent + '%' }"></span>
@@ -107,20 +137,10 @@
             {{ progress.done }} / {{ progress.total }} 条（{{ importPercent }}%）
           </div>
           <div class="imp-prog-count" v-else>数据较多时可能需要几分钟，请保持应用在前台…</div>
-        </div>
-        <div v-else class="imp-modes">
-          <button class="imp-btn" :disabled="importing" @click="doRestore('merge')">
-            <b>合并到当前数据</b>
-            <span>保留本浏览器当前数据，云端备份作为新条目加入；同名联系人、同源歌曲会自动归并到已有条目</span>
-          </button>
-          <button class="imp-btn danger" :disabled="importing" @click="askOverwriteRestore">
-            <b>覆盖导入</b>
-            <span>先删除本浏览器当前全部数据，再用云端备份替换，不可恢复</span>
-          </button>
-        </div>
-      </template>
+        </template>
+      </div>
       <template #footer>
-        <button class="mini-btn" :disabled="importing" @click="restoreOpen = false">取消</button>
+        <button class="mini-btn" :disabled="importing" @click="importOpen = false">关闭</button>
       </template>
     </Modal>
 
@@ -213,6 +233,9 @@ const restoring = ref(false)
 const restoreOpen = ref(false)
 const restorePending = ref(null)
 const importing = ref(false)
+/* 独立的「导入数据」进度弹窗：选完合并 / 覆盖后弹出，与「从云端恢复」弹窗分离 */
+const importOpen = ref(false)
+const importErr = ref('')
 /* 导入进度：{ phase, label, done, total }，由 importBackup 的 onProgress 回调实时填充，
    用于展示「正在导入 X」与进度条（避免导入中界面无反馈、不知是否在跑）。 */
 const progress = ref({ phase: 'prepare', label: '', done: 0, total: 0 })
@@ -432,32 +455,36 @@ async function openRestore() {
   }
 }
 
-/* mode: 'merge' 合并 / 'overwrite' 覆盖；
+/* mode: 'merge' 合并 / 'overwrite' 覆盖。
+   流程：先收起「从云端恢复」弹窗 → 弹出独立的「导入数据」进度弹窗 → 实时展示进度。
    导入后 api 层已 await flushNow() 确保写进 IndexedDB，这里才刷新页面。
-   早先固定等 800ms 就 location.reload()，数据量大时写盘尚未完成就被刷新打断，
-   表现为「提示导入成功、刷新后浏览器还是原来的数据」。 */
+   导入中途失败：错误显示在「导入数据」弹窗内（而非回到云端弹窗），且本机原数据因回滚未受影响。 */
 async function doRestore(mode) {
   if (!restorePending.value || importing.value) return
+  const pending = restorePending.value
+  /* 先收起「从云端恢复」弹窗，再打开独立的「导入数据」进度弹窗 */
+  restoreOpen.value = false
+  importErr.value = ''
+  importOpen.value = true
   importing.value = true
   progress.value = { phase: 'prepare', label: '正在准备数据…', done: 0, total: 0 }
   try {
-    const r = await importBackup(restorePending.value, mode, onImportProgress)
+    const r = await importBackup(pending, mode, onImportProgress)
     /* 本机已把云端这一版看进本地了 → 记下版本号，之后本机上传不会被误判冲突 */
     markOssCloudSeen().catch(() => {})
     const n = r && r.inserted ? Object.values(r.inserted).reduce((a, b) => a + b, 0) : null
     /* 显示「导入完成」短暂停顿，让用户明确看到成功，再刷新页面 */
     progress.value = { phase: 'done', label: '导入完成 ✓', done: 0, total: 0 }
     await new Promise((resolve) => setTimeout(resolve, 800))
-    restoreOpen.value = false
+    importOpen.value = false
     msgOk.value = true
     isErr.value = false
     msg.value = '恢复完成，正在刷新…'
     notify(`${r && r.text ? r.text : '已恢复云端数据'}${n != null ? `（共 ${n} 条）` : ''}`)
     setTimeout(() => location.reload(), 300)
   } catch (e) {
-    isErr.value = true
-    msg.value = e.message || '恢复失败'
-  } finally {
+    /* 错误留在「导入数据」弹窗内展示，本机原数据未受影响 */
+    importErr.value = e && e.message ? e.message : '导入失败'
     importing.value = false
   }
 }
@@ -473,9 +500,14 @@ async function askOverwriteRestore() {
   if (ok) doRestore('overwrite')
 }
 
-/* 导入中不允许关闭弹窗（避免误触打断导入） */
-function onRestoreClose() {
+/* 导入中不允许关闭「导入数据」弹窗（避免误触打断导入）；出错 / 完成后才允许关闭 */
+function onImportClose() {
   if (importing.value) return
+  importOpen.value = false
+}
+
+/* 「从云端恢复」弹窗关闭（导入已开始则不允许关闭，由 doRestore 先收起了） */
+function onRestoreClose() {
   restoreOpen.value = false
 }
 
@@ -643,6 +675,9 @@ function fmtKb(n) {
 /* 导入进度：取代按钮区，显示「正在导入 X」+ 进度条 + 计数 */
 .imp-progress { display: flex; flex-direction: column; gap: 10px; padding: 4px 2px; }
 .imp-prog-label { font-size: 14px; font-weight: 600; color: var(--text); text-align: center; }
+.imp-prog-label.err { color: #c0576b; }
+.imp-prog-label.ok { color: #3d9a6c; }
+.imp-err-tip { font-size: 12px; color: var(--text-soft); line-height: 1.6; margin: 0; text-align: center; }
 .imp-prog-bar {
   position: relative; height: 8px; border-radius: 5px;
   background: var(--bg-soft); overflow: hidden; border: 1px solid var(--border);

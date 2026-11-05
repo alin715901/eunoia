@@ -115,20 +115,28 @@ async function writeDbFile(bytes) {
 }
 
 /* 把当前库快照镜像到 App 私有文件（节流；force=true 无视节流，用于切后台/关闭前保底）。
-   注意 export() 会重建底层连接、令已编译语句失效，故导出后清缓存并恢复外键约束。 */
+   注意 export() 会重建底层连接、令已编译语句失效，故导出后清缓存并恢复外键约束。
+   关键：镜像只是「兜底恢复来源」，不参与关键落盘路径，改为 setTimeout 延迟、非阻塞执行——
+   大库（图片/音频 dataURL 全在库里）的 b64 转换 + 写文件很重，若在 flush / 启动关键路径同步做，
+   会长时间阻塞主线程 → Android WebView ANR 杀进程（即「导入卡退 / 启动进不去」）。 */
 function tryMirrorToFile(force, bytes) {
   if (!NATIVE || !state.raw) return
   const now = Date.now()
   if (!force && now - lastFileMirror < FILE_THROTTLE) return
   lastFileMirror = now
-  try {
-    const b = bytes || state.raw.export()
-    if (!bytes) {
-      stmtCache.clear()
-      try { state.raw.exec('PRAGMA foreign_keys = ON') } catch (e) {}
-    }
-    writeDbFile(b)
-  } catch (e) { /* 镜像失败不影响主流程 */ }
+  setTimeout(() => {
+    if (!NATIVE || !state.raw) return
+    /* 事务 / 导入进行中绝不导出快照：export() 会静默结束未提交事务 → 数据丢失 */
+    if (state.inTx > 0 || state.importing) return
+    try {
+      const b = bytes || state.raw.export()
+      if (!bytes) {
+        stmtCache.clear()
+        try { state.raw.exec('PRAGMA foreign_keys = ON') } catch (e) {}
+      }
+      writeDbFile(b).catch(() => { /* 镜像失败不影响主流程 */ })
+    } catch (e) { /* 镜像失败不影响主流程 */ }
+  }, 0)
 }
 
 /* ── 参数规整：sql.js 的 bind 只接受 number / string / null / Uint8Array ── */
@@ -147,7 +155,11 @@ function toBindable(v) {
   }
 }
 
-const state = { raw: null, dirty: false, flushing: false, timer: null, lastBytes: 0, inTx: 0, flushPromise: null, importing: false, pendingFlush: false }
+const state = { raw: null, dirty: false, flushing: false, timer: null, lastBytes: 0, inTx: 0, importing: false, pendingFlush: false, deferredFlush: false, lastFlushError: null }
+/* 当前正在进行的落盘 Promise：flush / flushNow 用它串联，避免并发 export()（会静默结束事务）与竞态判断。 */
+let flushPromise = null
+/* sql.js 构造器：loadSqlJs 成功后缓存，供 reloadFromStorage 重建库用 */
+let SQL_CTOR = null
 /* 写入版本号：每次写操作 ++dirtySeq，落盘成功后记 savedSeq。
    用于判断「导出快照之后是否又发生了新写入」——
    早先的实现用布尔 dirty 标记，await idbPut() 期间的新写入会被
@@ -194,30 +206,24 @@ async function flush() {
   /* 事务进行中绝不导出快照：sql.js 的 export() 会重建底层连接，
      在未提交事务中调用会静默结束该事务 → 未提交数据全部丢失。
      （导入备份动辄上万行写入，事务可能持续数百毫秒，必须挡住。） */
-  if (state.inTx > 0) {
+  if (state.inTx > 0 || state.importing) {
     state.pendingFlush = true
     if (!state.timer) {
       state.timer = setTimeout(() => { state.timer = null; flush() }, 400)
     }
     return
   }
-  if (state.importing) {
-    /* 导入进行中（批间 inTx 已归零）：抑制自动落盘，避免导出被撑大的整库
-       阻塞主线程。由 importBackup 结束后复位 importing 时统一 flush。 */
-    state.pendingFlush = true
-    return
-  }
+  /* 正在落盘：等它结束后由本次 flush 的末尾继续（见下方 while），
+     而不是像旧实现那样直接 return 又把一次写入无声吞掉。 */
   if (state.flushing) {
-    /* 正在落盘：记一个「还需要再落一次」的标记，
-       由当前这次 flush 结束时继续处理。
-       早先的实现直接 return，导致这次新写入既没被本次快照带走，
-       也没重新排 timer → 数据永久丢失。 */
     state.pendingFlush = true
+    if (flushPromise) { try { await flushPromise } catch (e) { /* ignore */ } }
     return
   }
-  if (!state.dirty && !state.pendingFlush) return
+  if (!state.dirty && !state.pendingFlush && !state.deferredFlush) return
   state.flushing = true
-  try {
+  state.deferredFlush = false
+  const work = async () => {
     do {
       state.pendingFlush = false
       const ver = dirtySeq
@@ -229,18 +235,41 @@ async function flush() {
          实测确认（dbg_sqljs.mjs）：export 后 PRAGMA foreign_keys = 0。
          这里显式恢复，保证导出不会悄悄削弱数据完整性约束。 */
       try { state.raw.exec('PRAGMA foreign_keys = ON') } catch (e) { /* ignore */ }
-      await idbPut(IDB_KEY, bytes)
-      // 额外镜像一份到 App 私有文件（扛 WebView/系统升级清掉 IndexedDB 的情况）
+      /* IndexedDB 写入偶发失败（瞬时异常 / 存储抖动）：重试几次，避免误报「写入失败」。
+         只有连续失败才判定为真正的持久化失败（多半是存储配额耗尽）。 */
+      let written = false
+      for (let attempt = 0; attempt < 3 && !written; attempt++) {
+        try {
+          await idbPut(IDB_KEY, bytes)
+          written = true
+        } catch (e) {
+          console.warn('[db] 落盘失败，第', attempt + 1, '次重试：', e && e.message)
+          if (attempt < 2) await new Promise((r) => setTimeout(r, 250))
+        }
+      }
+      if (!written) {
+        state.lastFlushError = 'idb'
+        throw new Error('idb-write-failed')
+      }
+      state.lastFlushError = null
+      // 额外镜像一份到 App 私有文件（扛 WebView/系统升级清掉 IndexedDB 的情况）——延迟非阻塞，不计入关键路径
       tryMirrorToFile(false, bytes)
       state.lastBytes = bytes.byteLength
       savedSeq = ver
       state.dirty = dirtySeq !== savedSeq
     } while (state.pendingFlush || state.dirty)
+  }
+  flushPromise = work()
+  try {
+    await flushPromise
   } catch (e) {
     console.error('[db] 持久化失败', e)
   } finally {
     state.flushing = false
+    flushPromise = null
   }
+  /* 落盘期间又产生了新写入（pendingFlush/dirty 被再次置位）→ 再来一轮，确保收敛 */
+  if (state.pendingFlush || state.dirty) await flush()
 }
 
 /* 立即落盘并等待完成（导入 / 导出 / 页面跳转等关键节点用）。
@@ -249,12 +278,12 @@ export async function flushNow() {
   if (!state.raw) return false
   try {
     await flush()
-    /* flush 期间又来了新写入 → 再来一次，确保收敛 */
+    /* flush 期间又来了新写入 → 再来一次，确保收敛（上限放宽，等待真正进行中的落盘完成） */
     let guard = 0
-    while ((state.dirty || state.pendingFlush) && guard++ < 20) {
+    while ((state.dirty || state.pendingFlush || state.deferredFlush) && guard++ < 50) {
       await flush()
     }
-    return !state.dirty
+    return !state.dirty && !state.deferredFlush
   } catch (e) {
     console.error('[db] 立即落盘失败', e)
     return false
@@ -262,10 +291,14 @@ export async function flushNow() {
 }
 
 /* 导入开关：导入期间抑制自动落盘（见 markDirty / flush 的 importing 分支）。
-   reset 时若仍有待落盘，立即补一次 flush。 */
+   reset 时若仍有待落盘，登记一次延迟落盘（异步触发，由 flushNow 真正 await 完成，
+   避免旧实现里「同步调 flush 又不被 await」导致的竞态误报）。 */
 export function setImporting(v) {
   state.importing = !!v
-  if (!v && (state.dirty || state.pendingFlush)) flush()
+  if (!v && (state.dirty || state.pendingFlush)) {
+    state.deferredFlush = true
+    flush().catch(() => {})
+  }
 }
 
 if (typeof window !== 'undefined') {
@@ -392,6 +425,7 @@ async function loadSqlJs() {
   const bytes = new Uint8Array(bin.length)
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
   const SQL = await initSqlJs({ wasmBinary: bytes })
+  SQL_CTOR = SQL
   console.log('[db] wasm 数据 chunk 加载成功', bytes.byteLength, 'bytes')
   return SQL
 }
@@ -416,27 +450,50 @@ export async function initDb() {
   setDbProgress(8)
   const SQL = await loadSqlJs()
   setDbProgress(45)
-  const saved = await idbGet(IDB_KEY)
-  setDbProgress(65)
-  let fresh = !saved || !saved.byteLength
-  let bytes = fresh ? null : saved
+  let fresh = false
   let fromFile = false
-  if (fresh) {
-    // IndexedDB 空：尝试从 App 私有文件恢复（扛 WebView/系统升级清掉 IndexedDB 的情况）
+  let bytes = null
+  /* 优先 IndexedDB，其次 App 私有文件；两者任取其一即可启动 */
+  try {
+    const saved = await idbGet(IDB_KEY)
+    if (saved && saved.byteLength) bytes = saved
+  } catch (e) { /* IndexedDB 读取异常不致命，往下走文件来源 */ }
+  if (!bytes) {
     const fb = await readDbFile()
-    if (fb && fb.byteLength) { bytes = fb; fresh = false; fromFile = true }
+    if (fb && fb.byteLength) { bytes = fb; fromFile = true }
   }
-  state.raw = fresh ? new SQL.Database() : new SQL.Database(new Uint8Array(bytes))
-  state.raw.exec('PRAGMA foreign_keys = ON')
-  if (fresh) {
-    // 首次打开：建表
-    state.raw.exec(schemaSql)
+  if (!bytes) {
+    // 真·首次：建空库
+    fresh = true
+    state.raw = new SQL.Database()
+    state.raw.exec('PRAGMA foreign_keys = ON')
+  } else {
+    try {
+      state.raw = new SQL.Database(new Uint8Array(bytes))
+      state.raw.exec('PRAGMA foreign_keys = ON')
+    } catch (e) {
+      /* 主来源解析失败（库文件损坏）：尝试另一个来源兜底，避免「进不去应用」死循环 */
+      console.error('[db] 主来源加载失败，尝试备用来源', e)
+      const alt = fromFile ? await idbGet(IDB_KEY) : await readDbFile()
+      if (alt && alt.byteLength) {
+        try {
+          state.raw = new SQL.Database(new Uint8Array(alt))
+          state.raw.exec('PRAGMA foreign_keys = ON')
+          fromFile = !fromFile // 已切换来源
+        } catch (e2) {
+          throw new Error('所有来源的数据库均无法加载')
+        }
+      } else {
+        throw new Error('数据库文件损坏且无可恢复来源')
+      }
+    }
   }
   setDbProgress(82)
   // 与服务器一致：每次启动都跑 migrate（幂等，补齐新表新列）
   migrate()
   if (fresh) {
-    // 首次打开：种子数据（默认联系人 TA、字卡分组、塔罗牌库、全局设置）
+    // 首次打开：建表 + 种子数据（默认联系人 TA、字卡分组、塔罗牌库、全局设置）
+    state.raw.exec(schemaSql)
     runSeed()
     markDirty()
     await flushNow() // 落 IndexedDB + 镜像到文件
@@ -447,15 +504,49 @@ export async function initDb() {
       const b = state.raw.export()
       try { stmtCache.clear(); state.raw.exec('PRAGMA foreign_keys = ON') } catch (e) {}
       try { await idbPut(IDB_KEY, b) } catch (e) {}
-      tryMirrorToFile(true, b)
+      tryMirrorToFile(true, b) // 延迟镜像，不阻塞启动
     } else {
-      // 恢复自 IndexedDB：补一份文件镜像，保证二者一致
+      // 恢复自 IndexedDB：补一份文件镜像，保证二者一致（延迟，不阻塞启动）
       tryMirrorToFile(true)
     }
     console.log('[db] 已从' + (fromFile ? '本地文件' : 'IndexedDB') + '恢复本地数据')
   }
   setDbProgress(100)
   return db
+}
+
+/* 从持久化来源（IndexedDB → 文件镜像）重新读入并重建内存库，用于「导入失败回滚」：
+   把被部分导入 / 误删空的内存库恢复到最后一次成功落盘的状态，
+   从而 importBackup 抛错时不会把半成品 / 空库持久化到磁盘，避免数据丢失与「进不去」。
+   返回 true 表示成功回滚；若两个来源都拿不到数据则返回 false（极罕见）。 */
+export async function reloadFromStorage() {
+  if (!SQL_CTOR) return false
+  let bytes = null
+  try {
+    const saved = await idbGet(IDB_KEY)
+    if (saved && saved.byteLength) bytes = saved
+  } catch (e) { /* ignore */ }
+  if (!bytes) {
+    const fb = await readDbFile()
+    if (fb && fb.byteLength) bytes = fb
+  }
+  if (!bytes) return false
+  try {
+    const next = new SQL_CTOR.Database(new Uint8Array(bytes))
+    next.exec('PRAGMA foreign_keys = ON')
+    state.raw = next
+    stmtCache.clear()
+    /* 回滚后内存与磁盘一致，标记干净，避免随后任何 flush 把「旧数据」又当成新写入覆盖回去 */
+    state.dirty = false
+    state.pendingFlush = false
+    state.deferredFlush = false
+    state.inTx = 0
+    state.importing = false
+    state.lastBytes = bytes.byteLength
+    return true
+  } catch (e) {
+    return false
+  }
 }
 
 // 清空本地数据并重建（供以后做「重置账号」用）
