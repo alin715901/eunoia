@@ -1,6 +1,6 @@
 import { isNativePlatform } from '@/composables/useLocalNotification'
 import { confirmDialog } from '@/utils/dialog'
-import { startUpdate } from '@/composables/useUpdater'
+import { startUpdate, resolveProxy } from '@/composables/useUpdater'
 import { APP_VERSION } from '@/utils/version'
 
 // 仓库（与 git remote 一致）。CI 把每次构建的 APK 发布到该仓库的 Releases。
@@ -51,13 +51,20 @@ export function setReleaseAutoCheck(on) {
 }
 
 /* 拉取 GitHub Releases 最新版本（带 8s 超时；失败静默，绝不影响主流程）。
-   国内访问 api.github.com 可能慢/失败，这里失败就当「无更新」，不弹窗、不报错。 */
+   国内访问 api.github.com 可能慢/失败，这里失败就当「无更新」，不弹窗、不报错。
+   若配置了通用 URL 代理（Worker），检测接口也走代理，避免 api.github.com 被墙时检测不到更新。 */
 async function fetchLatestRelease() {
   const url = `https://api.github.com/repos/${REPO}/releases/latest`
+  const proxy = resolveProxy()
+  let apiUrl = url
+  if (proxy) {
+    let base = proxy.replace(/\/+$/, '').replace(/[?&]url=.*$/, '')
+    apiUrl = base.includes('?') ? `${base}&url=${encodeURIComponent(url)}` : `${base}?url=${encodeURIComponent(url)}`
+  }
   const ctrl = new AbortController()
   const timer = setTimeout(() => ctrl.abort(), 8000)
   try {
-    const res = await fetch(url, {
+    const res = await fetch(apiUrl, {
       signal: ctrl.signal,
       cache: 'no-store',
       headers: { Accept: 'application/vnd.github+json' }
@@ -67,11 +74,17 @@ async function fetchLatestRelease() {
     const tag = data.tag_name || ''
     const apk = (data.assets || []).find((a) => /\.apk$/i.test(a.name || ''))
     const apkUrl = apk ? apk.browser_download_url : ''
-    // 国内下载源：不再依赖已普遍失效的 ghproxy 公共镜像。
-    // 真正可用的国内通道由 useUpdater 的「通用 URL 代理」（本项目 Cloudflare Worker，
-    // ?url= 任意网址）提供——若用户部署并配置了该代理，原生端会优先走代理代拉 GitHub。
-    // 此处仅把直连地址交付，mirrors 留空（无代理时直连失败会快速报错并引导手动下载）。
-    const apkMirrors = []
+    // 国内下载兜底：公共 GitHub 代理（截至发版仍可连通）。原生端在无「通用 URL 代理」
+    // （本项目 Cloudflare Worker，见 useUpdater.resolveProxy）配置时，会依次尝试
+    //   直连 GitHub → ghproxy.net → gh-proxy.com
+    // 任一成功即下载安装；公共代理在大陆连通性时有波动，故仅作兜底，最稳的通道仍是用户
+    // 自行部署的 Worker 代理（填到「设置 → 音乐 → 解析服务」后更新自动复用）。
+    const apkMirrors = apkUrl
+      ? [
+          'https://ghproxy.net/' + apkUrl,
+          'https://gh-proxy.com/' + apkUrl
+        ]
+      : []
     return {
       tag,
       apkUrl,

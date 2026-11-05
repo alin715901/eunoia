@@ -28,7 +28,7 @@ let installTriggered = false // 已拉起系统安装器，等待用户回应用
    若该 Worker 已部署且填到了「音乐 → 解析服务」或运行时配置 apkProxy/musicProxy，
    则应用内更新会优先走代理服务端代拉 GitHub，大陆也能正常下载安装。
    优先级：运行时配置 apkProxy → musicProxy → 构建环境变量 VITE_APK_PROXY。 */
-function resolveProxy() {
+export function resolveProxy() {
   try {
     const cfg = (typeof window !== 'undefined' && window.__EUNOIA_CONFIG__) || {}
     const fromEnv = (import.meta.env && import.meta.env.VITE_APK_PROXY) || ''
