@@ -12,7 +12,6 @@ import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
-import com.getcapacitor.annotation.ThreadType;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -31,7 +30,9 @@ import java.nio.charset.StandardCharsets;
  *
  * 为避免「一次性把几十 MB 的备份字符串塞进原生桥」导致 WebView 主线程被占住数秒触发 ANR 卡退，
  * 改为流式：beginFile 建临时文件 → appendFile 分块追加（每块由 JS 控制在 1MB 内、且块间让出主线程）
- * → finishFile 把临时文件搬进下载目录并删除临时文件。所有方法跑在后台线程，文件 IO 不阻塞 UI。
+ * → finishFile 把临时文件搬进下载目录并删除临时文件。
+ * 注：Capacitor 6.2.3 的 @PluginMethod 无 thread 属性（ThreadType 已移除），故方法运行在默认线程；
+ * 因写入已分块（每块由 JS 控制在 1MB 内）、且 finishFile 用流拷贝一次性搬文件，单次 IO 很短，不阻塞 UI。
  */
 @CapacitorPlugin(name = "FileSave")
 public class FileSavePlugin extends Plugin {
@@ -54,7 +55,7 @@ public class FileSavePlugin extends Plugin {
         }
     }
 
-    @PluginMethod(thread = ThreadType.BACKGROUND)
+    @PluginMethod
     public synchronized void beginFile(final PluginCall call) {
         final String filename = call.getString("filename");
         if (filename == null || filename.isEmpty()) {
@@ -78,7 +79,7 @@ public class FileSavePlugin extends Plugin {
         }
     }
 
-    @PluginMethod(thread = ThreadType.BACKGROUND)
+    @PluginMethod
     public synchronized void appendFile(final PluginCall call) {
         ensureOpen(call);
         if (currentOut == null) return; // ensureOpen 已 reject
@@ -95,7 +96,7 @@ public class FileSavePlugin extends Plugin {
         }
     }
 
-    @PluginMethod(thread = ThreadType.BACKGROUND)
+    @PluginMethod
     public synchronized void finishFile(final PluginCall call) {
         if (currentOut == null || currentFile == null) {
             call.reject("未开始写入，请先调用 beginFile");
@@ -112,7 +113,7 @@ public class FileSavePlugin extends Plugin {
             currentFilename = null;
             JSObject r = new JSObject();
             r.put("saved", true);
-            r.put("location", location != null ? location : ("下载/" + currentFilename));
+            r.put("location", location != null ? location : ("下载/" + filename));
             call.resolve(r);
         } catch (Exception e) {
             call.reject("保存失败：" + msg(e));
