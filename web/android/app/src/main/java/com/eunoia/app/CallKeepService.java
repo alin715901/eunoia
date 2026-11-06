@@ -38,9 +38,10 @@ public class CallKeepService extends Service {
         // 启动 / 保持前台：显示“通话进行中”常驻通知（点通知回应用）
         String name = intent != null ? intent.getStringExtra("name") : null;
         startCallForeground(name);
-        // START_STICKY：极端内存压力下被系统杀掉后，内存宽松时会被重建并再次 startForeground，
-        // 配合 JS 侧 restoreCall() 的快照恢复，保证通话态不丢。
-        return START_STICKY;
+        // START_NOT_STICKY：进程被系统/用户杀掉（例如清掉后台）后不再自动重建前台服务，
+        // 通话即随之结束；而未杀进程、仅退到后台时服务照常运行、通话保持。
+        // （冷启动恢复通话的逻辑已移除，故不再需要 STICKY 重建。）
+        return START_NOT_STICKY;
     }
 
     private void startCallForeground(String name) {

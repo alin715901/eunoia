@@ -106,7 +106,6 @@ import { useContactsStore } from '@/stores/contacts'
 import { useCompanionStore } from '@/stores/companion'
 import { useMusicStore } from '@/stores/music'
 import { useDesktopStore } from '@/stores/desktop'
-import { useCallStore } from '@/stores/call'
 import { useKeepAlive } from '@/composables/useKeepAlive'
 import { usePwaInstall } from '@/composables/usePwaInstall'
 
@@ -311,9 +310,6 @@ async function boot() {
     }
     await desktop.ensureValid()
     await desktop.load()
-    /* 进程被杀 / 网页重载后恢复进行中的通话：若本地有通话快照，重建通话界面与计时
-       （秒数按接通时刻重算，时长不归零；通话中还会重新拉起前台保活）。无快照则无操作。 */
-    useCallStore().restoreCall()
   } catch (e) {
     /* 忽略 */
   }

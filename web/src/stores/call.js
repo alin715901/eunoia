@@ -288,9 +288,9 @@ export const useCallStore = defineStore('call', {
       }
       // 群聊：接通后启动「成员继续加入 / 退出」动态调度
       if (this.isGroup) startGroupTick(this)
-      /* 通话接通：拉起原生前台保活（仅 Android），避免后台被系统杀进程，
-         导致切回前台“自动刷新”后通话与计时全部丢失。网页端无前台服务，
-         靠下方 persistCall 的本地快照在重载后恢复。 */
+      /* 通话接通：拉起原生前台保活（仅 Android），把进程优先级抬到「前台级」，
+         普通退到后台（进程未被杀）时系统不会回收进程，切回前台通话与计时照常保持；
+         若进程被杀死（清掉后台），START_NOT_STICKY 不会重建服务，通话即结束。 */
       startCallKeep(this.name)
       persistCall(this)
     },
