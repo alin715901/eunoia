@@ -106,6 +106,7 @@ import { useContactsStore } from '@/stores/contacts'
 import { useCompanionStore } from '@/stores/companion'
 import { useMusicStore } from '@/stores/music'
 import { useDesktopStore } from '@/stores/desktop'
+import { useCallStore } from '@/stores/call'
 import { useKeepAlive } from '@/composables/useKeepAlive'
 import { usePwaInstall } from '@/composables/usePwaInstall'
 
@@ -287,6 +288,9 @@ onMounted(() => {
 /* 开屏选择联系人的开关已从设置页移除，启动直接进入当前桌面。
    db 就绪后调用（dbReady.then → whenBarFull → enterApp → boot）。 */
 async function boot() {
+  /* 冷启动兜底：若上次是「通话进行中时进程被杀 / 页面刷新」，补写一条通话记录
+     （避免凭空消失）并清掉孤儿快照。温热启动（进程存活）不会重载，不会误触发。 */
+  useCallStore().recoverKilledCall()
   connect()
   // 尽早申请系统通知权限（部分浏览器要求用户交互后授权；失败静默忽略）
   requestNotificationPermission().catch(() => {})

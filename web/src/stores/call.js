@@ -305,99 +305,49 @@ export const useCallStore = defineStore('call', {
     minimize() { this.minimized = true; persistCall(this) },
     restore() { this.minimized = false; persistCall(this) },
 
-    /* 冷启动 / 进程被杀后重建：从本地快照恢复进行中的通话，
-       让「切后台被杀 → 返回自动刷新」之后，通话界面与计时照常续上（时长不归零）。
-       仅恢复内存状态 + 重启计时/挂断调度；显示秒数一律以 connectStart 为基准重算。 */
-    restoreCall() {
+    /* 冷启动兜底：若上次是「通话进行中时进程被杀 / 页面刷新」（快照残留 active），
+       补写一条通话记录，避免凭空消失；随后清掉孤儿快照（该快照本用于 v2.3.4 前的
+       重载恢复，现已废弃，不清会永远残留 localStorage）。
+       与正常挂断(end)的区别：end 在进程存活时落库并清快照；本函数在进程已死的冷启动
+       才触发——温热启动（进程存活）不会重载，故不会误触发。 */
+    recoverKilledCall() {
       let snap
       try {
         const raw = localStorage.getItem(CALL_SNAPSHOT_KEY)
         if (!raw) return
         snap = JSON.parse(raw)
-      } catch (e) { return }
-      if (!snap || !snap.active) { clearCallSnapshot(); return }
+      } catch (e) { clearCallSnapshot(); return }
+      // 无快照 / 快照非进行中 / 无联系人 → 直接清掉孤儿数据
+      if (!snap || !snap.active || !snap.contactId) { clearCallSnapshot(); return }
 
-      this.contactId = snap.contactId
-      this.name = snap.name || '对方'
-      this.avatar = snap.avatar || ''
-      this.avatarShape = snap.avatarShape || 'circle'
-      this.avatarRadius = snap.avatarRadius ?? 12
-      this.direction = snap.direction || 'outgoing'
-      this.isGroup = !!snap.isGroup
-      this.groupJoined = snap.groupJoined || []
-      this.groupMembers = snap.groupMembers || []
-      this.selfPart = snap.selfPart || null
-      this.initiator = snap.initiator || 'me'
-      this.initiatorMemberId = snap.initiatorMemberId ?? null
-      this.initiatorName = snap.initiatorName || ''
-      this.hangupProb = snap.hangupProb ?? 10
-      this.minimized = !!snap.minimized
-      this.active = true
-      this.phase = snap.phase
-      this.connectStart = snap.connectStart || 0
+      const contactId = String(snap.contactId)
+      const byThem = snap.direction === 'incoming'
+      const connected = !!snap.connectStart
+      /* 时长：以接通时刻到此刻估算（进程死亡瞬间未知，取上限；用户通常很快重开，
+         误差仅等于「被杀 → 重开」这段空闲时间）。 */
+      const duration = snap.connectStart
+        ? Math.max(0, Math.floor((Date.now() - snap.connectStart) / 1000))
+        : 0
+      /* 结果判定（与 end() 对齐）：
+         · 已接通后被打断 → 'terminated'（应用被关闭，附时长）
+         · 对方来电未接听即被打断 → 'missed'
+         · 我方振铃中未接通即被打断 → 'cancelled' */
+      let result
+      if (connected) result = 'terminated'
+      else if (byThem) result = 'missed'
+      else result = 'cancelled'
 
-      const now = Date.now()
-      const invite = {
-        groupId: this.isGroup ? this.contactId : null,
-        contactId: this.contactId,
-        name: this.name,
-        avatar: this.avatar,
-        memberName: this.initiatorName,
-        isGroup: this.isGroup
-      }
-
-      if (snap.phase === 'connected') {
-        this.seconds = snap.connectStart
-          ? Math.max(0, Math.floor((now - snap.connectStart) / 1000))
-          : 0
-        // 安全上限：连接超过 3 小时仍无挂断调度 → 自动结束，避免“僵尸通话”
-        const MAX = 3 * 60 * 60 * 1000
-        if (snap.connectStart && now - snap.connectStart > MAX) {
-          this.end('hangup_by_them')
-          return
-        }
-        clearInterval(tickTimer)
-        tickTimer = setInterval(() => {
-          // 与 connect() 保持一致：以 connectStart 为基准，后台漏秒也能在回前台时补齐
-          if (this.connectStart) {
-            this.seconds = Math.max(0, Math.floor((Date.now() - this.connectStart) / 1000))
-          } else {
-            this.seconds += 1
-          }
-        }, 1000)
-        clearTimeout(hangupTimer)
-        hangupAt = snap.hangupAt ?? null
-        if (hangupAt && hangupAt > now) {
-          hangupTimer = setTimeout(() => {
-            hangupTimer = null
-            this.end('hangup_by_them')
-          }, hangupAt - now)
-        } else if (hangupAt && hangupAt <= now) {
-          // 后台期间到点该挂断 → 直接结束
-          this.end('hangup_by_them')
-          return
-        }
-        if (this.isGroup) startGroupTick(this)
-        startCallKeep(this.name)
-      } else if (snap.phase === 'ringing') {
-        this.seconds = 0
-        this.connectStart = 0
-        clearTimeout(decideTimer)
-        const ringTime = 2000 + Math.random() * 2000
-        decideTimer = setTimeout(() => {
-          const r = Math.random() * 100
-          if (r < 85) this.connect()
-          else this.end('rejected')
-        }, ringTime)
-        startCallKeep(this.name)
-      } else if (snap.phase === 'incoming') {
-        this.seconds = 0
-        this.connectStart = 0
-        clearTimeout(inviteTimer)
-        inviteTimer = setTimeout(() => { this.missIncoming(invite) }, 15000)
-        startCallKeep(this.name)
-      }
-      persistCall(this)
+      try {
+        sendCallRecord(contactId, {
+          duration,
+          result,
+          sender: byThem ? 'contact' : 'me',
+          initiatorMemberId: snap.initiator === 'member' ? snap.initiatorMemberId : null
+        })
+          .then((msg) => { useChatStore().push(contactId, msg) })
+          .catch(() => {})
+      } catch (e) { /* ignore */ }
+      clearCallSnapshot()
     },
 
     /* 结束通话并落库通话记录 */
