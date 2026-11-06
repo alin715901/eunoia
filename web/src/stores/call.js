@@ -262,7 +262,12 @@ export const useCallStore = defineStore('call', {
       clearInterval(tickTimer)
       clearTimeout(hangupTimer)
       tickTimer = setInterval(() => {
-        this.seconds += 1
+        // 以接通时刻为基准重算秒数，避免 WebView 切后台暂停 JS / 计时器被节流时“漏秒”
+        if (this.connectStart) {
+          this.seconds = Math.max(0, Math.floor((Date.now() - this.connectStart) / 1000))
+        } else {
+          this.seconds += 1
+        }
       }, 1000)
       /* 对方挂断调度：先按「挂断概率」决定这通电话对方会不会挂；
        * 若会，挂断时刻在 [3 秒, 2 小时] 上均匀随机 —— 只接几秒 / 十几秒 /
@@ -352,7 +357,14 @@ export const useCallStore = defineStore('call', {
           return
         }
         clearInterval(tickTimer)
-        tickTimer = setInterval(() => { this.seconds += 1 }, 1000)
+        tickTimer = setInterval(() => {
+          // 与 connect() 保持一致：以 connectStart 为基准，后台漏秒也能在回前台时补齐
+          if (this.connectStart) {
+            this.seconds = Math.max(0, Math.floor((Date.now() - this.connectStart) / 1000))
+          } else {
+            this.seconds += 1
+          }
+        }, 1000)
         clearTimeout(hangupTimer)
         hangupAt = snap.hangupAt ?? null
         if (hangupAt && hangupAt > now) {
