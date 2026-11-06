@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- API 22-25 的 legacy 兜底：直接引用启动图标(mipmap/ic_launcher)。
+     这些旧系统不识别自适应图标，smallIcon 需要普通位图；引用 mipmap 在旧系统会回退到
+     对应密度的 ic_launcher.png(完整图标)。API 26+ 自动改用同名的 drawable-v26 自适应版本。 -->
+<bitmap xmlns:android="http://schemas.android.com/apk/res/android"
+    android:src="@mipmap/ic_launcher"
+    android:gravity="fill" />

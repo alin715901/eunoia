@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- 与启动图标(mipmap-anydpi-v26/ic_launcher.xml)完全一致：米白背景 + 兔子前景。
+         用作通知 smallIcon 时，系统取自适应图标的前景层(兔子)并以 iconColor 单色着色，
+         与通话前台服务通知(getApplicationInfo().icon)在顶栏显示的图案保持一致。
+         限定 v26+：<adaptive-icon> 要求 SDK >= 26。 -->
+    <background android:drawable="@color/ic_launcher_background"/>
+    <foreground android:drawable="@drawable/app_icon_fg"/>
+</adaptive-icon>
