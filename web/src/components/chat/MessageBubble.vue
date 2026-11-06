@@ -432,7 +432,7 @@ const callText = computed(() => {
   if (r === 'declined') return '已拒绝通话'
   if (r === 'missed') return '未接听'
   if (r === 'cancelled') return '通话已取消'
-  if (r === 'terminated') return dur > 0 ? '通话时长 ' + fmtDuration(dur) + '（已中断）' : '通话已中断'
+  if (r === 'terminated') return dur > 0 ? '通话中断 ' + fmtDuration(dur) : '通话已中断'
   // answered / hangup_by_them：已接通，显示通话时长
   return '通话时长 ' + fmtDuration(dur)
 })
