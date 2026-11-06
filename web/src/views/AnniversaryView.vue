@@ -411,6 +411,7 @@ onMounted(async () => {
   font-size: 14px;
   color: var(--text);
   width: 100%;
+  min-width: 0; /* 关键：flex 列布局下允许收缩，避免 iOS 原生 date 输入框因内禀最小宽度溢出弹窗 */
   box-sizing: border-box;
 }
 .field:focus { border-color: var(--accent); outline: none; }
