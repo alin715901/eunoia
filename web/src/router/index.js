@@ -94,18 +94,10 @@ const router = createRouter({
   routes
 })
 
-/* 路由持久化：记录最近一次访问路径。原生壳（WebView）被杀后台后重新打开、
-   或网页端刷新，进入应用后恢复到上次停留的页面，而非总是回到开屏/首页，
-   避免「切后台一会再回来像崩溃/重启」的割裂感。
-   只在原生壳生效：网页端以浏览器地址栏 URL 为准，不覆盖深链接直达。 */
-const LAST_ROUTE_KEY = 'eunoia.lastRoute'
-router.afterEach((to) => {
-  try {
-    if (to.path && to.path !== '/') localStorage.setItem(LAST_ROUTE_KEY, to.fullPath)
-  } catch (e) { /* 隐私模式忽略 */ }
-})
-export function getLastRoute() {
-  try { return localStorage.getItem(LAST_ROUTE_KEY) || '' } catch (e) { return '' }
-}
-
+/* 路由恢复策略（重要）：不主动恢复「上次停留的页面」。
+   - 温启动（仅切到后台、进程仍存活）：WebView 暂停后恢复，SPA 自身状态被保留，
+     天然停留在上次页面，无需任何干预。
+   - 冷启动（清掉后台 / 进程被杀后重新打开；网页端关掉标签页再打开）：属于「全新进入」，
+     应回到主页而非上次页面 —— 因此这里不做任何 localStorage 路由还原，
+     交给路由默认路径（'/' = 主页）。 */
 export default router
