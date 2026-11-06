@@ -123,12 +123,16 @@ async function fetchLatestRelease() {
  *   'error'   网络异常 / 无 release
  *   'skip'    非原生壳（APK 才用本检测）
  */
-export async function checkReleaseUpdate() {
+export async function checkReleaseUpdate(options = {}) {
+  // respectIgnore 默认 true：启动自动检测（首次进入弹窗）时尊重「暂不更新」标记，
+  // 避免对同一版本反复弹窗打扰。手动「检查更新」传 false，绕过忽略，
+  // 始终给出真实的可用结果，让用户随时都能主动升级（不再被「已忽略」堵死）。
+  const respectIgnore = options.respectIgnore !== false
   if (!isNativePlatform()) return { status: 'skip' }
   const latest = await fetchLatestRelease()
   if (!latest || !latest.tag) return { status: 'error' }
   if (cmpVer(latest.tag, APP_VERSION) <= 0) return { status: 'latest' }
-  if (getIgnored() === latest.tag) return { status: 'ignored', ...latest }
+  if (respectIgnore && getIgnored() === latest.tag) return { status: 'ignored', ...latest }
   return { status: 'update', ...latest }
 }
 
@@ -148,8 +152,9 @@ export async function promptRelease(r) {
   return r
 }
 
-/* 检查 + 弹窗（组合上一层）。保留给「手动检查更新」按钮等需要现查现弹的场景。 */
-export async function promptReleaseIfNeeded() {
-  const r = await checkReleaseUpdate()
+/* 检查 + 弹窗（组合上一层）。保留给「手动检查更新」按钮等需要现查现弹的场景。
+   options 透传给 checkReleaseUpdate：手动检查传 { respectIgnore:false } 以绕过「暂不更新」标记。 */
+export async function promptReleaseIfNeeded(options = {}) {
+  const r = await checkReleaseUpdate(options)
   return promptRelease(r)
 }

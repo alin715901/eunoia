@@ -57,8 +57,10 @@ async function onCheck() {
   checking.value = true
   checkMsg.value = ''
   if (native) {
-    // 原生 APK：检测 GitHub Releases 新版本，发现则弹「前往更新 / 暂不更新」
-    const r = await promptReleaseIfNeeded()
+    // 原生 APK：检测 GitHub Releases 新版本，发现则弹「前往更新 / 暂不更新」。
+    // 手动检查绕过「暂不更新」忽略标记（respectIgnore:false），保证随时能主动升级，
+    // 不会卡在「已忽略该版本」。
+    const r = await promptReleaseIfNeeded({ respectIgnore: false })
     checking.value = false
     if (r.status === 'latest') checkMsg.value = '已是最新版'
     else if (r.status === 'update') checkMsg.value = `发现新版本 ${r.tag}`
