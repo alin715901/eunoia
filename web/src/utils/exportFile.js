@@ -61,11 +61,32 @@ async function streamBackupChunks(backup, emit) {
 }
 
 /* 原生壳：流式生成 + 分块写原生「下载」目录，避免主线程 ANR 卡退。
+   关键性能优化：emit 先把片段累积进本地 buffer，攒满 1MB 才过一次原生桥（appendFile）。
+   旧实现逐行 emit → 每行一次 Capacitor 桥往返，几千行就是几千次 bridge 调用（手机导出极慢的根因）；
+   网页版 emit 只是 parts.push 无桥开销，所以此前网页快、手机慢。攒批后桥调用数降到 ~文件大小/1MB。
    整体用 serializeNativeWrite 串行化，避免并发导出交错导致 currentOut 竞态。 */
 function streamBackupToNative(filename, backup) {
   return serializeNativeWrite(async () => {
     await FileSave.beginFile({ filename })
-    await streamBackupChunks(backup, writeChunks)
+    let buf = ''
+    const flush = async () => {
+      if (buf) {
+        await FileSave.appendFile({ chunk: buf })
+        buf = ''
+      }
+    }
+    const emit = async (s) => {
+      // 单段也可能很大（如含大图 base64 的行），拆成 ≤1MB 再入 buffer，避免单次桥调用过大
+      let i = 0
+      while (i < s.length) {
+        const end = Math.min(i + MAX, s.length)
+        buf += s.slice(i, end)
+        i = end
+        if (buf.length >= MAX) await flush()
+      }
+    }
+    await streamBackupChunks(backup, emit)
+    await flush() // 收尾把剩余不足 1MB 的部分写盘
     const r = await FileSave.finishFile({})
     if (r && r.saved) return { ok: true, location: r.location || '下载/' + filename }
     throw new Error('保存到下载目录失败')
@@ -99,7 +120,7 @@ export async function exportJsonFile(filename, content) {
     a.click()
     a.remove()
     setTimeout(() => URL.revokeObjectURL(url), 2000)
-    return { ok: true, location: filename }
+    return { ok: true, location: '浏览器下载/' + filename }
   }
   if (typeof content === 'string') {
     // 已是完整 JSON 字符串：直接分块写入原生（同样串行化，避免竞态）

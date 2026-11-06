@@ -263,8 +263,8 @@ async function exportAll() {
   try {
     /* buildBackup 同步返回；await 防御底层若改成 async 时 Promise 被
        JSON.stringify 成 {} 的历史 bug（导出空文件不可用） */
-    const location = await downloadBackup(await buildBackup({ type: 'full' }))
-    toast.pushToast({ title: '已导出备份文件', text: '已保存到 ' + location })
+    const res = await downloadBackup(await buildBackup({ type: 'full' }))
+    toast.pushToast({ title: '已导出备份文件', text: '已保存到「下载」目录：' + res.location })
   } catch (e) {
     toast.pushToast({ title: '导出失败', text: e.message })
   }
@@ -277,10 +277,10 @@ async function doExport(scope) {
         ? { type: 'feature', features: picked.value.features }
         : { type: 'contacts', contacts: picked.value.contacts }
     )
-    const location = await downloadBackup(data)
+    const res = await downloadBackup(data)
     if (scope === 'feature') featureOpen.value = false
     else contactsOpen.value = false
-    toast.pushToast({ title: '已导出备份文件', text: '已保存到 ' + location })
+    toast.pushToast({ title: '已导出备份文件', text: '已保存到「下载」目录：' + res.location })
   } catch (e) {
     toast.pushToast({ title: '导出失败', text: e.message })
   }
