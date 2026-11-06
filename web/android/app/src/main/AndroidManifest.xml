@@ -35,6 +35,12 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths"></meta-data>
         </provider>
+
+        <!-- 通话前台保活服务：通话进行期间以 dataSync 类型前台运行，避免被系统回收 -->
+        <service
+            android:name=".CallKeepService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
     </application>
 
     <!-- Permissions -->
@@ -56,4 +62,7 @@
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- 应用内自更新：下载 APK 后拉起系统安装器（Android 8+ 必需此权限，否则安装器拒绝） -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- 通话前台保活：前台服务本身（normal 权限）与其 dataSync 类型（normal 权限，Android 14+ 必需） -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
 </manifest>

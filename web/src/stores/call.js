@@ -5,6 +5,7 @@ import { useChatStore } from './chat'
 import { useNotificationsStore } from './notifications'
 import { notify } from '@/composables/useNotification'
 import { isNativePlatform } from '@/composables/useLocalNotification'
+import { startCallKeep, stopCallKeep } from '@/composables/useCallKeep'
 import router from '@/router'
 
 /* 全局通话状态：独立于路由，挂在任何页面都会保持（挂断前的悬浮窗跨页面可见、可拖动）。
@@ -62,6 +63,9 @@ export const useCallStore = defineStore('call', {
       this.minimized = false
       this.active = true
       this.direction = 'outgoing'
+      // 拨号即拉起前台保活 + 落盘快照（振铃阶段被杀也能恢复重拨逻辑）
+      startCallKeep(this.name)
+      persistCall(this)
       this.initiator = 'me'
       this.initiatorMemberId = null
       this.isGroup = !!(members && members.length)
@@ -116,6 +120,7 @@ export const useCallStore = defineStore('call', {
       this.groupJoined.push({ name: m.name, avatar: m.avatar || '' })
       // 第一位成员加入 → 接通开始计时
       if (this.phase === 'ringing') this.connect()
+      persistCall(this)
     },
 
     /* 群聊通话：一位成员退出（接通后也可退出；仅移除头像，不影响其他人） */
@@ -123,6 +128,7 @@ export const useCallStore = defineStore('call', {
       if (!this.active || !this.isGroup || !name) return
       const idx = this.groupJoined.findIndex((x) => x.name === name)
       if (idx >= 0) this.groupJoined.splice(idx, 1)
+      persistCall(this)
     },
 
     /* 对方/群聊成员主动来电（SSE call_invite 触发）：按当前页面分流。
@@ -208,6 +214,9 @@ export const useCallStore = defineStore('call', {
       this.minimized = false
       this.active = true
       this.direction = 'incoming'
+      // 来电界面弹出：拉起前台保活 + 落盘快照
+      startCallKeep(this.name)
+      persistCall(this)
       // 群聊来电由成员发起（initiator='member'）；单人来电由对方发起（initiator='contact'）。
       // 二者都是「我」被邀请，我中途不能挂断/退出
       this.isGroup = !!isGroup
@@ -233,6 +242,7 @@ export const useCallStore = defineStore('call', {
     answerIncoming() {
       if (this.phase !== 'incoming') return
       this.connect()
+      persistCall(this)
     },
 
     /* 拒绝来电（仅 incoming，用户挂断） */
@@ -259,17 +269,25 @@ export const useCallStore = defineStore('call', {
        * 几分钟 / 几小时都可能挂，各时长概率均等。
        * 不用每秒评估的指数分布：那种分布内存无记忆性，将近一半的通话活不过
        * 1 分钟，体验上就是「经常不到一分钟就挂」 */
+      const minMs = 3 * 1000
+      const maxMs = 2 * 60 * 60 * 1000
       if (Math.random() < this.hangupProb / 100) {
-        const minMs = 3 * 1000
-        const maxMs = 2 * 60 * 60 * 1000
         const at = minMs + Math.random() * (maxMs - minMs)
+        hangupAt = Date.now() + at
         hangupTimer = setTimeout(() => {
           hangupTimer = null
           this.end('hangup_by_them')
         }, at)
+      } else {
+        hangupAt = null
       }
       // 群聊：接通后启动「成员继续加入 / 退出」动态调度
       if (this.isGroup) startGroupTick(this)
+      /* 通话接通：拉起原生前台保活（仅 Android），避免后台被系统杀进程，
+         导致切回前台“自动刷新”后通话与计时全部丢失。网页端无前台服务，
+         靠下方 persistCall 的本地快照在重载后恢复。 */
+      startCallKeep(this.name)
+      persistCall(this)
     },
 
     /* 我方手动挂断（connected 或 ringing 均可） */
@@ -279,8 +297,96 @@ export const useCallStore = defineStore('call', {
       this.end(this.connectStart ? 'hangup_by_me' : 'cancelled')
     },
 
-    minimize() { this.minimized = true },
-    restore() { this.minimized = false },
+    minimize() { this.minimized = true; persistCall(this) },
+    restore() { this.minimized = false; persistCall(this) },
+
+    /* 冷启动 / 进程被杀后重建：从本地快照恢复进行中的通话，
+       让「切后台被杀 → 返回自动刷新」之后，通话界面与计时照常续上（时长不归零）。
+       仅恢复内存状态 + 重启计时/挂断调度；显示秒数一律以 connectStart 为基准重算。 */
+    restoreCall() {
+      let snap
+      try {
+        const raw = localStorage.getItem(CALL_SNAPSHOT_KEY)
+        if (!raw) return
+        snap = JSON.parse(raw)
+      } catch (e) { return }
+      if (!snap || !snap.active) { clearCallSnapshot(); return }
+
+      this.contactId = snap.contactId
+      this.name = snap.name || '对方'
+      this.avatar = snap.avatar || ''
+      this.avatarShape = snap.avatarShape || 'circle'
+      this.avatarRadius = snap.avatarRadius ?? 12
+      this.direction = snap.direction || 'outgoing'
+      this.isGroup = !!snap.isGroup
+      this.groupJoined = snap.groupJoined || []
+      this.groupMembers = snap.groupMembers || []
+      this.selfPart = snap.selfPart || null
+      this.initiator = snap.initiator || 'me'
+      this.initiatorMemberId = snap.initiatorMemberId ?? null
+      this.initiatorName = snap.initiatorName || ''
+      this.hangupProb = snap.hangupProb ?? 10
+      this.minimized = !!snap.minimized
+      this.active = true
+      this.phase = snap.phase
+      this.connectStart = snap.connectStart || 0
+
+      const now = Date.now()
+      const invite = {
+        groupId: this.isGroup ? this.contactId : null,
+        contactId: this.contactId,
+        name: this.name,
+        avatar: this.avatar,
+        memberName: this.initiatorName,
+        isGroup: this.isGroup
+      }
+
+      if (snap.phase === 'connected') {
+        this.seconds = snap.connectStart
+          ? Math.max(0, Math.floor((now - snap.connectStart) / 1000))
+          : 0
+        // 安全上限：连接超过 3 小时仍无挂断调度 → 自动结束，避免“僵尸通话”
+        const MAX = 3 * 60 * 60 * 1000
+        if (snap.connectStart && now - snap.connectStart > MAX) {
+          this.end('hangup_by_them')
+          return
+        }
+        clearInterval(tickTimer)
+        tickTimer = setInterval(() => { this.seconds += 1 }, 1000)
+        clearTimeout(hangupTimer)
+        hangupAt = snap.hangupAt ?? null
+        if (hangupAt && hangupAt > now) {
+          hangupTimer = setTimeout(() => {
+            hangupTimer = null
+            this.end('hangup_by_them')
+          }, hangupAt - now)
+        } else if (hangupAt && hangupAt <= now) {
+          // 后台期间到点该挂断 → 直接结束
+          this.end('hangup_by_them')
+          return
+        }
+        if (this.isGroup) startGroupTick(this)
+        startCallKeep(this.name)
+      } else if (snap.phase === 'ringing') {
+        this.seconds = 0
+        this.connectStart = 0
+        clearTimeout(decideTimer)
+        const ringTime = 2000 + Math.random() * 2000
+        decideTimer = setTimeout(() => {
+          const r = Math.random() * 100
+          if (r < 85) this.connect()
+          else this.end('rejected')
+        }, ringTime)
+        startCallKeep(this.name)
+      } else if (snap.phase === 'incoming') {
+        this.seconds = 0
+        this.connectStart = 0
+        clearTimeout(inviteTimer)
+        inviteTimer = setTimeout(() => { this.missIncoming(invite) }, 15000)
+        startCallKeep(this.name)
+      }
+      persistCall(this)
+    },
 
     /* 结束通话并落库通话记录 */
     async end(reason) {
@@ -294,6 +400,10 @@ export const useCallStore = defineStore('call', {
       hangupTimer = null
       inviteTimer = null
       this.pending = null
+      /* 通话结束：清掉本地快照 + 停止前台保活（无论是否真的在原生壳，
+         stopCallKeep 内部对非 Android 直接 no-op，对已停止的服务幂等）。 */
+      clearCallSnapshot()
+      stopCallKeep()
       const contactId = this.contactId
       const connected = !!this.connectStart
       // 发起方：对方打来的通话，记录气泡落在对方那边（左侧）
@@ -343,10 +453,47 @@ export const useCallStore = defineStore('call', {
 let decideTimer = null
 let tickTimer = null
 let hangupTimer = null // 对方挂断的一次性调度器（均匀随机时刻）
+let hangupAt = null    // 已调度挂断的绝对时刻（ms）；null = 本次通话不自动挂断
 let inviteTimer = null
 let joinTimers = [] // 群聊：各成员加入的延时器
 let noJoinTimer = null // 群聊：12 秒无人加入的看门狗
 let groupTick = null // 群聊：接通后「成员继续加入 / 退出」的动态调度
+
+/* 通话状态本地快照：进程被杀 / 网页重载后据此恢复“进行中的通话”。
+   仅存重建界面与计时所需的字段；真正时长以 connectStart 为基准重算，
+   故不依赖秒级精度。key 固定，覆盖式写入。 */
+const CALL_SNAPSHOT_KEY = 'eunoia.call.snapshot'
+function persistCall(store) {
+  try {
+    if (!store.active) { clearCallSnapshot(); return }
+    const s = store
+    const data = {
+      active: s.active,
+      phase: s.phase,
+      minimized: s.minimized,
+      connectStart: s.connectStart,
+      contactId: s.contactId,
+      name: s.name,
+      avatar: s.avatar,
+      avatarShape: s.avatarShape,
+      avatarRadius: s.avatarRadius,
+      direction: s.direction,
+      isGroup: s.isGroup,
+      groupJoined: s.groupJoined,
+      groupMembers: s.groupMembers,
+      selfPart: s.selfPart,
+      initiator: s.initiator,
+      initiatorMemberId: s.initiatorMemberId,
+      initiatorName: s.initiatorName,
+      hangupProb: s.hangupProb,
+      hangupAt
+    }
+    localStorage.setItem(CALL_SNAPSHOT_KEY, JSON.stringify(data))
+  } catch (e) { /* 隐私模式等场景静默忽略 */ }
+}
+function clearCallSnapshot() {
+  try { localStorage.removeItem(CALL_SNAPSHOT_KEY) } catch (e) { /* ignore */ }
+}
 function clearJoinTimers() {
   for (const t of joinTimers) clearTimeout(t)
   joinTimers = []
