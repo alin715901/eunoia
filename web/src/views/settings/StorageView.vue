@@ -153,6 +153,19 @@
         <button class="mini-btn" :disabled="importing" @click="importOpen = false">取消</button>
       </template>
     </Modal>
+
+    <!-- 导出中加载层：点击导出立即显示，消除原生壳「点完没反应」的等待感 -->
+    <Teleport to="body">
+      <Transition name="modal-fade">
+        <div v-if="exporting" class="exp-mask">
+          <div class="exp-box anim-pop">
+            <div class="exp-spinner"></div>
+            <div class="exp-title">正在导出备份…</div>
+            <div class="exp-sub">正在生成并保存到「下载」目录，请稍候</div>
+          </div>
+        </div>
+      </Transition>
+    </Teleport>
   </div>
 </template>
 
@@ -260,6 +273,8 @@ function downloadBackup(data) {
 
 /* 全部导出：无需选择，直接下载 */
 async function exportAll() {
+  if (exporting.value) return
+  exporting.value = true
   try {
     /* buildBackup 同步返回；await 防御底层若改成 async 时 Promise 被
        JSON.stringify 成 {} 的历史 bug（导出空文件不可用） */
@@ -267,10 +282,14 @@ async function exportAll() {
     toast.pushToast({ title: '已导出备份文件', text: '已保存到「下载」目录：' + res.location })
   } catch (e) {
     toast.pushToast({ title: '导出失败', text: e.message })
+  } finally {
+    exporting.value = false
   }
 }
 
 async function doExport(scope) {
+  if (exporting.value) return
+  exporting.value = true
   try {
     const data = await buildBackup(
       scope === 'feature'
@@ -283,8 +302,16 @@ async function doExport(scope) {
     toast.pushToast({ title: '已导出备份文件', text: '已保存到「下载」目录：' + res.location })
   } catch (e) {
     toast.pushToast({ title: '导出失败', text: e.message })
+  } finally {
+    exporting.value = false
   }
 }
+
+/* ─────────── 导出 ─────────── */
+/* 导出中加载层：点击导出立即显示，避免原生壳「点完没反应、要等一会」的等待感
+   （网页版一点就弹浏览器下载栏，原生版要等 buildBackup+生成+写盘全跑完才弹 toast，
+   中间无反馈；加此层后点完立刻有 spinner，体感与网页版一致）。 */
+const exporting = ref(false)
 
 /* ─────────── 导入 ─────────── */
 const fileEl = ref(null)
@@ -537,4 +564,28 @@ onMounted(load)
   100% { left: 100%; }
 }
 .imp-prog-count { font-size: 12px; color: var(--text-soft); text-align: center; }
+
+/* 导出中加载层 */
+.exp-mask {
+  position: fixed; inset: 0;
+  background: rgba(60, 50, 56, 0.45);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 1000;
+}
+.exp-box {
+  width: 80%; max-width: 300px;
+  background: var(--bg-screen); border-radius: var(--radius);
+  box-shadow: var(--shadow-strong);
+  padding: 26px 20px; text-align: center;
+}
+.exp-spinner {
+  width: 38px; height: 38px; margin: 0 auto 14px;
+  border: 4px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: exp-spin 0.8s linear infinite;
+}
+@keyframes exp-spin { to { transform: rotate(360deg); } }
+.exp-title { font-size: 15px; font-weight: 600; color: var(--text); }
+.exp-sub { margin-top: 8px; font-size: 12px; color: var(--text-soft); }
 </style>

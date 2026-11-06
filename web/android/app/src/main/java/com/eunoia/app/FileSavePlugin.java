@@ -13,9 +13,7 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.FileOutputStream;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.charset.StandardCharsets;
 
@@ -29,17 +27,22 @@ import java.nio.charset.StandardCharsets;
  *     已在 AndroidManifest 以 maxSdkVersion=32 声明）。
  *
  * 为避免「一次性把几十 MB 的备份字符串塞进原生桥」导致 WebView 主线程被占住数秒触发 ANR 卡退，
- * 改为流式：beginFile 建临时文件 → appendFile 分块追加（每块由 JS 控制在 1MB 内、且块间让出主线程）
- * → finishFile 把临时文件搬进下载目录并删除临时文件。
- * 注：Capacitor 6.2.3 的 @PluginMethod 无 thread 属性（ThreadType 已移除），故方法运行在默认线程；
- * 因写入已分块（每块由 JS 控制在 1MB 内）、且 finishFile 用流拷贝一次性搬文件，单次 IO 很短，不阻塞 UI。
+ * 改为流式：beginFile 直接打开「下载目录」的输出流（不再落临时文件）→ appendFile 分块写入
+ * （每块由 JS 控制在 1MB 内、且块间让出主线程）→ finishFile 关流并让文件可见。
+ *
+ * 关键性能优化（相比早期实现）：早期实现先写临时文件、finishFile 时再把整份备份流拷贝进
+ * MediaStore，末尾多了一次几十 MB 的 IO 复制，是「点完导出要等一会」的真实额外耗时；现在直接
+ * 写目标流，省掉整份复制，导出结束即落盘可见。
+ *
+ * 注：Capacitor 6.2.3 的 @PluginMethod 无 thread 属性（ThreadType 已移除），方法运行在默认线程；
+ * 因写入已分块（每块由 JS 控制在 1MB 内），单次 IO 很短，不阻塞 UI。
  */
 @CapacitorPlugin(name = "FileSave")
 public class FileSavePlugin extends Plugin {
 
-    private File currentFile = null;
-    private FileOutputStream currentOut = null;
-    private String currentFilename = null;
+    private OutputStream currentOut = null;
+    private String currentFilename = null; // API29+ 为文件名；API<29 为绝对路径
+    private Uri currentUri = null;         // API29+ MediaStore 条目 URI（用于结束可见 / 失败清理）
 
     private static String msg(Exception e) {
         return e != null && e.getMessage() != null ? e.getMessage() : String.valueOf(e);
@@ -49,8 +52,24 @@ public class FileSavePlugin extends Plugin {
         return name == null ? "backup.json" : name.replaceAll("[^\\w.\\-]", "_");
     }
 
+    /* 清理可能残留的、尚未 finalize 的 MediaStore 条目（如 beginFile 被重复调用、
+       或上次导出在 finishFile 之前失败）。避免留下 IS_PENDING=1 的不可见幽灵文件。 */
+    private void cleanupPending() {
+        if (currentUri != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            try {
+                getContext().getContentResolver().delete(currentUri, null, null);
+            } catch (Exception ignored) { /* 删不掉也不影响新导出 */ }
+        }
+        currentUri = null;
+        currentFilename = null;
+        if (currentOut != null) {
+            try { currentOut.close(); } catch (Exception ignored) {}
+            currentOut = null;
+        }
+    }
+
     private synchronized void ensureOpen(PluginCall call) {
-        if (currentOut == null || currentFile == null) {
+        if (currentOut == null) {
             call.reject("未开始写入，请先调用 beginFile");
         }
     }
@@ -63,18 +82,35 @@ public class FileSavePlugin extends Plugin {
             return;
         }
         try {
-            File dir = new File(getContext().getCacheDir(), "export_tmp");
-            //noinspection ResultOfMethodCallIgnored
-            dir.mkdirs();
-            currentFile = new File(dir, System.currentTimeMillis() + "_" + sanitize(filename));
-            currentFilename = filename;
-            currentOut = new FileOutputStream(currentFile, false); // 截断新建
+            cleanupPending(); // 清掉上一次可能残留的 pending 条目，干净起步
+            final String safe = sanitize(filename);
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                // Android 10+：MediaStore，免权限；先插入 IS_PENDING=1 的条目，再拿输出流直写
+                ContentResolver resolver = getContext().getContentResolver();
+                ContentValues values = new ContentValues();
+                values.put(MediaStore.Downloads.DISPLAY_NAME, safe);
+                values.put(MediaStore.Downloads.MIME_TYPE, "application/json");
+                values.put(MediaStore.Downloads.IS_PENDING, 1);
+                Uri itemUri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values);
+                if (itemUri == null) throw new Exception("无法在下载目录创建文件");
+                currentUri = itemUri;
+                currentFilename = safe;
+                currentOut = resolver.openOutputStream(itemUri);
+            } else {
+                // Android 9-：传统文件 API（需 WRITE_EXTERNAL_STORAGE，manifest 已声明 maxSdk=32）
+                File dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
+                if (dir != null) dir.mkdirs();
+                File f = new File(dir, safe);
+                currentFilename = f.getAbsolutePath();
+                currentUri = null;
+                currentOut = new FileOutputStream(f);
+            }
+            if (currentOut == null) throw new Exception("无法打开输出流");
             JSObject r = new JSObject();
             r.put("started", true);
             call.resolve(r);
         } catch (Exception e) {
-            currentFile = null;
-            currentOut = null;
+            cleanupPending();
             call.reject("创建文件失败：" + msg(e));
         }
     }
@@ -98,7 +134,7 @@ public class FileSavePlugin extends Plugin {
 
     @PluginMethod
     public synchronized void finishFile(final PluginCall call) {
-        if (currentOut == null || currentFile == null) {
+        if (currentOut == null) {
             call.reject("未开始写入，请先调用 beginFile");
             return;
         }
@@ -106,57 +142,31 @@ public class FileSavePlugin extends Plugin {
             currentOut.flush();
             currentOut.close();
             currentOut = null;
-            String savedName = currentFilename; // 先捕获，避免下方置空后丢失文件名
-            String location = writeToDownloads(savedName, currentFile);
-            //noinspection ResultOfMethodCallIgnored
-            currentFile.delete();
-            currentFile = null;
+            String savedName = currentFilename; // 先捕获，下方清理前保留
+            String location;
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && currentUri != null) {
+                // 让 MediaStore 条目可见
+                ContentValues values = new ContentValues();
+                values.put(MediaStore.Downloads.IS_PENDING, 0);
+                getContext().getContentResolver().update(currentUri, values, null, null);
+                location = "下载/" + savedName;
+                currentUri = null;
+            } else if (currentUri == null && savedName != null) {
+                // 传统文件：扫描进媒体库，便于文件管理器立即看到
+                MediaScannerConnection.scanFile(getContext(), new String[]{ savedName },
+                        new String[]{ "application/json" }, null);
+                location = savedName;
+            } else {
+                location = "下载/" + savedName;
+            }
             currentFilename = null;
             JSObject r = new JSObject();
             r.put("saved", true);
-            r.put("location", location != null ? location : ("下载/" + savedName));
+            r.put("location", location);
             call.resolve(r);
         } catch (Exception e) {
+            cleanupPending();
             call.reject("保存失败：" + msg(e));
-        }
-    }
-
-    /* 把临时文件流式搬进系统「下载」目录（用流拷贝，避免把整份备份再读进内存翻倍）。 */
-    private String writeToDownloads(String filename, File src) throws Exception {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            // Android 10+：MediaStore，免权限
-            ContentResolver resolver = getContext().getContentResolver();
-            ContentValues values = new ContentValues();
-            values.put(MediaStore.Downloads.DISPLAY_NAME, filename);
-            values.put(MediaStore.Downloads.MIME_TYPE, "application/json");
-            values.put(MediaStore.Downloads.IS_PENDING, 1);
-            Uri coll = MediaStore.Downloads.EXTERNAL_CONTENT_URI;
-            Uri itemUri = resolver.insert(coll, values);
-            if (itemUri == null) throw new Exception("无法在下载目录创建文件");
-            try (InputStream is = new FileInputStream(src);
-                 OutputStream os = resolver.openOutputStream(itemUri)) {
-                byte[] buf = new byte[64 * 1024];
-                int n;
-                while ((n = is.read(buf)) > 0) os.write(buf, 0, n);
-            }
-            values.clear();
-            values.put(MediaStore.Downloads.IS_PENDING, 0);
-            resolver.update(itemUri, values, null, null);
-            return "下载/" + filename;
-        } else {
-            // Android 9-：传统文件 API（需 WRITE_EXTERNAL_STORAGE，manifest 已声明 maxSdk=32）
-            File dir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS);
-            if (dir != null) dir.mkdirs();
-            File f = new File(dir, filename);
-            try (InputStream is = new FileInputStream(src);
-                 FileOutputStream os = new FileOutputStream(f)) {
-                byte[] buf = new byte[64 * 1024];
-                int n;
-                while ((n = is.read(buf)) > 0) os.write(buf, 0, n);
-            }
-            MediaScannerConnection.scanFile(getContext(), new String[]{ f.getAbsolutePath() },
-                    new String[]{ "application/json" }, null);
-            return f.getAbsolutePath();
         }
     }
 }
