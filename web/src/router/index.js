@@ -94,4 +94,18 @@ const router = createRouter({
   routes
 })
 
+/* 路由持久化：记录最近一次访问路径。原生壳（WebView）被杀后台后重新打开、
+   或网页端刷新，进入应用后恢复到上次停留的页面，而非总是回到开屏/首页，
+   避免「切后台一会再回来像崩溃/重启」的割裂感。
+   只在原生壳生效：网页端以浏览器地址栏 URL 为准，不覆盖深链接直达。 */
+const LAST_ROUTE_KEY = 'eunoia.lastRoute'
+router.afterEach((to) => {
+  try {
+    if (to.path && to.path !== '/') localStorage.setItem(LAST_ROUTE_KEY, to.fullPath)
+  } catch (e) { /* 隐私模式忽略 */ }
+})
+export function getLastRoute() {
+  try { return localStorage.getItem(LAST_ROUTE_KEY) || '' } catch (e) { return '' }
+}
+
 export default router

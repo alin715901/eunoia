@@ -99,7 +99,7 @@ import { useAutoUpdate } from '@/composables/useAutoUpdate'
 import { requestNotificationPermission, notificationPermissionState } from '@/composables/useNotification'
 import { ensureLocalNotificationPermission, initLocalNotifications, isNativePlatform } from '@/composables/useLocalNotification'
 import { checkReleaseUpdate, promptRelease, isReleaseAutoCheck } from '@/composables/useReleaseUpdate'
-import router from '@/router'
+import router, { getLastRoute } from '@/router'
 import { dbReady, onDbProgress, getInitWarning } from '@/local/db'
 import { useSettingsStore } from '@/stores/settings'
 import { useContactsStore } from '@/stores/contacts'
@@ -264,6 +264,14 @@ dbReady
     const warn = getInitWarning()
     if (warn) showInitWarning.value = warn
     whenBarFull(enterApp)
+    /* 原生壳（WebView）被杀后台后重新打开：恢复到上次停留的页面，而非回到开屏/首页。
+       网页端以地址栏 URL 为准，这里只在原生壳执行，避免覆盖深链接直达。 */
+    if (isNativePlatform()) {
+      const last = getLastRoute()
+      if (last && last !== '/' && router.currentRoute.value.path === '/') {
+        router.replace(last).catch(() => {})
+      }
+    }
   })
   .catch((e) => {
     console.error('[app] 数据库初始化失败', e)

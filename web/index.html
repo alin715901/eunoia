@@ -20,14 +20,46 @@
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
     <script>
-      /* 首屏先按上次选择的外观上色，避免深色模式启动时闪一下白屏 */
+      /* 首屏先按上次选择的外观/主题色上色，避免启动闪白屏或先闪默认主题色。
+         深色外观来自 zika.appearance；主题色/字体来自 eunoia.theme.cache
+         （由 settings.js 的 applyTheme 在每次切换/保存时写入）。两者都在 Vue
+         挂载前同步应用到 :root，故「重新进入应用」时主页爱心/主题色从第一帧
+         起就是用户设定的颜色，不再先闪默认棕金再等异步 load 回填。 */
       (function () {
         try {
+          var root = document.documentElement;
           var m = localStorage.getItem('zika.appearance') || 'light';
           var dark = m === 'dark' || (m === 'system' && window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
           var t = dark ? 'dark' : 'light';
-          document.documentElement.dataset.theme = t;
-          document.documentElement.style.colorScheme = t;
+          root.dataset.theme = t;
+          root.style.colorScheme = t;
+
+          var raw = localStorage.getItem('eunoia.theme.cache');
+          if (raw) {
+            var c = JSON.parse(raw);
+            if (c && c.accent) {
+              root.style.setProperty('--accent', c.accent);
+              var mm = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(String(c.accent).trim());
+              if (mm) {
+                var rgb = [mm[1], mm[2], mm[3]].map(function (x) { return parseInt(x, 16); }).join(', ');
+                root.style.setProperty('--accent-soft', 'rgba(' + rgb + ', 0.12)');
+              }
+            }
+            if (c && c.font) {
+              var css = {
+                default: "-apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', 'Segoe UI', Roboto, sans-serif",
+                serif: "'Songti SC', 'Noto Serif SC', 'STSong', 'Noto Serif CJK SC', serif",
+                kai: "'Kaiti SC', 'LXGW WenKai', KaiTi, STKaiti, serif",
+                hei: "'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', sans-serif",
+                round: "'Yuanti SC', 'Huninn', 'PingFang SC', sans-serif",
+                hand: "'Ma Shan Zheng', 'Xingkai SC', STXingkai, 'Kaiti SC', cursive"
+              }[c.font];
+              if (css) {
+                root.style.setProperty('--font-sans', css);
+                root.style.setProperty('--font-serif', css);
+              }
+            }
+          }
         } catch (e) {}
       })();
     </script>

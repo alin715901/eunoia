@@ -234,6 +234,27 @@ function toRgb(color) {
   return `${r}, ${g}, ${b}`
 }
 
+/* 生效主题缓存键：供 index.html 头部内联脚本在 Vue 挂载前同步读取，
+   消除「重新进入应用先闪默认主题色、等异步 load 回来才变」的闪烁。
+   （深色外观另由 applyAppearance 写入 zika.appearance，此处一并冗余保存） */
+export const THEME_CACHE_KEY = 'eunoia.theme.cache'
+export function cacheTheme(t) {
+  try {
+    localStorage.setItem(
+      THEME_CACHE_KEY,
+      JSON.stringify({
+        accent: t.accent,
+        appearance: t.appearance,
+        font: t.font,
+        fontCss: t.fontCss,
+        cardOpacity: t.cardOpacity
+      })
+    )
+  } catch (e) {
+    /* 隐私模式等场景降级：忽略，首屏多闪一下默认色而已 */
+  }
+}
+
 export const useSettingsStore = defineStore('settings', {
   state: () => ({
     global: JSON.parse(JSON.stringify(DEFAULT)),
@@ -324,6 +345,16 @@ export const useSettingsStore = defineStore('settings', {
       applyAccent(this.accent)
       applyFont(this.global?.theme?.font, this.global?.theme?.fontCss)
       applyCardAlpha(this.global?.theme?.cardOpacity)
+      /* 把生效主题缓存到 localStorage：首屏 index.html 的内联脚本会同步读它，
+         在 Vue 挂载前就把 --accent/字体写进 :root，避免「重新进入应用先闪默认色、
+         等 settings.load 异步回来才变」的爱心/主题色闪烁（与深色模式同步上色同理）。 */
+      cacheTheme({
+        accent: this.accent,
+        appearance: this.appearance,
+        font: this.global?.theme?.font,
+        fontCss: this.global?.theme?.fontCss,
+        cardOpacity: this.global?.theme?.cardOpacity
+      })
     },
 
     /* ── 主题套装 ── */
