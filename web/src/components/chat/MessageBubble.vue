@@ -27,7 +27,7 @@
           <!-- 字卡消息：带图片的图片字卡显示图（表情包式）；有文字则在图下方/或纯文字 -->
           <template v-if="message.content_type === 'card'">
             <span v-if="message.asset_path" class="img-wrap" @click="onImageTap">
-              <img :src="message.asset_path" class="image-msg" alt="" draggable="false" />
+              <img :src="message.asset_path" class="image-msg" alt="" draggable="false" loading="lazy" decoding="async" />
               <span class="img-cover" aria-hidden="true"></span>
             </span>
             <div v-if="message.text" :class="{ 'card-text-below': message.asset_path }" v-html="squeezedHtml(message.text)"></div>
@@ -35,7 +35,7 @@
           <!-- 图片消息（相册发送）：无气泡底，圆角图片；点击查看大图 -->
           <template v-else-if="message.content_type === 'image'">
             <span class="img-wrap" @click="onImageTap">
-              <img :src="message.asset_path" class="image-msg" alt="" draggable="false" />
+              <img :src="message.asset_path" class="image-msg" alt="" draggable="false" loading="lazy" decoding="async" />
               <span class="img-cover" aria-hidden="true"></span>
             </span>
           </template>
@@ -43,7 +43,7 @@
                类型由后端按板块恒定：图片板块→image（统一竖框）、表情包板块→sticker（小尺寸） -->
           <template v-else-if="message.content_type === 'sticker'">
             <span class="img-wrap" @click="onImageTap">
-              <img :src="message.asset_path" class="image-msg sticker-msg" alt="" draggable="false" />
+              <img :src="message.asset_path" class="image-msg sticker-msg" alt="" draggable="false" loading="lazy" decoding="async" />
               <span class="img-cover" aria-hidden="true"></span>
             </span>
           </template>
@@ -186,7 +186,7 @@
         <!-- 引用预览：气泡下方的小摘要框（参考微信）。图片引用时缩略图取代「[图片]」占位。点击跳转到原文 -->
         <div v-if="message.quote_text" class="quote-box" :class="side" @click.stop="onQuoteTap">
           <div v-if="quoteTextShown" class="quote-text">{{ quoteTextShown }}</div>
-          <img v-if="message.quote_image" :src="message.quote_image" class="quote-thumb" />
+          <img v-if="message.quote_image" :src="message.quote_image" class="quote-thumb" loading="lazy" decoding="async" />
         </div>
         <!-- 我的消息：已读标识（text=已送达/已读文字；check=对勾；关闭则不显示），
              绝对定位在气泡下方右缘，不影响头像（底部对齐时）与气泡底部对齐。

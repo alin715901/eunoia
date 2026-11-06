@@ -20,6 +20,36 @@ function dedupe(list, incoming) {
   return out
 }
 
+/* 单联系人聊天消息在内存中的窗口上限：超出后丢弃窗口外部分（更早的可经
+   loadOlder 的 cursor 从本地 SQLite 重新拉取，本地 sql.js 全内存库查询极快）。
+   不设上限会把整段历史（含大量 base64 图片/语音 data URL）常驻内存并全量
+   渲染进 DOM，长会话极易触发 WebView OOM 被系统强杀（前台聊天卡退）。 */
+const CHAT_WINDOW = 300
+
+/* 合并后裁剪到窗口内：
+   mode='newest'（默认）：保留最近方向窗口（进入会话/新消息/发送后，回到最新视图）
+   mode='oldest'：保留最老方向窗口（上滑看历史，prepend 更早页后内存仍恒有界）
+   keepIds：被引用/搜索定位的目标消息，强制保留在窗口内（即使它在窗口外） */
+function trimWindow(list, keepIds = [], mode = 'newest') {
+  if (!Array.isArray(list) || list.length <= CHAT_WINDOW) return list
+  if (mode === 'oldest') {
+    // 上滑看历史：保留最老方向窗口（含刚 prepend 的更早页），内存恒有界不无限涨
+    return list.slice(0, CHAT_WINDOW)
+  }
+  if (keepIds && keepIds.length) {
+    const keep = new Set(keepIds)
+    let idx = list.length
+    for (let i = 0; i < list.length; i++) {
+      if (keep.has(list[i].id)) { idx = i; break }
+    }
+    if (idx === list.length) idx = list.length - 1
+    const start = Math.max(0, idx - Math.floor(CHAT_WINDOW / 4))
+    return list.slice(start, Math.min(list.length, start + CHAT_WINDOW))
+  }
+  // 默认：保留最近方向窗口（回到最新）
+  return list.slice(list.length - CHAT_WINDOW)
+}
+
 export const useChatStore = defineStore('chat', {
   state: () => ({
     messagesByContact: {},
@@ -55,7 +85,9 @@ export const useChatStore = defineStore('chat', {
       try {
         const res = await api.getMessages(contactId)
         const msgs = res.messages || []
-        this.messagesByContact[contactId] = dedupe(this.messagesByContact[contactId] || [], msgs)
+        this.messagesByContact[contactId] = trimWindow(
+          dedupe(this.messagesByContact[contactId] || [], msgs)
+        )
         this.cursors[contactId] = res.nextCursor || null
       } finally {
         this.loadingByContact[contactId] = false
@@ -73,7 +105,11 @@ export const useChatStore = defineStore('chat', {
         const res = await api.getMessages(contactId, cursor)
         const msgs = res.messages || []
         if (msgs.length) {
-          this.messagesByContact[contactId] = dedupe(this.messagesByContact[contactId] || [], msgs)
+          this.messagesByContact[contactId] = trimWindow(
+            dedupe(this.messagesByContact[contactId] || [], msgs),
+            [],
+            'oldest'
+          )
         }
         // 下一页游标：返回页里最旧一条 id；本页不足一页（或无）则已到顶
         this.cursors[contactId] = res.nextCursor || null
@@ -85,7 +121,9 @@ export const useChatStore = defineStore('chat', {
     async send(contactId, text, quote = null) {
       const payload = quote && quote.id ? { text, quoteId: quote.id } : { text }
       const msg = await api.sendMessage(contactId, payload.text, payload.quoteId)
-      this.messagesByContact[contactId] = dedupe(this.messagesByContact[contactId] || [], [msg])
+      this.messagesByContact[contactId] = trimWindow(
+        dedupe(this.messagesByContact[contactId] || [], [msg])
+      )
       return msg
     },
     /* 我拍对方（双击头像触发）：拍一拍内容完全由用户自定义，原样发送，
@@ -93,7 +131,9 @@ export const useChatStore = defineStore('chat', {
        拍一拍算作我发出的一条消息，会按对方的回复设置触发自动回复 */
     async sendPoke(contactId, text) {
       const msg = await api.sendPoke(contactId, String(text || '').trim())
-      this.messagesByContact[contactId] = dedupe(this.messagesByContact[contactId] || [], [msg])
+      this.messagesByContact[contactId] = trimWindow(
+        dedupe(this.messagesByContact[contactId] || [], [msg])
+      )
       return msg
     },
     /* 撤回我的消息：本地把该条消息标记为 recalled（居中显示「我撤回了一条消息」） */
@@ -114,7 +154,9 @@ export const useChatStore = defineStore('chat', {
     },
     appendFromSSE(contactId, msgs) {
       const incoming = msgs || []
-      this.messagesByContact[contactId] = dedupe(this.messagesByContact[contactId] || [], incoming)
+      this.messagesByContact[contactId] = trimWindow(
+        dedupe(this.messagesByContact[contactId] || [], incoming)
+      )
       // 对方来新消息 = 他已读我的消息：同步把我的未读消息标记为已读（单勾 → 双勾 / 已读）
       if (incoming.some((m) => m.sender === 'contact')) {
         this.messagesByContact[contactId] = this.messagesByContact[contactId].map((m) =>
@@ -130,7 +172,9 @@ export const useChatStore = defineStore('chat', {
     /* 追加一条本地发送的消息（图片/红包/通话/提问等特殊消息，发送接口直接返回落库后的消息） */
     push(contactId, msg) {
       if (!msg || msg.id == null) return
-      this.messagesByContact[contactId] = dedupe(this.messagesByContact[contactId] || [], [msg])
+      this.messagesByContact[contactId] = trimWindow(
+        dedupe(this.messagesByContact[contactId] || [], [msg])
+      )
     },
     /* SSE message_update：单条消息原位更新（红包状态流转「待领取→已领取/退回」） */
     updateFromSSE(contactId, msg) {
@@ -153,7 +197,7 @@ export const useChatStore = defineStore('chat', {
         if (a.seq != null && b.seq != null) return a.seq - b.seq
         return new Date(a.created_at) - new Date(b.created_at)
       })
-      this.messagesByContact[contactId] = merged
+      this.messagesByContact[contactId] = trimWindow(merged)
     },
     /* 会话内搜索：把服务端搜到的「分页之外的旧消息」合并进本地列表，
        让相关聊天记录能像微信一样显示出整条消息并可跳转定位 */
@@ -171,7 +215,7 @@ export const useChatStore = defineStore('chat', {
         if (a.seq != null && b.seq != null) return a.seq - b.seq
         return new Date(a.created_at) - new Date(b.created_at)
       })
-      this.messagesByContact[contactId] = merged
+      this.messagesByContact[contactId] = trimWindow(merged, incoming.map((m) => m.id))
     },
     /* 对方开始输入 = 已读我的消息：把我的未读消息标记为已读（单勾→双勾/已读），无需等对方真正发出 */
     markMyRead(contactId) {
