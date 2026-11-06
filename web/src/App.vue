@@ -98,6 +98,7 @@ import { connect, disconnect } from '@/composables/useSSE'
 import { useAutoUpdate } from '@/composables/useAutoUpdate'
 import { requestNotificationPermission, notificationPermissionState } from '@/composables/useNotification'
 import { ensureLocalNotificationPermission, initLocalNotifications, isNativePlatform } from '@/composables/useLocalNotification'
+import { initReplyQueueSync } from '@/local/services/replyQueue.service'
 import { checkReleaseUpdate, promptRelease, isReleaseAutoCheck } from '@/composables/useReleaseUpdate'
 import router from '@/router'
 import { dbReady, onDbProgress, getInitWarning } from '@/local/db'
@@ -292,6 +293,9 @@ async function boot() {
      （避免凭空消失）并清掉孤儿快照。温热启动（进程存活）不会重载，不会误触发。 */
   useCallStore().recoverKilledCall()
   connect()
+  /* 后台安全的回复队列：注册前后台同步（回前台/点通知补落库）并做一次冷启动补投，
+     保证「切后台期间对方回复」既由系统闹钟弹出、又不会在重开后丢消息 */
+  initReplyQueueSync()
   // 尽早申请系统通知权限（部分浏览器要求用户交互后授权；失败静默忽略）
   requestNotificationPermission().catch(() => {})
   // 原生 APK：申请安卓通知权限（Android 13+ 弹系统授权框）+ 初始化本地通知监听（点击打开会话）

@@ -121,7 +121,7 @@ export function connect() {
 
   source.addEventListener('new_messages', (e) => {
     try {
-      const { contactId, messages, avatar: sseAvatar, name: sseName } = JSON.parse(e.data)
+      const { contactId, messages, avatar: sseAvatar, name: sseName, silent } = JSON.parse(e.data)
       const chat = useChatStore()
       chat.appendFromSSE(contactId, messages || [])
 
@@ -161,8 +161,10 @@ export function connect() {
         /* 影院播放器打开中：消息已在播放器聊天室里实时可见，
            不再从屏幕顶部弹消息提示（浅色弹条会盖住视频顶部，即"白带"）。
            进门安静窗口（冷启动 / 从后台切回前台后的短暂时间）内也不弹横条：
-           离线 / 后台期间到达的消息静静躺在聊天里，开门不炸「X 发来一条消息」。 */
-        if (inc > 0 && !useCinemaStore().playerOpen && !isEntryQuiet()) {
+           离线 / 后台期间到达的消息静静躺在聊天里，开门不炸「X 发来一条消息」。
+           silent（replyQueue 后台补投）：系统闹钟已弹过真实内容，回前台只补落库，
+           不再弹横条，避免与后台通知重复打扰。 */
+        if (inc > 0 && !useCinemaStore().playerOpen && !isEntryQuiet() && !silent) {
           notifications.pushToast({
             title,
             text: preview,
@@ -201,8 +203,9 @@ export function connect() {
           }
         }
         const preview = last ? previewOf(last) : ''
-        // 原生：始终发通知，但前台只进通知栏、后台才悬浮弹；Web：仅未聚焦弹
-        if (inc > 0 && notifyOn && permOk && (native || !isPageFocused()) && !quiet) {
+        // 原生：始终发通知，但前台只进通知栏、后台才悬浮弹；Web：仅未聚焦弹。
+        // silent（后台补投）：后台已由系统闹钟弹过，回前台不再补发系统通知，避免重复。
+        if (inc > 0 && notifyOn && permOk && (native || !isPageFocused()) && !quiet && !silent) {
           notify(title, { body: preview, route: `/contacts/${contactId}/chat` })
         }
 

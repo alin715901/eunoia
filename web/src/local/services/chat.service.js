@@ -1,5 +1,6 @@
 import db from '../db'
 import { scheduleProactiveNotification } from '@/composables/useLocalNotification'
+import { enqueueReply } from './replyQueue.service'
 import { drawCards, drawCardsForMember, drawPokeCard } from './cardDraw.service'
 import * as notification from './notification.service'
 import * as settingsRepo from '../repositories/settings.repo'
@@ -42,7 +43,15 @@ function audioDurationOf(src, text) {
 }
 
 /* 判定这条字卡是否转语音：返回 { text, asset_path, duration } 或 null */
-async function voiceConvertInfo(d, contactId, card) {
+/* 「回复调度」专用的同步语音判定：只做本地判断，绝不发起网络请求。
+   ★ 为什么不复用旧的 async voiceConvertInfo：后者在 MiniMax 配置就绪时会 await
+     minimaxTtsBlob（真实网络请求）。若用户在调度过程中切后台，安卓 WebView 会冻结 JS，
+     该 Promise 永远不 resolve → deliverViaQueue 卡在 await → 系统闹钟压根没预约上，
+     后台依然收不到弹窗。这与本次要修的「后台不弹窗」是同一类根因。
+   因此调度链路一律只构造「伪语音」（voice_src='mm' + 空 asset_path）：
+   真实音频由既有 upgradeAllPseudoVoices（启动 4 秒）/ 设置页 upgradePseudoVoices 自动补齐，
+   前端本就支持伪语音气泡，体验无损。 */
+function pseudoVoiceInfo(d, contactId, card) {
   try {
     /* 只转纯文字字卡：带资源的（图片/表情包/语音）与问答选择题等纯文本消息不转 */
     if (!card || card.asset_path || card.category === 'voice' || card.category === 'sticker' || card.category === 'image') return null
@@ -55,16 +64,6 @@ async function voiceConvertInfo(d, contactId, card) {
     if (Math.random() >= prob) return null
     const text = String(card.content || '').trim()
     if (!text) return null
-    if (cfgReady(cfg)) {
-      try {
-        const blob = await minimaxTtsBlob(cfg, text)
-        const dataUrl = await blobToDataUrl(blob)
-        const duration = await audioDurationOf(dataUrl, text)
-        return { text, asset_path: dataUrl, duration }
-      } catch (e) {
-        /* TTS 失败 → 伪语音兜底 */
-      }
-    }
     return { text, asset_path: '', duration: Math.max(2, Math.round(text.length / 4)) }
   } catch (e) {
     return null
@@ -306,43 +305,29 @@ function continueTalk(dbRef, contactId) {
     const members = groupMembersWithRules(d, contactId);
     memberId = members.length ? members[Math.floor(Math.random() * members.length)].id : null;
   }
-  const cards = memberId ? drawCardsForMember(d, contactId, memberId, 1) : drawCards(d, contactId, 1);
-  const card = cards[0] || null;
   // 拍一拍：内定 3% 概率（点"继续说"也算对方主动发，同样触发）。命中且库里有字卡时不显示"正在输入"，
   // 走独立的短延时（约 0.8~1.6 秒），不跟随普通回复时长
   if (Math.random() < 0.03 && drawPokeCard(d)) {
-    setTimeout(
-      guard(() => {
-        if (emitPoke(d, contactId)) maybeContactFavorite(d, contactId);
-      }, contactId),
-      randInt(800, 1600)
-    );
+    schedulePoke(contactId, Date.now() + randInt(800, 1600));
     return true;
   }
+  // 抽卡在「调度当下」完成（而非送达时刻），内容才能提前写进系统闹钟、后台也弹真实内容
+  const cards = memberId ? drawCardsForMember(d, contactId, memberId, 1) : drawCards(d, contactId, 1);
   notification.broadcast('typing', { contactId, typing: true });
-  setTimeout(
-    guard(async () => {
-      // MiniMax 开启时纯文字字卡有概率转语音（配置好=真语音；未配置=伪语音）
-      const conv = await voiceConvertInfo(d, contactId, card);
-      // 抽到图片字卡（表情包）→ 按字卡消息落库（前端渲染为图）；纯文字字卡 → 文本消息
-      const m = conv
-        ? insertConvertedVoice(d, contactId, conv, card, memberId)
-        : card && (card.asset_path || card.category === 'voice')
-          ? insertContactCard(d, contactId, card, memberId)
-          : insertContactText(d, contactId, card?.content || '…', null, memberId);
-      notification.broadcast('typing', { contactId, typing: false });
-      const info = effectiveContactInfo(d, contactId);
-      notification.broadcast('new_messages', { contactId, messages: [m], avatar: info.avatar, name: info.name });
-      notification.broadcast('badge_update', settingsRepo.getBadges());
-      // 开了「对方撤回消息」时，这句也有小概率被撤回
-      maybeContactRecall(d, contactId, [m]);
-    }, contactId),
-    // 延迟跟随「设置」里的回复时长（秒）：reply_delay_min ~ reply_delay_max
-    randInt(
-      st.reply_delay_min || 1,
-      Math.max(st.reply_delay_min || 1, st.reply_delay_max || 5)
-    ) * 1000
+  const delaySec = randInt(
+    st.reply_delay_min || 1,
+    Math.max(st.reply_delay_min || 1, st.reply_delay_max || 5)
   );
+  deliverViaQueue({
+    contactId,
+    groupId: group ? contactId : null,
+    deliverAtMs: Date.now() + delaySec * 1000,
+    cards: [cards[0] || null],
+    memberId,
+    textMode: 'auto', // continueTalk：无资源且非语音字卡 → text（与原 insertContactText 一致）
+    favorite: false,
+    recall: true // 与原 maybeContactRecall 一致
+  });
   return true;
 }
 
@@ -439,12 +424,7 @@ function scheduleReply(dbRef, contactId) {
   /* 拍一拍：单聊内定 3% 概率。命中且库里有字卡时，对方不发话、直接拍一拍——
      不显示"正在输入"，走独立短延时（约 0.8~1.6 秒），不跟随普通回复时长。 */
   if (!group && Math.random() < 0.03 && drawPokeCard(d)) {
-    setTimeout(
-      guard(() => {
-        if (emitPoke(d, contactId)) maybeContactFavorite(d, contactId);
-      }),
-      randInt(800, 1600)
-    );
+    schedulePoke(contactId, Date.now() + randInt(800, 1600));
     return;
   }
 
@@ -482,93 +462,19 @@ function scheduleReply(dbRef, contactId) {
     };
   }
 
-  /* 计算联系人的"有效头像/名称"（弹窗用）：开启同步到聊天后取人物卡头像，
-     与聊天界面保持一致；否则回落联系人自身头像 */
-  function effectiveContactInfo() {
-    const c = d.prepare('SELECT id, name, avatar FROM contacts WHERE id = ?').get(contactId)
-    if (!c) return { avatar: '', name: '对方' }
-    let avatar = c.avatar || ''
-    const desk = d
-      .prepare('SELECT sync_chat_avatar, partner_avatar FROM contact_desktop WHERE contact_id = ?')
-      .get(contactId)
-    if (desk && desk.sync_chat_avatar && desk.partner_avatar) avatar = desk.partner_avatar
-    return { avatar, name: c.name || '对方' }
-  }
-
   notification.broadcast('typing', { contactId, typing: true });
-  // 对方开始输入 = 处于"回复时间"。已读时间点：延迟 2~4 秒（模拟"看完消息再回"），
-  // 避免"发送即已读"太快；若对方更快发出消息，emitCards 会兜底标已读。
+  // 对方开始输入 = 处于"回复时间"。已读时间点：延迟 2~4 秒（模拟"看完消息再回"）。
+  // 落库一律改走 replyQueue（预约式）：字卡与引用在「调度当下」抽好写进系统闹钟，
+  // 安卓退后台 / 进程被杀也能由系统弹出真实内容，回前台 / 点通知时再补落库。
 
-  // 落库一批字卡消息并广播（quote 可选：对方本批回复的第一条带引用）
-  function emitCards(cardIds, memberId, quote = null) {
-    // 对方来回复 = 已读我的消息：把我的未读消息标记为已读（单勾→双勾/已读）
-    d.prepare(
-      "UPDATE chat_messages SET read = 1, read_receipt = 'read' WHERE contact_id = ? AND sender = 'me' AND read_receipt != 'read'"
-    ).run(contactId);
-    const insertAll = async () => {
-      const messages = [];
-      for (let i = 0; i < cardIds.length; i++) {
-        const card = cardIds[i];
-        const q = i === 0 && quote ? quote : null;
-        const seq = getNextSeq(contactId);
-        // MiniMax 开启时纯文字字卡有概率转语音（配置好=真语音；未配置=伪语音；TTS 失败回落伪语音）
-        const conv = await voiceConvertInfo(d, contactId, card);
-        let m;
-        if (conv) {
-          m = insertConvertedVoice(d, contactId, conv, card, memberId, card.proactive);
-        } else {
-          const info = d
-            .prepare(
-              `INSERT INTO chat_messages(contact_id, sender, content_type, card_id, text, asset_path, duration, author_member_id, is_proactive, read_receipt, read, seq, created_at, quote_id, quote_text, quote_image)
-               VALUES(?, 'contact', ?, ?, ?, ?, ?, ?, ?, 'delivered', 0, ?, ?, ?, ?, ?)`
-            )
-            .run(
-              contactId,
-              cardContentType(card),
-              card.id,
-              card.content,
-              card.asset_path,
-              card.duration,
-              memberId,
-              card.proactive ? 1 : 0,
-              seq,
-              Math.floor(Date.now() / 1000),
-              q ? q.quoteId : null,
-              q ? q.quoteText : '',
-              q ? q.quoteImage : ''
-            );
-          m = d.prepare('SELECT * FROM chat_messages WHERE id = ?').get(info.lastInsertRowid);
-        }
-        messages.push(m);
-      }
-      // 带上有效头像/名称（同步到聊天时用人物卡头像），让弹窗与聊天界面一致
-      const info = effectiveContactInfo();
-      notification.broadcast('new_messages', {
-        contactId,
-        messages,
-        avatar: info.avatar,
-        name: info.name
-      });
-      const badges = settingsRepo.getBadges();
-      notification.broadcast('badge_update', badges);
-      // 对方小概率撤回刚发出的一条消息（开关在「主动消息」设置页，内定概率 10%）
-      maybeContactRecall(d, contactId, messages);
-    };
-    /* MiniMax 转语音是异步的，整段落库在 Promise 里，拒绝要兜住 */
-    Promise.resolve(insertAll()).catch((e) => console.error('[emitCards] skipped:', e.message));
-  }
-
-  /* 拍一拍：对方不说话，而是"拍了拍我"。
-     从通用库拍一拍字卡里抽一条，作为居中系统提示（格式：{联系人} {字卡内容}）。
-     没有拍一拍字卡时返回 false，由调用方回落到普通回复。 */
   if (!group) {
-    // ─── 单聊：原逻辑不变 ───
+    // ─── 单聊 ───
     const count = randInt(st.reply_min || 1, Math.min(st.reply_max || 3, 7));
     const delaySec = randInt(
       st.reply_delay_min || 1,
       Math.max(st.reply_delay_min || 1, st.reply_delay_max || 5)
     );
-    // 已读延迟：2~4 秒，且不超过实际回复延迟（回复发出时 emitCards 兜底标已读）
+    // 已读延迟：2~4 秒，且不超过实际回复延迟（回复落库时 flushItem 也会兜底标已读）
     const readDelayMs = Math.max(1, Math.min(randInt(2, 4), delaySec)) * 1000;
     setTimeout(
       guard(() => {
@@ -578,33 +484,28 @@ function scheduleReply(dbRef, contactId) {
       }),
       readDelayMs
     );
-    setTimeout(
-      guard(() => {
-        notification.broadcast('typing', { contactId, typing: false });
-        d.prepare(
-          "UPDATE chat_messages SET read = 1, read_receipt = 'read' WHERE contact_id = ? AND sender = 'me' AND read_receipt != 'read'"
-        ).run(contactId);
-        /* 拼字卡：开了就抽 N 张合成一条（N 取设置里的 1~20 范围）；没开就按条数分开发 */
-        const mergeOn = Number(st.reply_merge_enabled) === 1;
-        const mergeN = randInt(
-          Math.max(1, Number(st.reply_merge_min) || 1),
-          Math.max(1, Number(st.reply_merge_max) || 3)
-        );
-        const cards = (mergeOn ? drawMergedCards(d, contactId, mergeN) : drawCards(d, contactId, count))
-          .map((c) => ({ ...c, proactive: false }));
-        // 对方有时会引用最近的一条消息（我的或对方自己的）来回复
-        emitCards(cards, null, pickQuoteForContact(d, contactId));
-        // 对方也可能收藏我的一条消息（前端弹窗提示）
-        maybeContactFavorite(d, contactId);
-      }),
-      delaySec * 1000
+    /* 抽卡 + 引用都在「调度当下」完成（而非送达时刻），内容才能提前写进系统闹钟。
+       拼字卡：开了就抽 N 张合成一条；没开就按条数分开发。 */
+    const mergeOn = Number(st.reply_merge_enabled) === 1;
+    const mergeN = randInt(
+      Math.max(1, Number(st.reply_merge_min) || 1),
+      Math.max(1, Number(st.reply_merge_max) || 3)
     );
+    const cards = (mergeOn ? drawMergedCards(d, contactId, mergeN) : drawCards(d, contactId, count))
+      .map((c) => ({ ...c, proactive: false }));
+    deliverViaQueue({
+      contactId,
+      deliverAtMs: Date.now() + delaySec * 1000,
+      cards,
+      quote: pickQuoteForContact(d, contactId),
+      favorite: true, // 与原 maybeContactFavorite 一致
+      recall: true     // 与原 maybeContactRecall 一致
+    });
     return;
   }
 
   // ─── 群聊：多成员独立参与 ───
   // 每位成员按 gen_ratio%（默认 70%）概率独立掷骰决定是否回复；全没中则随机保底一位
-  // 已读延迟：2~4 秒（回复时间内），回复更早发出时 emitCards 兜底
   setTimeout(
     guard(() => {
       d.prepare(
@@ -626,22 +527,24 @@ function scheduleReply(dbRef, contactId) {
       Math.max(sp.reply_delay_min || 1, sp.reply_delay_max || 5)
     );
     maxDelay = Math.max(maxDelay, delaySec);
-    setTimeout(
-      guard(() => {
-        // ★ 谁发言抽谁的字卡库 + 通用库，不混抽别人的
-        const mergeOn = Number(st.reply_merge_enabled) === 1;
-        const mergeN = randInt(
-          Math.max(1, Number(st.reply_merge_min) || 1),
-          Math.max(1, Number(st.reply_merge_max) || 3)
-        );
-        const cards = (mergeOn
-          ? drawMergedForMember(d, contactId, sp.id, mergeN)
-          : drawCardsForMember(d, contactId, sp.id, count)
-        ).map((c) => ({ ...c, proactive: false }));
-        emitCards(cards, sp.id);
-      }),
-      delaySec * 1000
+    // ★ 谁发言抽谁的字卡库 + 通用库，不混抽别人的（调度当下抽好）
+    const mergeOn = Number(st.reply_merge_enabled) === 1;
+    const mergeN = randInt(
+      Math.max(1, Number(st.reply_merge_min) || 1),
+      Math.max(1, Number(st.reply_merge_max) || 3)
     );
+    const cards = (mergeOn
+      ? drawMergedForMember(d, contactId, sp.id, mergeN)
+      : drawCardsForMember(d, contactId, sp.id, count)
+    ).map((c) => ({ ...c, proactive: false }));
+    deliverViaQueue({
+      contactId,
+      groupId: contactId,
+      deliverAtMs: Date.now() + delaySec * 1000,
+      cards,
+      memberId: sp.id,
+      recall: true
+    });
   }
 
   // 主动接话：从没参与回复的成员里随机挑一位，30% 概率在回复结束后 5~20 秒再补 1~2 条
@@ -649,23 +552,20 @@ function scheduleReply(dbRef, contactId) {
   if (idle.length && Math.random() < 0.3) {
     const p = idle[Math.floor(Math.random() * idle.length)];
     const delaySec = maxDelay + randInt(5, 20);
-    setTimeout(
-      guard(() => {
-        const cards = drawCardsForMember(d, contactId, p.id, randInt(1, 2)).map((c) => ({
-          ...c,
-          proactive: true,
-        }));
-        emitCards(cards, p.id);
-      }),
-      delaySec * 1000
-    );
+    const cards = drawCardsForMember(d, contactId, p.id, randInt(1, 2)).map((c) => ({
+      ...c,
+      proactive: true
+    }));
+    deliverViaQueue({
+      contactId,
+      groupId: contactId,
+      deliverAtMs: Date.now() + delaySec * 1000,
+      cards,
+      memberId: p.id,
+      recall: true
+    });
   }
-
-  // 输入状态在全部回复发出后关闭
-  setTimeout(
-    guard(() => notification.broadcast('typing', { contactId, typing: false })),
-    maxDelay * 1000 + 500
-  );
+  // 「对方正在输入」由最后一条投递（flushItem）统一关闭，无需额外定时器
 }
 
 /* 拍一拍：对方不说话，而是"拍了拍我"。
@@ -673,43 +573,114 @@ function scheduleReply(dbRef, contactId) {
    由用户自行管理，与聊天里「我」的拍一拍库完全分离），
    作为居中系统提示（格式：{联系人} {字卡内容}）。
    没有拍一拍字卡时返回 false，由调用方回落到普通回复。
+   改为「预约式」投递（enqueueReply）：抽好内容、按送达时刻写进系统闹钟，
+   后台 / 进程被杀也能照常弹出，回前台或点通知时落库。
    模块级函数，供 scheduleReply（发消息后回复）与 continueTalk（点"继续说"）共用。 */
-function emitPoke(dbRef, contactId) {
-  const d = dbRef || db;
-  const card = drawPokeCard(d);
+function schedulePoke(contactId, deliverAtMs) {
+  const card = drawPokeCard(db);
   if (!card) return false;
-  // 对方来拍 = 已读我的消息
-  d.prepare(
-    "UPDATE chat_messages SET read = 1, read_receipt = 'read' WHERE contact_id = ? AND sender = 'me' AND read_receipt != 'read'"
-  ).run(contactId);
-  const seq = getNextSeq(contactId);
-  // 拍一拍内容完全由用户自行添加，原样发送（格式：{联系人} {字卡内容}），不做任何拼接
-  const text = card.content;
-  const info = d
-    .prepare(
-      `INSERT INTO chat_messages(contact_id, sender, content_type, card_id, text, asset_path, duration, author_member_id, is_proactive, read_receipt, read, seq, created_at, quote_id, quote_text, quote_image)
-       VALUES(?, 'contact', 'poke', ?, ?, ?, ?, NULL, 0, 'delivered', 1, ?, ?, NULL, '', '')`
-    )
-    .run(
-      contactId,
-      card.id,
-      text,
-      card.asset_path || '',
-      card.duration || null,
-      seq,
-      Math.floor(Date.now() / 1000)
-    );
-  const message = d.prepare('SELECT * FROM chat_messages WHERE id = ?').get(info.lastInsertRowid);
-  const info2 = effectiveContactInfo(d, contactId);
-  notification.broadcast('new_messages', {
+  // 对方来拍 = 已读我的消息（落库前的标已读由队列落库时统一处理）
+  enqueueReply({
     contactId,
-    messages: [message],
-    avatar: info2.avatar,
-    name: info2.name
+    deliverAtMs,
+    specs: [
+      {
+        content_type: 'poke',
+        card_id: card.id != null ? card.id : null,
+        text: card.content,
+        asset_path: card.asset_path || '',
+        duration: card.duration || null,
+        author_member_id: null,
+        is_proactive: false,
+        read: 1 // 拍一拍视为已读
+      }
+    ],
+    meta: { favorite: true } // 与原「拍一拍后 maybeContactFavorite」一致
   });
-  const badges = settingsRepo.getBadges();
-  notification.broadcast('badge_update', badges);
   return true;
+}
+
+/* 把一组已抽好的字卡转成「对方」消息 spec（全程同步，语音只做本地伪语音判定）。
+   抽卡与内容都在「调度当下」同步完成，立刻写进系统闹钟、后台/被杀都能弹出真实内容；
+   绝不 await 网络请求，避免切后台冻结 Promise 导致闹钟漏预约。
+   真实 TTS 音频由既有 upgradeAllPseudoVoices / upgradePseudoVoices 自动补齐。
+   allowVoice=false 时不走语音转换（提问回答保持原 insertContactCard 行为）。 */
+/* textMode 保留各链路原有的消息类型语义：
+     'card'      = scheduleReply：纯文字字卡也按 card 落库（历史行为）
+     'auto'      = continueTalk：无资源且非语音字卡 → text，其余 → card
+     'assetOnly' = 提问回答(qa)：仅带图资源的字卡 → card，其余 → text */
+function buildReplySpecs(contactId, cards, memberId, { quote = null, allowVoice = true, textMode = 'card' } = {}) {
+  const specs = [];
+  for (let i = 0; i < cards.length; i++) {
+    const card = cards[i] || null;
+    const q = i === 0 && quote ? quote : null;
+    const conv = allowVoice && card ? pseudoVoiceInfo(db, contactId, card) : null;
+    const asText = card && (
+      (textMode === 'auto' && !(card.asset_path || card.category === 'voice')) ||
+      (textMode === 'assetOnly' && !card.asset_path)
+    );
+    const common = {
+      author_member_id: memberId != null ? memberId : null,
+      quote_id: q ? q.quoteId : null,
+      quote_text: q ? q.quoteText : '',
+      quote_image: q ? q.quoteImage : ''
+    };
+    if (conv) {
+      specs.push({
+        ...common,
+        content_type: 'voice',
+        card_id: card.id != null ? card.id : null,
+        text: conv.text,
+        asset_path: conv.asset_path,
+        duration: conv.duration,
+        is_proactive: !!card.proactive,
+        voice_src: 'mm' // 标记 MiniMax 语音来源，供「配置就绪后升级伪语音」识别
+      });
+    } else if (!card || asText) {
+      // 纯文本消息（含抽卡为空时的 '…' 占位）：与原 insertContactText 一致
+      specs.push({
+        ...common,
+        content_type: 'text',
+        text: card ? (card.content || '…') : '…',
+        card_id: null,
+        asset_path: '',
+        duration: null,
+        is_proactive: false
+      });
+    } else {
+      specs.push({
+        ...common,
+        content_type: cardContentType(card),
+        card_id: card.id != null ? card.id : null,
+        text: card.content || '',
+        asset_path: card.asset_path || '',
+        duration: card.duration || null,
+        is_proactive: !!card.proactive
+      });
+    }
+  }
+  return specs;
+}
+
+/* 统一投递入口：提前抽好内容 → 预约式写进系统闹钟（后台/被杀都能弹）。
+   ★ 全程同步：不 await 任何异步 IO，保证 scheduleReply 调用栈内就把闹钟预约好，
+     用户随后立刻切后台也不会漏预约（这是「后台收不到弹窗」的关键修复点）。
+   rawSpecs：调用方已直接构造好的 spec（如选择题回答的纯文本），跳过抽卡与语音转换。
+   favorite：落库后小概率收藏我的消息；recall：落库后小概率撤回刚发的回复。 */
+function deliverViaQueue({ contactId, groupId = null, deliverAtMs, cards = [], rawSpecs = null, memberId = null, quote = null, favorite = false, recall = false, allowVoice = true, textMode = 'card' }) {
+  try {
+    const specs = rawSpecs || buildReplySpecs(contactId, cards, memberId, { quote, allowVoice, textMode });
+    if (!specs.length) return;
+    enqueueReply({
+      contactId,
+      groupId,
+      deliverAtMs,
+      specs,
+      meta: { favorite, recall }
+    });
+  } catch (e) {
+    console.error('[deliverViaQueue]', e.message);
+  }
 }
 
 /* ── 特殊消息：图片 / 红包 / 通话 / 提问 ──
@@ -1512,38 +1483,33 @@ function groupAnswerQuestion(dbRef, contactId, type, options) {
   const opts = (options || []).filter(Boolean);
   const [aLo, aHi] = answerDelayOf(st);
   const base = randInt(aLo, aHi);
+  notification.broadcast('typing', { contactId, typing: true });
   members.forEach((sp, idx) => {
-    // 依次错开：基础延迟 + 每人多等 2.5~5 秒，避免所有人同时刷屏
-    const delay = 600 + base * 1000 + idx * randInt(2500, 5000);
-    setTimeout(
-      guard(() => {
-        notification.broadcast('typing', { contactId, typing: true });
-        setTimeout(
-          guard(() => {
-            let m;
-            if (type === 'qa') {
-              // 问答题：该成员抽一张字卡（图片字卡 → 图片消息）
-              const card = drawCardsForMember(d, contactId, sp.id, 1)[0] || null;
-              m = card && card.asset_path
-                ? insertContactCard(d, contactId, card, sp.id)
-                : insertContactText(d, contactId, card?.content || '…', null, sp.id);
-            } else {
-              // 选择题：单选各选一个；多选随机选 1~全部并合并为一条消息
-              const choice = opts.length ? pickOptions(opts, type) : '…';
-              m = insertContactText(d, contactId, choice, null, sp.id);
-            }
-            notification.broadcast('typing', { contactId, typing: false });
-            const info = effectiveContactInfo(d, contactId);
-            notification.broadcast('new_messages', { contactId, messages: [m], avatar: info.avatar, name: info.name });
-            notification.broadcast('badge_update', settingsRepo.getBadges());
-            // 开了「对方撤回消息」时，这句也有小概率被撤回
-            maybeContactRecall(d, contactId, [m]);
-          }),
-          randInt(800, 1600)
-        );
-      }, contactId),
-      delay
-    );
+    // 依次错开：基础延迟 + 每人多等 2.5~5 秒 + 打字 0.8~1.6 秒，避免所有人同时刷屏
+    const delay = 600 + base * 1000 + idx * randInt(2500, 5000) + randInt(800, 1600);
+    if (type === 'qa') {
+      // 问答题：该成员抽一张字卡（图片字卡 → 图片消息），调度当下抽好
+      const card = drawCardsForMember(d, contactId, sp.id, 1)[0] || null;
+      deliverViaQueue({
+        contactId,
+        groupId: contactId,
+        deliverAtMs: Date.now() + delay,
+        cards: [card],
+        memberId: sp.id,
+        textMode: 'assetOnly', // 仅带图资源的字卡 → card，其余 → text（与原逻辑一致）
+        recall: true
+      });
+    } else {
+      // 选择题：单选各选一个；多选随机选 1~全部并合并为一条消息
+      const choice = opts.length ? pickOptions(opts, type) : '…';
+      deliverViaQueue({
+        contactId,
+        groupId: contactId,
+        deliverAtMs: Date.now() + delay,
+        rawSpecs: [{ content_type: 'text', text: choice, author_member_id: sp.id }],
+        recall: true
+      });
+    }
   });
 }
 
@@ -1555,35 +1521,16 @@ function replyQaQuestion(dbRef, contactId) {
   if (!st) return;
   const [aLo, aHi] = answerDelayOf(st);
   const delaySec = randInt(aLo, aHi);
-  setTimeout(
-    guard(() => {
-      // 先广播"对方正在输入"
-      notification.broadcast('typing', { contactId, typing: true });
-      setTimeout(
-        guard(() => {
-          // 已读我的消息
-          d.prepare(
-            "UPDATE chat_messages SET read = 1, read_receipt = 'read' WHERE contact_id = ? AND sender = 'me' AND read_receipt != 'read'"
-          ).run(contactId);
-          // 抽一张字卡作为回答（图片字卡 → 图片消息）
-          const card = drawCards(d, contactId, 1)[0] || null;
-          const m = card && card.asset_path
-            ? insertContactCard(d, contactId, card)
-            : insertContactText(d, contactId, card?.content || '…');
-          // 回答已发出：立即关闭"正在输入"，否则输入状态一直挂着，
-          // 用户会以为对方还在打字/还要继续发消息
-          notification.broadcast('typing', { contactId, typing: false });
-          const info = effectiveContactInfo(d, contactId);
-          notification.broadcast('new_messages', { contactId, messages: [m], avatar: info.avatar, name: info.name });
-          notification.broadcast('badge_update', settingsRepo.getBadges());
-          // 对方小概率撤回刚发出的这条回答
-          maybeContactRecall(d, contactId, [m]);
-        }),
-        Math.max(800, delaySec * 1000)
-      );
-    }),
-    600
-  );
+  notification.broadcast('typing', { contactId, typing: true });
+  // 抽一张字卡作为回答（图片字卡 → 图片消息），调度当下抽好写进系统闹钟
+  const card = drawCards(d, contactId, 1)[0] || null;
+  deliverViaQueue({
+    contactId,
+    deliverAtMs: Date.now() + 600 + Math.max(800, delaySec * 1000),
+    cards: [card],
+    textMode: 'assetOnly',
+    recall: true
+  });
 }
 
 /* 选择题回复：对方先"正在输入"，随后随机抽取选项合并为一条文字消息回应
@@ -1597,31 +1544,14 @@ function replyChoiceQuestion(dbRef, contactId, options, type) {
   if (!opts.length) return;
   const [aLo, aHi] = answerDelayOf(st);
   const delaySec = randInt(aLo, aHi);
-  setTimeout(
-    guard(() => {
-      // 先广播"对方正在输入"
-      notification.broadcast('typing', { contactId, typing: true });
-      setTimeout(
-        guard(() => {
-          // 已读我的消息
-          d.prepare(
-            "UPDATE chat_messages SET read = 1, read_receipt = 'read' WHERE contact_id = ? AND sender = 'me' AND read_receipt != 'read'"
-          ).run(contactId);
-          const choice = pickOptions(opts, type);
-          const m = insertContactText(d, contactId, choice);
-          // 回答已发出：立即关闭"正在输入"（此前只开不关，回答后"…"一直挂着）
-          notification.broadcast('typing', { contactId, typing: false });
-          const info = effectiveContactInfo(d, contactId);
-          notification.broadcast('new_messages', { contactId, messages: [m], avatar: info.avatar, name: info.name });
-          notification.broadcast('badge_update', settingsRepo.getBadges());
-          // 对方小概率撤回刚发出的这条回复
-          maybeContactRecall(d, contactId, [m]);
-        }),
-        Math.max(800, delaySec * 1000)
-      );
-    }),
-    600
-  );
+  notification.broadcast('typing', { contactId, typing: true });
+  const choice = pickOptions(opts, type);
+  deliverViaQueue({
+    contactId,
+    deliverAtMs: Date.now() + 600 + Math.max(800, delaySec * 1000),
+    rawSpecs: [{ content_type: 'text', text: choice }],
+    recall: true
+  });
 }
 
 /* 主动消息调度（后台定时触发，无需用户交互）：遍历所有未拉黑单人联系人，
