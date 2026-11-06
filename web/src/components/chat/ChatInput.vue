@@ -70,12 +70,14 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, nextTick, onMounted, onUnmounted } from 'vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 
 const emit = defineEmits(['send', 'cancel-quote', 'feature', 'continue-talk', 'send-sticker', 'request-stickers'])
 
 const props = defineProps({
+  // 当前会话联系人 id：用于把输入草稿按联系人分别暂存（重载/切会话后恢复）
+  contactId: { type: [String, Number], default: null },
   // 待发送引用：{ id, text, image, sender }
   quote: { type: Object, default: null },
   // 表情包分栏：[{key:'general', label:'通用', list:[...]}, {key:'c1', label:'成员名', list:[...]}]
@@ -87,6 +89,50 @@ const ta = ref(null)
 const plusOpen = ref(false)
 const emojiOpen = ref(false)
 const tab = ref('general') // 当前表情包分栏 key
+
+/* ── 输入草稿按联系人持久化 ──
+   后台来电/切后台被系统杀进程重载后，输入框里打到一半的字会随内存清空而消失。
+   这里把草稿存进 localStorage（按联系人隔离），重载回来或切回该会话时自动回填，
+   发完/清空时移除——与微信「草稿」行为一致，且纯本地、无隐私外泄。 */
+function draftKey(id) {
+  return 'eunoia:chat-draft:' + (id == null ? 'global' : id)
+}
+function loadDraft() {
+  try {
+    const v = localStorage.getItem(draftKey(props.contactId))
+    if (v != null) {
+      text.value = v
+      nextTick(autoGrow)
+    }
+  } catch (e) { /* 隐私模式等场景忽略 */ }
+}
+function clearDraft() {
+  try { localStorage.removeItem(draftKey(props.contactId)) } catch (e) { /* ignore */ }
+}
+let draftTimer = null
+function saveDraft() {
+  if (draftTimer) clearTimeout(draftTimer)
+  draftTimer = setTimeout(() => {
+    try {
+      if (text.value && text.value.trim()) localStorage.setItem(draftKey(props.contactId), text.value)
+      else clearDraft()
+    } catch (e) { /* ignore */ }
+  }, 300)
+}
+/* 切换联系人：先把当前草稿同步落盘到「旧」联系人（避免防抖延迟覆盖），再加载新草稿 */
+watch(
+  () => props.contactId,
+  (newId, oldId) => {
+    try {
+      if (oldId != null) {
+        if (text.value && text.value.trim()) localStorage.setItem(draftKey(oldId), text.value)
+        else localStorage.removeItem(draftKey(oldId))
+      }
+    } catch (e) { /* ignore */ }
+    if (draftTimer) { clearTimeout(draftTimer); draftTimer = null }
+    loadDraft()
+  }
+)
 
 /* 引用栏展示：图片引用时「[图片]」占位由缩略图取代，只留前缀文字 */
 const quoteTextShown = computed(() => {
@@ -137,6 +183,7 @@ function submit() {
   emit('send', val)
   text.value = ''
   if (ta.value) ta.value.value = ''
+  clearDraft() // 发送成功即清掉该联系人草稿
   autoGrow() // 发完回到一行
 }
 /* 输入框高度：一行起步，最多两行（再多就内部滚动，滑块已隐藏）
@@ -148,9 +195,13 @@ function autoGrow() {
   ta.value.style.height = 'auto'
   const want = ta.value.scrollHeight + 2 // scrollHeight 不含边框，补 2px
   ta.value.style.height = Math.min(Math.max(want, INPUT_ONE_LINE), INPUT_TWO_LINES) + 'px'
+  saveDraft() // 输入即暂存草稿（防抖落盘），重载/切会话可恢复
 }
 function onDocClick() { closePops() }
-onMounted(() => document.addEventListener('click', onDocClick))
+onMounted(() => {
+  loadDraft() // 进入会话：回填上次未发送完的草稿
+  document.addEventListener('click', onDocClick)
+})
 onUnmounted(() => document.removeEventListener('click', onDocClick))
 </script>
 

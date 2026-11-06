@@ -79,6 +79,7 @@
       />
     </div>
     <ChatInput
+      :contact-id="props.contactId"
       :quote="pendingQuote"
       :sticker-tabs="stickerTabs"
       @send="onSend"
@@ -654,21 +655,25 @@ async function loadAndScroll() {
        再后台静默补最新一条即可 —— SSE 本来也已保证实时性 */
     ready.value = true
     await nextTick()
-    scrollToBottom()
-    requestAnimationFrame(() => scrollToBottom())
+    applyScrollOnLoad()
+    requestAnimationFrame(() => applyScrollOnLoad())
+    /* 后台同步最新一条期间不要抢回底部：保持用户重载前的停留位置（lockScrollForLocating
+       同时抑制新消息到达的自动滚底，约 1.5s 后恢复正常实时滚动） */
+    lockScrollForLocating(1500)
     chat.syncFromServer(props.contactId).then(() => {
       if (isLocating()) return
-      nextTick(() => scrollToBottom())
+      nextTick(() => applyScrollOnLoad())
     }).catch(() => {})
     return
   }
   ready.value = false
   await chat.load(props.contactId)
   await nextTick()
-  scrollToBottom()
+  applyScrollOnLoad()
   // 兜底：等一轮渲染帧后再校准一次（图片/字体加载可能改变高度）
   requestAnimationFrame(() => {
-    scrollToBottom()
+    applyScrollOnLoad()
+    lockScrollForLocating(1500)
     requestAnimationFrame(() => {
       ready.value = true
     })
@@ -680,10 +685,45 @@ function scrollToBottom() {
   if (el) el.scrollTop = el.scrollHeight
 }
 
+/* ── 滚动位置按联系人持久化 ──
+   后台被杀进程重载、或切回会话时，恢复到重载前停留在的位置，而不是一律弹回底部，
+   减少「整页重置、对话像没了」的割裂感。纯本地 localStorage，无网络无隐私外泄。 */
+function scrollKey(id) {
+  return 'eunoia:chat-scroll:' + (id == null ? 'global' : id)
+}
+let lastScrollSave = 0
+function saveScrollFor(id) {
+  const el = scroller.value
+  if (!el) return
+  const now = Date.now()
+  if (now - lastScrollSave < 250) return
+  lastScrollSave = now
+  try { localStorage.setItem(scrollKey(id), String(el.scrollTop)) } catch (e) { /* ignore */ }
+}
+function getSavedScroll(id) {
+  try {
+    const v = localStorage.getItem(scrollKey(id))
+    if (v == null) return null
+    const n = Number(v)
+    return Number.isFinite(n) ? n : null
+  } catch (e) { return null }
+}
+/* 重载/切回时：有留存位置则恢复到该位置（如在看历史），否则停在最新（底部） */
+function applyScrollOnLoad() {
+  const el = scroller.value
+  if (!el) return
+  const saved = getSavedScroll(props.contactId)
+  const max = el.scrollHeight - el.clientHeight
+  if (saved != null && saved < max - 4) el.scrollTop = saved
+  else el.scrollTop = max > 0 ? max : 0
+}
+
 /* 上滑到顶部：加载更早的消息并保住当前阅读位置（避免跳动） */
 async function onScroll() {
   const el = scroller.value
   if (!el || loadingOlder.value || props.searchQuery) return
+  // 持续记录停留位置（节流落盘），重载/切回时恢复到此
+  saveScrollFor(props.contactId)
   // 接近顶部（阈值 120px）且还有更早消息时触发
   if (el.scrollTop > 120) return
   if (!chat.cursors[props.contactId]) return
