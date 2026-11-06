@@ -4,6 +4,7 @@
  * 上层 web/src/api/*.js 只做薄封装再导出，stores 零改动。
  */
 import db, { resetDb, flushNow } from './db'
+import { prepareUpload } from '../utils/image'
 import * as chatRepo from './repositories/chat.repo'
 import * as chatService from './services/chat.service'
 import * as contactsRepo from './repositories/contacts.repo'
@@ -403,15 +404,20 @@ function readFileAsDataUrl(file) {
 }
 
 // 通用文件上传，返回 { path }（path 即 dataURL）
+// 图片统一在入库前压缩：这些 dataURL 会直接进 SQLite 单库，手机原图(3~5MB)
+// 转 base64 后更大，积少成多会把整库撑到几十 MB，进而让每次「整库快照落盘」
+// 变慢、内存峰值叠加 → 卡退/闪退。压缩是纯前端、幂等（小图/透明图原样返回）。
 export async function uploadFile(file) {
   if (!file) fail('no file')
-  return { path: await readFileAsDataUrl(file) }
+  const small = await prepareUpload(file)
+  return { path: await readFileAsDataUrl(small) }
 }
 
 // 头像上传：读成 dataURL 后更新联系人，返回 { avatar }
 export async function uploadAvatar(id, file) {
   if (!file) fail('no file')
-  const dataUrl = await readFileAsDataUrl(file)
+  const small = await prepareUpload(file)
+  const dataUrl = await readFileAsDataUrl(small)
   contactsRepo.updateContact(Number(id), { avatar: dataUrl })
   return { avatar: dataUrl }
 }

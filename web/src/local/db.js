@@ -5,7 +5,9 @@
 // 启动流程：main.js 先 await initDb() 再挂载 Vue 应用；
 // 之后所有仓库/服务同步取用 default 导出的 db 对象。
 // 持久化策略：写操作标记 dirty，400ms 防抖后把整个 sqlite 文件快照写入 IndexedDB；
-// 页面隐藏/关闭时也会尽力落盘。
+// 页面隐藏/关闭时也会尽力落盘。整库快照成本高（含全部 base64 图片/语音），
+// 因此落盘的连续多轮之间会主动让出主线程、文件镜像设节流与体积上限，
+// 避免连续 export 把 WebView 主线程钉死（ANR 卡退）或内存峰值叠加（OOM 闪退）。
 
 import initSqlJs from 'sql.js'
 import wasmUrl from 'sql.js/dist/sql-wasm.wasm?url'
@@ -64,7 +66,15 @@ async function idbPut(key, value) {
 
 const NATIVE = typeof window !== 'undefined' && !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform())
 const DB_FILE_NAME = 'eunoia-db.sqlite'
-const FILE_THROTTLE = 15000
+/* 文件镜像最小间隔：镜像需把整库转成 base64 字符串（约为原体积 1.33 倍，
+   叠加中间的 bin 字符串，峰值可达 2.3 倍），是大库机型 OOM 闪退的主要来源之一。
+   主存储是 IndexedDB（直接存 Uint8Array，无字符串放大），文件镜像只是「WebView
+   数据被系统清空」时的兜底，没必要高频执行，放宽到 60 秒。 */
+const FILE_THROTTLE = 60000
+/* 超过该体积的库一律不再做文件镜像：btoa 的峰值内存远高于收益，
+   宁可少一层兜底也不能让「存了几百张图的用户一切后台就闪退」。
+   数据仍在 IndexedDB 主存储 + 云端备份。 */
+const MIRROR_MAX_BYTES = 24 * 1024 * 1024
 let lastFileMirror = 0
 let fsMod = null
 
@@ -122,7 +132,13 @@ async function writeDbFile(bytes) {
 function tryMirrorToFile(force, bytes) {
   if (!NATIVE || !state.raw) return
   const now = Date.now()
-  if (!force && now - lastFileMirror < FILE_THROTTLE) return
+  /* force（切后台 / 关闭）原本无条件整库 export + btoa：库里存着大量 base64
+     图片/语音时，一次就要构造 2 倍体积的大字符串，是「切后台立刻卡退 / 闪退」
+     的高发点。文件镜像只是兜底，主存储 IndexedDB 已由 flush() 保证，
+     因此 force 也一律尊重节流与体积上限，不再每次切后台都全量重做。 */
+  if (now - lastFileMirror < FILE_THROTTLE) return
+  const size = bytes ? bytes.byteLength : (state.lastBytes || 0)
+  if (size > MIRROR_MAX_BYTES) return
   lastFileMirror = now
   setTimeout(() => {
     if (!NATIVE || !state.raw) return
@@ -134,6 +150,8 @@ function tryMirrorToFile(force, bytes) {
         stmtCache.clear()
         try { state.raw.exec('PRAGMA foreign_keys = ON') } catch (e) {}
       }
+      /* 二次校验：export 出的实际体积超限就不写（避免 btoa 峰值内存） */
+      if (b && b.byteLength > MIRROR_MAX_BYTES) return
       writeDbFile(b).catch(() => { /* 镜像失败不影响主流程 */ })
     } catch (e) { /* 镜像失败不影响主流程 */ }
   }, 0)
@@ -223,8 +241,15 @@ async function flush() {
   if (!state.dirty && !state.pendingFlush && !state.deferredFlush) return
   state.flushing = true
   state.deferredFlush = false
+  /* 落盘风暴缓解（不改变收敛语义）：do-while 会一直收敛到没有新写入，
+     批量写入时可能连着多轮「整库 export」。原实现这些轮次全挤在同一个
+     微任务链里，主线程长时间不释放 → ANR 卡退、多份整库快照叠加 → OOM 闪退。
+     这里只在轮与轮之间让出一次主线程（setTimeout 0）：让 UI 能响应、GC 能回收，
+     收敛逻辑与数据一致性保证完全不变。 */
   const work = async () => {
+    let rounds = 0
     do {
+      if (rounds++ > 0) await new Promise((r) => setTimeout(r, 0))
       state.pendingFlush = false
       const ver = dirtySeq
       const bytes = state.raw.export()
@@ -268,8 +293,13 @@ async function flush() {
     state.flushing = false
     flushPromise = null
   }
-  /* 落盘期间又产生了新写入（pendingFlush/dirty 被再次置位）→ 再来一轮，确保收敛 */
-  if (state.pendingFlush || state.dirty) await flush()
+  /* 落盘期间又产生了新写入（pendingFlush/dirty 被再次置位）→ 再来一轮，确保收敛。
+     保留原有的「返回即已落盘」强保证，仅在本轮之前让出一次主线程，避免与
+     work() 连续多轮 export 挤在同一事件循环里造成 ANR。 */
+  if (state.pendingFlush || state.dirty) {
+    await new Promise((r) => setTimeout(r, 0))
+    await flush()
+  }
 }
 
 /* 立即落盘并等待完成（导入 / 导出 / 页面跳转等关键节点用）。
@@ -278,9 +308,11 @@ export async function flushNow() {
   if (!state.raw) return false
   try {
     await flush()
-    /* flush 期间又来了新写入 → 再来一次，确保收敛（上限放宽，等待真正进行中的落盘完成） */
+    /* flush 期间又来了新写入 → 再来一次，确保收敛（上限放宽，等待真正进行中的落盘完成）。
+       每轮之间让出主线程，避免连续整库 export 长时间阻塞 UI（导入大备份后尤其明显）。 */
     let guard = 0
     while ((state.dirty || state.pendingFlush || state.deferredFlush) && guard++ < 50) {
+      await new Promise((r) => setTimeout(r, 0))
       await flush()
     }
     return !state.dirty && !state.deferredFlush

@@ -16,5 +16,19 @@ public class MainActivity extends BridgeActivity {
         registerPlugin(FileSavePlugin.class);
         registerPlugin(CallKeepPlugin.class);
         super.onCreate(savedInstanceState);
+
+        // 保护 WebView 渲染进程：声明为「重要」且后台不豁免，降低系统在后台 /
+        // 内存紧张时回收渲染进程的概率。渲染进程一旦被杀，页面 JS 全部冻结，
+        // 表现为「切后台再回来白屏 / 卡退 / 闪退」以及后台定时器失效。
+        // API 26+ 才支持，失败静默忽略，绝不影响启动。
+        try {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O
+                    && getBridge() != null && getBridge().getWebView() != null) {
+                getBridge().getWebView().setRendererPriorityPolicy(
+                        android.webkit.WebView.RENDERER_PRIORITY_IMPORTANT, false);
+            }
+        } catch (Exception e) {
+            android.util.Log.w("MainActivity", "设置渲染进程优先级失败: " + e.getMessage());
+        }
     }
 }
