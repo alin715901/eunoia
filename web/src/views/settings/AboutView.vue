@@ -20,7 +20,7 @@
       <div class="panel sec">
         <h3 class="sec-title">致谢</h3>
         <p class="th-line">心迹和字卡相关的灵感参考感谢：</p>
-        <p class="th-line">① Orveal老师</p>
+        <p class="th-line">① Orvea老师</p>
         <p class="th-line">② 小红书：Milk（2777299956）、言序（1842523578）、CCC的S（63090251079）</p>
       </div>
 
