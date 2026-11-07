@@ -55,7 +55,9 @@
           <button v-if="needGuide" class="link-btn" @click="a2hsOpen = true">查看引导</button>
           <button v-if="canRequest" class="link-btn" @click="enableNotify">去开启</button>
           <button v-if="canTest" class="link-btn" @click="testNotify">点击测试</button>
+          <button v-if="isNative" class="link-btn" @click="testBackgroundNotif">测试后台弹窗</button>
         </p>
+        <p v-if="isNative" class="sub notif-sub">点「测试后台弹窗」后立即切到后台，约 5 秒后应收到系统弹窗；用来验证对方回复在后台能否弹出。</p>
       </div>
 
       <!-- 分组：阿里云 OSS / 内存数据 -->
@@ -145,6 +147,8 @@ import { useContactsStore } from '@/stores/contacts'
 import { useDesktopStore } from '@/stores/desktop'
 import { useSettingsStore, FONTS, APPEARANCES } from '@/stores/settings'
 import { useKeepAlive } from '@/composables/useKeepAlive'
+import { isNativePlatform } from '@/composables/useLocalNotification'
+import { testReplyNotification } from '@/composables/useReplyNotif'
 import { fmtSyncTime } from '@/utils/syncTime'
 import { getLocalVersion } from '@/composables/useReleaseUpdate'
 
@@ -196,6 +200,16 @@ const a2hsOpen = ref(false)
 async function testNotify() {
   const ok = await notif.notify('字卡', { body: '这是一条测试通知，收到即说明系统通知正常 ✅' })
   toast.pushToast(ok ? { title: '测试通知已发出，请查看系统弹窗' } : { title: '测试失败', text: '通知未能弹出，请检查系统是否允许通知' })
+}
+
+/* APK 专享：验证「切后台后对方回复能否弹系统通知」。
+   走与真实回复相同的原生定时链路，前台按设计不弹，需切到后台等待。 */
+const isNative = isNativePlatform()
+function testBackgroundNotif() {
+  const ok = testReplyNotification(5000)
+  toast.pushToast(ok
+    ? { title: '已排定，请立即切到后台', text: '约 5 秒后应收到「后台通知测试」系统弹窗' }
+    : { title: '仅 APK 支持此测试' })
 }
 
 /* 主题入口：点进去才设置主题色 / 字体 / 背景 / 图标 */

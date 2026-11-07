@@ -2,19 +2,24 @@
 //
 // 为什么需要它：
 //   原「对方回复 / 接话 / 提问回答 / 拍一拍」一律用 JS 的 setTimeout 在 1~5 秒后生成消息并弹通知。
-//   但安卓 WebView 退到后台时会暂停 JS 执行（onPause），这些 setTimeout 会被冻结——
+//   但安卓 WebView 退到后台时会暂停 JS 执行（Capacitor 在 onPause 就冻结 WebView，
+//   appStateChange(false) 要到 onStop 才发），这些 setTimeout 会被冻结——
 //   消息既不生成、也不弹通知；只有回到前台 WebView 恢复后才会触发，于是「后台没弹窗、点进去才有」。
 //
-// 解法（与主动消息 proactive 同思路，但覆盖「实时回复」）：
-//   调度回复的当下就抽好内容（specs），按「送达时刻」写进安卓系统闹钟（AlarmManager），
-//   即使进程被杀 / 后台也能由系统弹出真实内容；回到前台或点通知时再把消息落库（幂等）。
-//   Web / PWA 无此冻结问题（后台定时器仅被节流，仍会触发），故只走普通 setTimeout 投递，不预约闹钟。
-import { LocalNotifications } from '@capacitor/local-notifications'
+// 解法（v2.3.10 起改为原生层投递）：
+//   调度回复的当下就抽好内容（specs），同步发起一次原生插件调用，把「内容 + 送达延时」交给
+//   ReplyNotifPlugin：它在原生主线程用 Handler 定时（WebView JS 冻结也照常触发），并用
+//   setAlarmClock 兜底（进程被杀也能唤醒，且不受 Android 12+ 精确闹钟权限限制）。
+//   到点由原生层用 Activity 生命周期标记判断前后台：后台直接弹系统通知，前台交给应用内横条。
+//   JS 侧只负责消息落库（前台实时 / 回前台补投），不再参与「后台能否弹窗」的任何判断。
+//   Web / PWA 无冻结问题，只走普通 setTimeout 投递。
 import { App } from '@capacitor/app'
 import db from '../db'
 import * as settingsRepo from '../repositories/settings.repo'
 import * as chatRepo from '../repositories/chat.repo'
-import { isNativePlatform, MESSAGE_CHANNEL_ID, isAppActive } from '@/composables/useLocalNotification'
+import { isNativePlatform, isAppActive } from '@/composables/useLocalNotification'
+import { postReplyNotification, cancelReplyNotification, consumeReplyRoute } from '@/composables/useReplyNotif'
+import router from '@/router'
 import * as notification from './notification.service'
 
 function randInt(min, max) {
@@ -24,9 +29,11 @@ function randInt(min, max) {
 }
 
 const QUEUE_KEY = 'eunoia.replyQueue'
-// 预约通知 id 段：400000~499999（与 proactive 100000~199999、即时 200000~299999、手动 900000+ 互不冲突）
-// initLocalNotifications 只自动取消 100000~199999 的预约，本段一律保留，由本模块显式取消。
+// 通知 id 段：400000~499999（与 proactive 100000~199999、即时 200000~299999、手动 900000+ 互不冲突）
 const REPLY_NOTIF_BASE = 400000
+// 原生定时器比 JS 前台定时器晚一点触发：前台时 JS 先落库走应用内横条，
+// 原生到点检测到前台即跳过弹窗，避免悬浮重复。
+const NATIVE_GRACE_MS = 400
 
 /* ── 内存态 + 持久化 ── */
 const queue = new Map() // id -> item
@@ -190,69 +197,37 @@ function maybeContactFavorite(contactId) {
   }
 }
 
-/* 预约一条系统通知（写进安卓闹钟，后台/被杀都能弹）。
-   at 比送达时刻晚 400ms：保证「前台 setTimeout」总是先触发并取消闹钟（前台走应用内横条，
-   不弹悬浮窗）；只有前台定时器被冻结（用户已切后台/被杀）时，闹钟才真正弹出。 */
-const ALARM_GRACE_MS = 400
-async function scheduleAlarm(item) {
-  if (!isNativePlatform()) return
-  try {
-    const id = REPLY_NOTIF_BASE + item.id
-    const preview = item.specs && item.specs.length ? previewOf(item.specs[item.specs.length - 1]) : '（一条消息）'
-    const title = item.groupId ? contactName(item.groupId) : contactName(item.contactId)
-    await LocalNotifications.schedule({
-      notifications: [
-        {
-          id,
-          title,
-          body: preview,
-          schedule: { at: new Date(item.deliverAtMs + ALARM_GRACE_MS), allowWhileIdle: true },
-          channelId: MESSAGE_CHANNEL_ID, // HIGH：离开应用悬浮弹出
-          // 只带 replyId（供本模块点击时补落库）与 route（供点击跳会话）。
-          // 刻意不带 contactId：避免 initLocalNotifications 的 action 处理器
-          // 在 push(route) 之外又调用 onOpenChat 造成同一路由重复跳转。
-          extra: {
-            replyId: String(item.id),
-            route: `/contacts/${item.contactId}/chat`
-          }
-        }
-      ]
-    })
-  } catch (e) {
-    /* ignore */
-  }
+/* 把一条回复交给原生层调度（同步发起 bridge 调用，不等 Promise）。
+   原生层会在 delayMs 后自行判断前后台并弹窗，JS 随后切后台 / 被冻结都不影响。 */
+function dispatchToNative(item, delayMs) {
+  const last = item.specs && item.specs.length ? item.specs[item.specs.length - 1] : null
+  postReplyNotification({
+    id: REPLY_NOTIF_BASE + item.id,
+    delayMs: Math.max(500, delayMs + NATIVE_GRACE_MS),
+    title: item.groupId ? contactName(item.groupId) : contactName(item.contactId),
+    body: previewOf(last),
+    route: `/contacts/${item.contactId}/chat`
+  })
 }
 
-/* id 是否属于本队列预约的通知段（供 initLocalNotifications 判定） */
-export function isReplyNotificationId(id) {
-  return id != null && id >= REPLY_NOTIF_BASE && id < REPLY_NOTIF_BASE + 100000
-}
-
-async function cancelAlarm(item) {
-  if (!isNativePlatform()) return
-  try {
-    await LocalNotifications.cancel({ notifications: [{ id: REPLY_NOTIF_BASE + item.id }] })
-  } catch (e) {
-    /* ignore */
-  }
-}
-
-/* 投递一条已到期的回复：落库 + 广播 + 通知 + 清理闹钟（幂等）。
+/* 投递一条已到期的回复：落库 + 广播（幂等）。
+   注意：这里「不」取消原生通知——后台能否弹窗完全由原生层决定，
+   JS 侧的前后台标记（appStateChange 在切后台时可能来不及更新）不再参与判断，
+   否则又会出现「误判前台 → 取消通知 → 后台不弹窗」的老问题。
    mode：
-     'live'     = 前台定时器实时投递 → 正常弹应用内横条 + 静默渠道系统通知（与旧行为一致）
-     'backfill' = 后台闹钟已弹过、回前台/点通知时补落库 → silent，只更新数据，
-                  不再弹横条、不再发系统通知，避免重复打扰（列表/角标仍刷新）。 */
+     'live'     = 前台实时投递 → 正常弹应用内横条
+     'backfill' = 回前台 / 点通知时补落库 → silent，只更新数据，不重复弹横条/通知 */
 async function flushItem(id, mode = 'backfill') {
   loadQueue()
   const item = queue.get(id)
   if (!item || item.inserted) return false
-  // 联系人可能已被删除/清空：直接丢弃，绝不向僵尸联系人落库
+  // 联系人可能已被删除/清空：丢弃队列，并撤销原生层尚未弹出的通知
   const alive = db.prepare('SELECT id FROM contacts WHERE id = ?').get(item.contactId)
   if (!alive) {
     item.inserted = true
     queue.delete(id)
     persist()
-    await cancelAlarm(item)
+    cancelReplyNotification(REPLY_NOTIF_BASE + item.id)
     return false
   }
   try {
@@ -295,7 +270,6 @@ async function flushItem(id, mode = 'backfill') {
     item.inserted = true
     queue.delete(id)
     persist()
-    await cancelAlarm(item)
     return true
   } catch (e) {
     console.error('[replyQueue] flushItem failed', e)
@@ -321,8 +295,7 @@ export async function flushDue() {
   }
 }
 
-/* 按 replyId 投递（用户点击通知 / 前台收到闹钟时调用，确保进会话前消息已落库）。
-   mode 默认 'backfill'（点击通知：系统已弹过，静默补落库）；前台兜底可传 'live'。 */
+/* 按 replyId 补落库（点击通知等场景，确保进会话前消息已入库） */
 export async function flushByReplyId(replyId, mode = 'backfill') {
   loadQueue()
   const id = Number(replyId)
@@ -330,11 +303,11 @@ export async function flushByReplyId(replyId, mode = 'backfill') {
   return false
 }
 
-/* 调度一条回复：提前抽好内容（specs），按送达时刻预约/投递。
-   核心竞态自洽：
-     - 前台：setTimeout 存活，到点先触发 flushItem('live') 并取消闹钟 → 走应用内横条，不弹悬浮窗；
-     - 切后台/被杀：setTimeout 被冻结不再触发 → 闹钟（at=送达+400ms）照常由系统弹出真实内容；
-     - 回前台 / 点通知：flushDue / flushByReplyId 以 'backfill' 静默补落库，不重复弹通知。 */
+/* 调度一条回复：提前抽好内容（specs），交给原生层定时投递。
+   竞态自洽（关键是「后台弹窗不依赖 JS」）：
+     - 前台：JS setTimeout 到点落库 + 应用内横条；原生定时器稍后触发，检测到前台即跳过弹窗；
+     - 切后台 / 被杀：JS 定时器冻结不再触发，原生 Handler（或 setAlarmClock）照常弹系统通知；
+     - 回前台 / 点通知：flushDue 以 'backfill' 静默补落库，列表与角标刷新，不重复打扰。 */
 export function enqueueReply({ contactId, groupId = null, deliverAtMs, specs, meta = {} }) {
   if (!contactId || !Array.isArray(specs) || !specs.length) return null
   loadQueue()
@@ -352,59 +325,47 @@ export function enqueueReply({ contactId, groupId = null, deliverAtMs, specs, me
   persist()
   const delay = Math.max(0, item.deliverAtMs - Date.now())
   if (isNativePlatform()) {
-    // 无论当前是否前台都预约系统闹钟——覆盖「调度后立刻切后台 / 直接被杀」的情形
-    scheduleAlarm(item).catch(() => {})
-    // 额外排一个更早的实时投递：触发时仍在前台才走应用内横条并取消闹钟。
-    // 若此刻已切后台（部分 ROM 后台定时器被延迟而非冻结仍会执行），则不再实时投递，
-    // 交由系统闹钟弹出，避免「应用内 notify + 系统闹钟」双重弹窗。回前台 flushDue 再补落库。
+    // 同步发起原生调度：此刻仍在前台，bridge 调用立即到达 native 并登记定时器/闹钟，
+    // 用户随后立刻切后台也不会漏（这是「后台收不到弹窗」的核心修复点）。
+    dispatchToNative(item, delay)
+    // 前台实时投递仅负责落库与应用内横条，绝不取消原生通知。
     setTimeout(() => {
       if (!isAppActive()) return
-      // 定时器若曾被后台冻结、恢复执行时已明显晚于送达时刻，说明系统闹钟很可能已经在
-      // 后台弹出过（用户已看过弹窗），改为静默补投，避免回前台再弹一次横条/系统通知。
+      // 定时器若曾被后台冻结、恢复执行时已明显晚于送达时刻，说明原生通知很可能已弹出过，
+      // 改为静默补投，避免回前台再弹一次横条。
       const lateBy = Date.now() - item.deliverAtMs
-      const mode = lateBy > ALARM_GRACE_MS + 300 ? 'backfill' : 'live'
+      const mode = lateBy > NATIVE_GRACE_MS + 300 ? 'backfill' : 'live'
       flushItem(id, mode).catch(() => {})
     }, delay)
   } else {
-    // Web / PWA：后台定时器仅被节流不冻结，普通 setTimeout 即可；不预约系统闹钟
+    // Web / PWA：后台定时器仅被节流不冻结，普通 setTimeout 即可
     setTimeout(() => { flushItem(id, 'live').catch(() => {}) }, delay)
   }
   return id
 }
 
+function openReplyRoute(route) {
+  if (!route) return
+  try { router.push(String(route)) } catch (e) { /* ignore */ }
+}
+
 /* 初始化前后台同步（App boot 调用一次）：
    1) 冷/温启动立即补投已到期但未落库的回复（进程被杀后重开也不会丢消息）；
-   2) 回到前台（Capacitor appStateChange，比 WebView visibilitychange 可靠）立即补投；
-   3) 点击系统通知：按 replyId 补落库，再进会话；
-   4) 前台收到本队列预约通知（极少数竞态）：取消并从托盘移除，避免前台悬浮窗残留。
+   2) 回到前台（Capacitor appStateChange）立即补投 + 消费点击通知带来的会话路由；
+   3) 启动时消费「点击通知拉起 App」的路由。
    独立于 initLocalNotifications，避免模块循环依赖。 */
 let syncInitialized = false
 export function initReplyQueueSync() {
   if (syncInitialized) return
   syncInitialized = true
   flushDue().catch(() => {}) // 启动补投
+  consumeReplyRoute().then(openReplyRoute).catch(() => {})
   if (!isNativePlatform()) return
   try {
     App.addListener('appStateChange', ({ isActive }) => {
-      if (isActive) flushDue().catch(() => {})
-    })
-  } catch (e) {
-    /* ignore */
-  }
-  try {
-    LocalNotifications.addListener('localNotificationActionPerformed', (n) => {
-      const extra = (n && n.notification && n.notification.extra) || {}
-      if (extra.replyId != null) flushByReplyId(extra.replyId).catch(() => {})
-    })
-    LocalNotifications.addListener('localNotificationReceived', (n) => {
-      const id = n && n.id
-      // 前台收到本队列预约通知：说明前台定时器恰好没抢先取消；从托盘移除避免前台悬浮残留，
-      // 并以 'live' 补投（应用内横条 + 静默渠道），保持前台体验一致
-      if (isReplyNotificationId(id) && isAppActive()) {
-        LocalNotifications.cancel({ notifications: [{ id }] }).catch(() => {})
-        const extra = (n && n.extra) || {}
-        if (extra.replyId != null) flushByReplyId(extra.replyId, 'live').catch(() => {})
-      }
+      if (!isActive) return
+      flushDue().catch(() => {})
+      consumeReplyRoute().then(openReplyRoute).catch(() => {})
     })
   } catch (e) {
     /* ignore */

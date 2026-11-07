@@ -41,6 +41,12 @@
             android:name=".CallKeepService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <!-- 「对方实时回复」后台弹窗兜底：进程被清 / 被系统回收后，由 setAlarmClock 唤醒发通知 -->
+        <receiver
+            android:name=".ReplyAlarmReceiver"
+            android:exported="false"
+            android:enabled="true" />
     </application>
 
     <!-- Permissions -->
