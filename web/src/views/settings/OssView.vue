@@ -97,6 +97,10 @@
           </div>
           <p v-if="!featSummary.features.length && !featSummary.others.length" class="exp-empty">（空备份）</p>
         </div>
+        <p class="imp-warn">
+          覆盖会用云端备份替换本机数据。此备份含歌曲 <b>{{ ((restorePending.tables && restorePending.tables.songs) || []).length }}</b> 首；
+          若云端备份早于本机新增的歌曲/聊天，覆盖后这些新增内容会丢失。备份里没有的板块会自动保留，不确定请选「合并」。
+        </p>
         <!-- 选完合并 / 覆盖后，该弹窗会先收起，进度在独立的「导入数据」弹窗展示 -->
         <div class="imp-modes">
           <button class="imp-btn" @click="doRestore('merge')">
@@ -649,6 +653,8 @@ function fmtKb(n) {
 .mini-btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
 .mini-btn:disabled { opacity: 0.6; }
 .imp-info { border: 1px solid var(--border); border-radius: var(--radius); padding: 8px 12px; margin-bottom: 10px; }
+.imp-warn { font-size: 12px; line-height: 1.6; color: #9a6a2a; background: rgba(197,164,126,.14); border-radius: 8px; padding: 8px 10px; margin: 0 0 10px; }
+.imp-warn b { color: #8a5518; }
 .imp-row { display: flex; justify-content: space-between; gap: 12px; font-size: 13px; padding: 4px 0; }
 .imp-row span:first-child { color: var(--text-soft); flex: 0 0 auto; }
 .imp-row span:last-child { text-align: right; word-break: break-all; }

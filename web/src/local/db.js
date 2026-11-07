@@ -6,8 +6,8 @@
 // 之后所有仓库/服务同步取用 default 导出的 db 对象。
 // 持久化策略：写操作标记 dirty，400ms 防抖后把整个 sqlite 文件快照写入 IndexedDB；
 // 页面隐藏/关闭时也会尽力落盘。整库快照成本高（含全部 base64 图片/语音），
-// 因此落盘的连续多轮之间会主动让出主线程、文件镜像设节流与体积上限，
-// 避免连续 export 把 WebView 主线程钉死（ANR 卡退）或内存峰值叠加（OOM 闪退）。
+// 因此落盘的连续多轮之间会主动让出主线程；App 私有文件镜像改为分块低内存写入，
+// 避免连续 export 把 WebView 主线程钉死（ANR 卡退）或 btoa 峰值内存叠加（OOM 闪退）。
 
 import initSqlJs from 'sql.js'
 import wasmUrl from 'sql.js/dist/sql-wasm.wasm?url'
@@ -66,15 +66,13 @@ async function idbPut(key, value) {
 
 const NATIVE = typeof window !== 'undefined' && !!(window.Capacitor && window.Capacitor.isNativePlatform && window.Capacitor.isNativePlatform())
 const DB_FILE_NAME = 'eunoia-db.sqlite'
-/* 文件镜像最小间隔：镜像需把整库转成 base64 字符串（约为原体积 1.33 倍，
-   叠加中间的 bin 字符串，峰值可达 2.3 倍），是大库机型 OOM 闪退的主要来源之一。
-   主存储是 IndexedDB（直接存 Uint8Array，无字符串放大），文件镜像只是「WebView
-   数据被系统清空」时的兜底，没必要高频执行，放宽到 60 秒。 */
+/* 文件镜像节流：日常写入 60 秒一次；关键节点（切后台 / 导入完成 / 启动）5 秒一次。
+   镜像已改为「1MB 分块 base64 + appendFile 写临时文件后原子替换」，单次峰值内存
+   约 1.4MB、与库体积无关，因此大库（本地音乐/图片 dataURL）也能安全镜像。
+   不能因为库大就干脆不镜像：那样文件会永久停留在旧版本，一旦 WebView 的
+   IndexedDB 被系统/ROM 清空，启动就回退到很旧的数据（表现为歌曲、聊天凭空消失）。 */
 const FILE_THROTTLE = 60000
-/* 超过该体积的库一律不再做文件镜像：btoa 的峰值内存远高于收益，
-   宁可少一层兜底也不能让「存了几百张图的用户一切后台就闪退」。
-   数据仍在 IndexedDB 主存储 + 云端备份。 */
-const MIRROR_MAX_BYTES = 24 * 1024 * 1024
+const FORCE_MIRROR_THROTTLE = 5000
 let lastFileMirror = 0
 let fsMod = null
 
@@ -96,11 +94,19 @@ function u8ToB64(bytes) {
   }
   return btoa(bin)
 }
+/* 分块解码：一次 atob(整个大库 base64) 会构造与库同量级的临时字符串，
+   启动兜底恢复大库时容易 OOM。按 4 字符对齐分块，峰值内存降到一个块大小。
+   padding 只出现在最后一块，逐块独立解码后拼接即原始字节序列。 */
 function b64ToU8(b64) {
-  const bin = atob(b64)
-  const out = new Uint8Array(bin.length)
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i)
-  return out
+  const len = b64.length
+  const out = new Uint8Array(Math.floor((len * 3) / 4))
+  const CH = 0x100000 // 必须是 4 的倍数
+  let p = 0
+  for (let i = 0; i < len; i += CH) {
+    const part = atob(b64.slice(i, Math.min(len, i + CH)))
+    for (let j = 0; j < part.length; j++) out[p++] = part.charCodeAt(j)
+  }
+  return out.subarray(0, p)
 }
 
 async function readDbFile() {
@@ -118,27 +124,45 @@ async function writeDbFile(bytes) {
   if (!NATIVE) return false
   const fs = await ensureFS()
   if (!fs || !fs.Filesystem) return false
+  const F = fs.Filesystem
+  const D = fs.Directory.Data
+  const TMP = DB_FILE_NAME + '.tmp'
   try {
-    await fs.Filesystem.writeFile({ path: DB_FILE_NAME, data: u8ToB64(bytes), directory: fs.Directory.Data, recursive: true })
+    /* 分块写入：每块 1MB 原始字节（base64 后约 1.33MB），逐块 append 到临时文件。
+       旧实现一次性 u8ToB64(整库) + btoa 会构造约 2.3 倍库体积的临时字符串，
+       是「库存音频/图片后切后台 OOM 闪退」的主因，也曾迫使大库直接放弃镜像。
+       写完临时文件再 rename 原子替换（插件会先删目标），避免中途失败留下
+       半截文件让下次启动解析失败、误判为「数据损坏」。 */
+    const CHUNK = 0x100000
+    let first = true
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+      const part = u8ToB64(bytes.subarray(i, i + CHUNK))
+      if (first) {
+        await F.writeFile({ path: TMP, data: part, directory: D, recursive: true })
+        first = false
+      } else {
+        await F.appendFile({ path: TMP, data: part, directory: D })
+      }
+    }
+    if (first) await F.writeFile({ path: TMP, data: '', directory: D, recursive: true })
+    await F.rename({ from: TMP, to: DB_FILE_NAME, directory: D, toDirectory: D })
     return true
-  } catch (e) { return false }
+  } catch (e) {
+    /* 镜像失败只影响兜底副本，主存储 IndexedDB 不受影响，下次节流窗口后重试 */
+    return false
+  }
 }
 
-/* 把当前库快照镜像到 App 私有文件（节流；force=true 无视节流，用于切后台/关闭前保底）。
+/* 把当前库快照镜像到 App 私有文件（节流；force=true 用于切后台/启动/导入后的保底）。
    注意 export() 会重建底层连接、令已编译语句失效，故导出后清缓存并恢复外键约束。
-   关键：镜像只是「兜底恢复来源」，不参与关键落盘路径，改为 setTimeout 延迟、非阻塞执行——
-   大库（图片/音频 dataURL 全在库里）的 b64 转换 + 写文件很重，若在 flush / 启动关键路径同步做，
-   会长时间阻塞主线程 → Android WebView ANR 杀进程（即「导入卡退 / 启动进不去」）。 */
+   镜像只是「兜底恢复来源」，不参与关键落盘路径，用 setTimeout 延迟、非阻塞执行。
+   分块写入后单次峰值内存与库体积无关，不再需要「大库就干脆不镜像」——
+   那样会让文件永久停在旧版本，WebView IndexedDB 一旦被清空就回退到旧数据。 */
 function tryMirrorToFile(force, bytes) {
   if (!NATIVE || !state.raw) return
   const now = Date.now()
-  /* force（切后台 / 关闭）原本无条件整库 export + btoa：库里存着大量 base64
-     图片/语音时，一次就要构造 2 倍体积的大字符串，是「切后台立刻卡退 / 闪退」
-     的高发点。文件镜像只是兜底，主存储 IndexedDB 已由 flush() 保证，
-     因此 force 也一律尊重节流与体积上限，不再每次切后台都全量重做。 */
-  if (now - lastFileMirror < FILE_THROTTLE) return
-  const size = bytes ? bytes.byteLength : (state.lastBytes || 0)
-  if (size > MIRROR_MAX_BYTES) return
+  const gap = force ? FORCE_MIRROR_THROTTLE : FILE_THROTTLE
+  if (now - lastFileMirror < gap) return
   lastFileMirror = now
   setTimeout(() => {
     if (!NATIVE || !state.raw) return
@@ -150,8 +174,6 @@ function tryMirrorToFile(force, bytes) {
         stmtCache.clear()
         try { state.raw.exec('PRAGMA foreign_keys = ON') } catch (e) {}
       }
-      /* 二次校验：export 出的实际体积超限就不写（避免 btoa 峰值内存） */
-      if (b && b.byteLength > MIRROR_MAX_BYTES) return
       writeDbFile(b).catch(() => { /* 镜像失败不影响主流程 */ })
     } catch (e) { /* 镜像失败不影响主流程 */ }
   }, 0)

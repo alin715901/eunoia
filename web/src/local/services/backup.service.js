@@ -343,6 +343,29 @@ async function applyOverwrite(tables, known, refTables, scope, ctx) {
   const countRows = (t, extra) => {
     try { return db.prepare(`SELECT COUNT(*) c FROM ${t}${extra ? ` WHERE ${extra}` : ''}`).get().c } catch (e) { return 0 }
   }
+  /* 数据安全护栏：备份里「该表没有数据」但本地该表有数据时，覆盖模式不再清空它。
+     典型事故：用「导入歌曲之前导出的旧全量备份」或「没勾音乐板块的板块备份」做覆盖恢复，
+     备份里 songs 为空 / 缺失 → 旧逻辑先 DELETE FROM songs 再灌空数据，歌曲全没了且不可逆。
+     这类表视为「备份未涵盖该板块」，保留本地内容。 */
+  const kept = []
+  const protectedTables = new Set()
+  for (const t of known) {
+    const incoming = tables[t]
+    if ((!Array.isArray(incoming) || !incoming.length) && countRows(t) > 0) {
+      protectedTables.add(t)
+      kept.push(t)
+    }
+  }
+  /* songs 被保留时，引用 song_id 的表也一并保留：否则灌入备份里指向旧 song_id 的
+     收藏 / 一起听记录会变成悬空引用（本地歌曲 id 与备份不同）。 */
+  if (protectedTables.has('songs')) {
+    for (const t of ['song_favs', 'listen_together']) {
+      if (known.includes(t) && !protectedTables.has(t)) {
+        protectedTables.add(t)
+        kept.push(t)
+      }
+    }
+  }
   let deleteTotal = 0
   const plain = new Set()
   const modSets = new Map()
@@ -357,22 +380,28 @@ async function applyOverwrite(tables, known, refTables, scope, ctx) {
       }
     }
     for (const t of known) {
+      if (protectedTables.has(t)) continue
       if (plain.has(t)) deleteTotal += countRows(t)
       else if (modSets.has(t)) deleteTotal += countRows(t, `module IN (${modIN(modSets.get(t))})`)
     }
   } else if (type === 'full') {
-    for (const t of known) deleteTotal += countRows(t)
+    for (const t of known) {
+      if (protectedTables.has(t)) continue
+      deleteTotal += countRows(t)
+    }
   }
   /* 把删除行数并入进度总量（联系人分区删除条数难精确预估，略，占比小） */
   if (ctx) ctx.total += deleteTotal
 
   if (type === 'full') {
     for (const t of known) {
+      if (protectedTables.has(t)) continue // 备份未涵盖该表 → 保留本地数据
       emitProgress(ctx, 'delete', `正在清理${LABELS[t] || t}…`)
       await batchDelete(t, null, ctx)
     }
   } else if (type === 'feature') {
     for (const t of known) {
+      if (protectedTables.has(t)) continue // 同上
       emitProgress(ctx, 'delete', `正在清理${LABELS[t] || t}…`)
       if (plain.has(t)) await batchDelete(t, null, ctx)
       else if (modSets.has(t)) await batchDelete(t, `module IN (${modIN(modSets.get(t))})`, ctx)
@@ -388,7 +417,7 @@ async function applyOverwrite(tables, known, refTables, scope, ctx) {
     if (!rows || !rows.length) continue
     inserted[t] = await insertChunked(t, rows, refTables.has(t), ctx)
   }
-  return inserted
+  return { inserted, kept }
 }
 
 /* 按联系人分区删除（外键已关，不走级联，全部手动删）。
@@ -614,11 +643,16 @@ export async function importBackup(payload, mode, onProgress) {
   setImporting(true)
   db.exec('PRAGMA foreign_keys = OFF')
   let inserted
+  let kept = []
   try {
     emitProgress(ctx, 'prepare', '正在准备数据…')
-    inserted = m === 'overwrite'
-      ? await applyOverwrite(tables, known, refTables, payload.scope, ctx)
-      : await applyMerge(tables, known, refTables, ctx)
+    if (m === 'overwrite') {
+      const r = await applyOverwrite(tables, known, refTables, payload.scope, ctx)
+      inserted = r.inserted
+      kept = r.kept || []
+    } else {
+      inserted = await applyMerge(tables, known, refTables, ctx)
+    }
     fixSequences(known)
   } catch (e) {
     /* 导入中途失败：回滚内存库到最后一次成功落盘的状态，避免把「被删空 / 半成品」的库
@@ -636,10 +670,14 @@ export async function importBackup(payload, mode, onProgress) {
   const parts = Object.entries(inserted)
     .filter(([, n]) => n > 0)
     .map(([t, n]) => `${LABELS[t] || t} ${n} 条`)
-  const text = parts.length
+  let text = parts.length
     ? `已导入 ${parts.slice(0, 5).join(' · ')}${parts.length > 5 ? ` 等 ${parts.length} 项` : ''}`
     : '没有新数据需要写入'
-  return { ok: true, mode: m, inserted, skipped: unknown, text }
+  if (kept.length) {
+    const names = kept.slice(0, 4).map((t) => LABELS[t] || t).join('、')
+    text += `；已保留本地${names}${kept.length > 4 ? ' 等' : ''}数据（备份中未包含，未删除）`
+  }
+  return { ok: true, mode: m, inserted, kept, skipped: unknown, text }
 }
 
 /* ─────────── 设置页概览 ─────────── */

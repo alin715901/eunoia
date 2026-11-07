@@ -41,27 +41,6 @@ export function cancelReplyNotification(id) {
   }
 }
 
-/**
- * 后台弹窗自测：排定一条 5 秒后的原生通知，用户点击后立刻切到后台即可验证。
- * 走与真实回复完全相同的原生链路（Handler + setAlarmClock），前台按设计不弹。
- * 返回 false 表示当前不是原生环境。
- */
-export function testReplyNotification(delayMs = 5000) {
-  if (!isNativePlatform()) return false
-  try {
-    ReplyNotif.postDelayed({
-      id: 499999, // 段内保留 id，不与真实回复队列冲突
-      delayMs: Math.max(1000, Number(delayMs) || 5000),
-      title: '后台通知测试',
-      body: '切到后台后收到这条，说明后台弹窗已正常 ✅',
-      route: ''
-    }).catch(() => {})
-    return true
-  } catch (e) {
-    return false
-  }
-}
-
 /** 取出并清空「点击系统通知」带来的会话路由；无则返回 null。 */
 export async function consumeReplyRoute() {
   if (!isNativePlatform()) return null
