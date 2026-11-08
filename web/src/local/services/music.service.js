@@ -9,9 +9,10 @@ const UA =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148';
 
 /* 解析中转地址优先级：
-   1) 用户在「设置 → 音乐 → 解析服务」里手填的（localStorage）
-   2) 运行时配置 public/config.js 的 musicProxy（云端或本地中转都可能是这个）
-   3) 构建时环境变量 VITE_MUSIC_PROXY */
+   1) 用户在「设置 → 音乐 → 解析服务」里手填的（localStorage，只存本机）
+   2) RUNTIME_CONFIG.musicProxy —— 由 runtimeConfig.js 统一解析：
+      显式 config.js / VITE_MUSIC_PROXY 构建变量 / 内置公共中转（默认，所有部署可用）
+   留空（显式设 '' 关闭中转）时走各平台原始地址，可能受 CORS 限制。 */
 const OVERRIDE_KEY = 'eunoia.musicProxy'
 function proxyBase() {
   let local = ''

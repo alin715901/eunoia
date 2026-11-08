@@ -28,7 +28,7 @@
 - **数据库**：sql.js（WASM SQLite 完整跑在浏览器里），快照持久化到 IndexedDB
 - **部署**：任意静态托管（仓库自带 GitHub Pages / Actions 工作流，零服务端成本）
 - **安卓 APK**：Capacitor，见 [CAPACITOR_APK_GUIDE.md](CAPACITOR_APK_GUIDE.md)
-- **音乐解析中转**：Cloudflare Worker（可选，见 `workers/`）
+- **音乐解析中转**：Cloudflare Worker（内置公共服务，默认可用；也可自建，见 `workers/`）
 
 ### 目录结构
 
@@ -39,7 +39,7 @@ web/                     纯前端应用（本地版全部逻辑都在这里）
   src/utils/runtimeConfig.js   统一读取运行时 / 构建变量配置
   public/config.js      唯一的「部署者专属配置」入口，改完刷新即生效
   android/              Capacitor 安卓工程
-workers/                 音乐解析 Cloudflare Worker（可选）
+workers/                 音乐解析 Cloudflare Worker（自建时用，默认已有公共服务）
 .github/workflows/       GitHub Pages 部署 + APK 构建发布
 LICENSE                  MIT 开源协议
 server/                  旧的自托管服务端版本（已不再维护，仅作历史保留）
@@ -58,10 +58,11 @@ cd web && npm install && npm run dev
 
 **Fork 到自己名下后不需要改代码**：部署者专属配置都集中在 `web/public/config.js`，分两类：
 
-- **自动解绑**：检查更新的仓库、音乐解析 Worker 只在原作者域名生效，部署到别的域名后
-  自动失效，不会拉到原作者的 APK，也不会蹭原作者的 Worker 额度。想启用就填自己的地址。
-- **默认可用**：「心迹 · 工作台」是公开的独立站点，**所有部署（含 Fork）默认都能打开**，
-  想换成自己的站点或彻底关闭，改 `traceUrl` 即可。
+- **自动解绑**：只有「检查更新的仓库」在原作者域名外失效，避免拉到原作者的 APK
+  覆盖你自己的版本；想启用就填自己的仓库。
+- **默认可用**：「心迹 · 工作台」和「音乐解析中转」是公共服务，**所有部署（含 Fork）
+  默认都能用**——别人部署的私人网站照常能打开工作台、导入网易云/酷狗歌曲。
+  想换成自己的服务或彻底关闭，改 `traceUrl` / `musicProxy` 即可。
 
 完整清单见部署指南第一节。
 
@@ -79,8 +80,8 @@ cd web && npm install && npm run dev
 
 ## 说明
 
-- 音乐链接导入需要配置 Cloudflare Worker 中转（网易云/酷狗接口有 CORS 限制）；
-  不配置也不影响其它任何功能。
+- 音乐链接导入默认走内置的公共中转（网易云/酷狗接口有 CORS 限制，需中转），
+  **所有部署开箱可用**；可在 `web/public/config.js` 换成自己的 Worker 或关闭。
 - 「心迹 · 工作台」**是另一个独立网站**，通过 iframe 嵌入，源码不在本仓库里，数据也
   不与本应用互通（请单独导出 / 导入）。默认加载公开站点，可改成自己的地址或关闭；
   详见部署指南第一节。

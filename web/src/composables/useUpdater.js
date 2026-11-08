@@ -27,9 +27,9 @@ let installTriggered = false // 已拉起系统安装器，等待用户回应用
 
 /* 国内下载代理（可选）：
    复用本项目已有的 Cloudflare Worker 通用代理（音乐代理那个，?url= 任意网址）。
-   若该 Worker 已部署且填到了「音乐 → 解析服务」或运行时配置 apkProxy/musicProxy，
-   则应用内更新会优先走代理服务端代拉 GitHub，大陆也能正常下载安装。
-   优先级：运行时配置 apkProxy → musicProxy → 构建环境变量 VITE_APK_PROXY。 */
+   apkProxy 单独配置时优先，否则回退到 musicProxy（内置公共中转，所有部署默认可用），
+   应用内更新会优先走代理服务端代拉 GitHub，大陆也能正常下载安装。
+   两者都由 runtimeConfig.js 统一解析（显式 config.js / VITE_* 构建变量 / 默认值）。 */
 export function resolveProxy() {
   return RUNTIME_CONFIG.apkProxy || RUNTIME_CONFIG.musicProxy || ''
 }

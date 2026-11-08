@@ -27,44 +27,46 @@ Eunoia 是一个**纯静态网站**：没有服务端、没有账号、没有数
 | 配置项 | 作用 | Fork 到自己的域名后 |
 |---|---|---|
 | `releaseRepo` | 应用内检查 APK 更新所用的 GitHub 仓库 | **自动失效**（关闭更新检测） |
-| `musicProxy` | 网易云/酷狗链接导入的解析中转 | **自动失效**（关闭链接导入） |
-| `apkProxy` | APK 下载代理 | 自动失效，回退到 `musicProxy` |
-| `traceUrl` | 「心迹 · 工作台」嵌入的独立网站 | **默认照常加载**，可改成自己的或关闭 |
+| `musicProxy` | 网易云/酷狗链接导入的解析中转 | **默认可用**，可改成自己的或关闭 |
+| `traceUrl` | 「心迹 · 工作台」嵌入的独立网站 | **默认可用**，可改成自己的或关闭 |
+| `apkProxy` | APK 下载代理 | 可选项，留空时回退到 `musicProxy` |
 
-前三项在 `OWNER_CONFIG` 里，只在 `OWNER_HOST`（原作者域名）与本地 / 原生环境生效。
-**部署到自己的域名后自动失效**——因为「检查更新」若不隔离会拉原作者的 APK 盖掉
-你自己的版本，音乐中转不隔离会蹭原作者的 Worker 额度。Fork 后一行不改也不会连到
-原作者的 Releases 或 Worker。
+**只有 `releaseRepo` 需要与原作者账号解绑**：它在 `OWNER_CONFIG` 里，只在
+`OWNER_HOST`（原作者域名）与本地 / 原生环境生效。若不隔离，别人 Fork 后点「检查更新」
+会拉到原作者的 APK 盖掉自己的版本，所以部署到别的域名后自动失效。
 
-`traceUrl` 不参与这套隔离：工作台只是一个公开可用的展示页面，不读写主应用数据，
-所以**所有部署默认都能打开工作台**。
+`musicProxy` 和 `traceUrl` **不参与这套隔离**——它们都是公开的公共服务，不读写主应用
+数据、不会覆盖任何人的东西。因此**别人 Fork 出去的私人网站，默认照常能用工作台和音乐
+链接导入**，一行不改也不会缺功能。（音乐中转是通用代理，已配置允许跨域访问。）
 
-#### 改工作台地址（三种方式，任选）
+#### 改这两项服务（三种方式，任选，以工作台为例）
 
-1. **改文件（最直观）**：编辑 `web/public/config.js` 里的 `DEFAULT_TRACE_URL`，
-   换成自己的站点；改完刷新即生效，无需重新构建。
+1. **改文件（最直观）**：编辑 `web/public/config.js` 里的 `DEFAULT_TRACE_URL` /
+   `DEFAULT_MUSIC_PROXY`，换成自己的地址；改完刷新即生效，无需重新构建。
 2. **预写覆盖**：在加载 `config.js` 之前写
-   `window.__EUNOIA_CONFIG__ = { traceUrl: 'https://你的站点/' }`，优先级最高。
+   `window.__EUNOIA_CONFIG__ = { traceUrl: '...', musicProxy: '...' }`，优先级最高。
 3. **构建变量（适合 CI）**：仓库 Settings → Secrets and variables → Actions →
-   Variables 里新建 `VITE_TRACE_URL`。`deploy.yml` 与 `build.yml` 已接入。
+   Variables 里新建 `VITE_TRACE_URL` / `VITE_MUSIC_PROXY`。`deploy.yml` 与
+   `build.yml` 已接入。应用内「设置 → 音乐 → 解析服务」还可手填，只存本机、优先级最高。
 
-**彻底关闭工作台**：把 `traceUrl` 显式设为空字符串 `''`（例如方式 2 里写
-`{ traceUrl: '' }`），页面会显示「工作台已关闭」而不再加载任何外部站点。
+**彻底关闭某项**：把对应项显式设为空字符串 `''`（例如方式 2 里写 `{ traceUrl: '' }`）。
+工作台会显示「工作台已关闭」不再加载外部站点；音乐中转关闭后仅链接导入不可用，
+本地音乐等其它功能不受影响。
 
 > 工作台是**另一个独立网站**，源码不在本仓库里，数据也不与本应用互通（请单独导出 /
 > 导入）。若日后把它的源码一并开源，把 `DEFAULT_TRACE_URL` 改成站内相对路径
 > （如 `./heart-trace/`）即可完全自带、不再依赖任何外部域名。
 
-#### 启用前三项 / 构建自己的 APK
+#### 检查更新 / 构建自己的 APK
 
 - **改文件**：编辑 `web/public/config.js`，把 `OWNER_HOST` 改成自己的域名，
-  并把 `OWNER_CONFIG` 里各项换成自己的地址；改完刷新即生效。
-- **用构建变量**：Variables 里新建 `VITE_RELEASE_REPO` / `VITE_MUSIC_PROXY` /
-  `VITE_APK_PROXY`。`VITE_RELEASE_REPO` 会自动取 `github.repository`，一般无需手动填。
+  并把 `OWNER_CONFIG.releaseRepo` 换成自己的仓库；改完刷新即生效。
+- **用构建变量**：Variables 里新建 `VITE_RELEASE_REPO` / `VITE_APK_PROXY`。
+  `VITE_RELEASE_REPO` 会自动取 `github.repository`，一般无需手动填。
 
 > 若要构建**自己的 APK**，请把 `OWNER_CONFIG` 清空或改成自己的地址——原生壳以
 > `localhost` / `file://` 加载，走的是「本地 / 原生环境」分支，不会按域名自动隔离。
-> 工作台不受这条影响，APK 里也照常显示。
+> 工作台和音乐中转不受这条影响，APK 里也照常可用。
 
 ### 推送方式
 
@@ -86,15 +88,19 @@ git push origin main
 Settings → Pages → Custom domain 填你的域名，DNS 加一条 CNAME 到
 `<你的用户名>.github.io`。用自定义域名时，把 `deploy.yml` 里「计算 base 路径」一步
 改为输出 `BASE_PATH=/`（根路径），否则资源会按 `/<仓库名>/` 前缀加载。
-若还想让检查更新 / 音乐中转生效，把 `config.js` 的 `OWNER_HOST` 改成这个域名
-（工作台不受影响，任意域名都照常显示）。
+若还想让检查更新生效，把 `config.js` 的 `OWNER_HOST` 改成这个域名
+（工作台、音乐中转不受影响，任意域名都照常可用）。
 
 ---
 
-## 二、音乐链接导入（可选，需要自己的 Cloudflare Worker）
+## 二、音乐链接导入（默认可用，可选自建中转）
 
 网易云/酷狗的元数据接口不允许浏览器直连（CORS），链接导入需要一个中转。
-Cloudflare Worker 免费额度 **10 万请求/天**，个人自用远够：
+**仓库已内置一个公共中转**，所有部署（含 Fork 出去的私人网站）默认就能用，
+无需任何配置；想换成自己的 Worker 或关闭，按上一节改 `musicProxy` 即可。
+
+如果想自建（例如不想依赖公共服务、或需要更高额度），Cloudflare Worker 免费额度
+**10 万请求/天**，个人自用远够：
 
 ```bash
 npm install -g wrangler
@@ -106,8 +112,8 @@ npx wrangler deploy -c workers/wrangler.toml
 （或在 Variables 里配 `VITE_MUSIC_PROXY`）。也可以在应用内
 「设置 → 音乐 → 解析服务」手填，该项优先级最高、只存本机。
 
-不配置中转时，除音乐链接导入外的所有功能（聊天 / 信件 / 朋友圈 / 陪伴 /
-本地音乐文件等）均正常。
+把 `musicProxy` 显式设为空则关闭中转，此时除音乐链接导入外的所有功能
+（聊天 / 信件 / 朋友圈 / 陪伴 / 本地音乐文件等）均正常。
 
 ---
 
