@@ -41,7 +41,7 @@ web/                     纯前端应用（本地版全部逻辑都在这里）
   android/              Capacitor 安卓工程
 workers/                 音乐解析 Cloudflare Worker（自建时用，默认已有公共服务）
 .github/workflows/       GitHub Pages 部署 + APK 构建发布
-LICENSE                  MIT 开源协议
+LICENSE                  使用许可声明（支持二改二传和私人部署，严禁倒卖）
 server/                  旧的自托管服务端版本（已不再维护，仅作历史保留）
 ```
 
@@ -76,7 +76,7 @@ cd web && npm install && npm run dev
 
 ## 开源协议
 
-[MIT](LICENSE)。可以自由使用、修改、再分发，包含商业用途，只需保留版权与许可声明。
+支持二改二传和私人部署，严禁倒卖。
 
 ## 说明
 

@@ -1,21 +1,24 @@
-MIT License
+Eunoia 使用许可声明
 
 Copyright (c) 2026 alin715901
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+支持二改二传和私人部署，严禁倒卖。
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+本声明适用于 Eunoia 的源代码、构建产物及其衍生版本。
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+允许（无需另行授权）：
+  - 私人部署：为个人或非商业目的自行部署、运行本软件；
+  - 二次修改（二改）：阅读、修改源码以适配自己的需求；
+  - 二次分发（二传）：以原样或修改后形式分享、转发给他人；
+    分发时须保留本声明与版权信息。
+
+禁止：
+  - 倒卖：以任何形式出售本软件、其副本、修改版或部署服务，
+    或将本软件作为付费商品、付费服务的一部分提供给他人；
+  - 移除版权声明后声称为自己的原创作品。
+
+免责：本软件按「现状」提供，不附带任何明示或默示担保。作者不对
+使用本软件产生的任何损失、纠纷，或经由第三方服务（如音乐解析中转）
+获取的内容承担责任。
+
+如需超出上述范围的授权，请联系原作者另行协商。
