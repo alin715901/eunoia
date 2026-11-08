@@ -56,7 +56,7 @@
         <div class="ms-hint-row">
           <span>一行一个链接，点「导入」后一次性并发抓取全部；歌单会自动展开抓取全部曲目（因QQ音乐限制，暂不支持解析导入）导入需要时间，不是卡顿。</span>
         </div>
-        <button class="ms-primary soft" :disabled="plLoading" @click="importPlaylist">{{ plLoading ? (importProgress || '抓取中…') : '导入' }}</button>
+        <button class="ms-primary soft" :disabled="plLoading" @click="importPlaylist">{{ plLoading ? '导入中…' : '导入' }}</button>
       </div>
 
       <!-- ═══ 补全缺失时长（历史导入歌没时长/没标会员的，一键补上） ═══ -->
@@ -105,12 +105,22 @@
         @done="onVinylCropped"
         @cancel="closeCrop"
       />
+
+      <!-- 链接导入进度弹窗：明确展示「正在导入」，避免用户以为卡住 -->
+      <div v-if="plLoading" class="imp-mask">
+        <div class="imp-box">
+          <div class="imp-spinner" />
+          <div class="imp-title">正在导入音乐…</div>
+          <div class="imp-bar"><i :style="{ width: importPct + '%' }" /></div>
+          <div class="imp-count">{{ importDone }}/{{ importTotal }}</div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup>
-import { reactive, ref, onMounted, onUnmounted } from 'vue'
+import { reactive, ref, computed, onMounted, onUnmounted } from 'vue'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import ImageCropper from '@/components/common/ImageCropper.vue'
@@ -130,6 +140,10 @@ const plUrl = ref('')
 const saving = ref(false)
 const plLoading = ref(false)
 const importProgress = ref('')
+/* 链接导入进度弹窗用的计数与百分比 */
+const importDone = ref(0)
+const importTotal = ref(0)
+const importPct = computed(() => (importTotal.value ? Math.min(100, Math.round((importDone.value / importTotal.value) * 100)) : 0))
 const audioEl = ref(null)
 const vinylEl = ref(null)
 /* 一键缓存封面/歌词 */
@@ -236,18 +250,19 @@ async function importPlaylist() {
   const lines = plUrl.value.split('\n').map((s) => s.trim()).filter(Boolean)
   if (!lines.length) return
   plLoading.value = true
+  importTotal.value = lines.length
+  importDone.value = 0
   let okCount = 0
   let vipCount = 0
   let skipCount = 0
   let failLines = []
-  let done = 0
   try {
     // 并发抓取（限制 4 个 worker），避免逐条等待也避免压测云端额度
     let cursor = 0
     const worker = async () => {
       while (cursor < lines.length) {
         const i = cursor++
-        importProgress.value = `导入中 ${done + 1}/${lines.length}`
+        importProgress.value = `导入中 ${importDone.value + 1}/${lines.length}`
         try {
           const r = await store.importLink(lines[i])
           if (r && r.imported) {
@@ -259,7 +274,7 @@ async function importPlaylist() {
         } catch (e) {
           failLines.push(lines[i])
         }
-        done++
+        importDone.value++
       }
     }
     await Promise.all(Array.from({ length: Math.min(4, lines.length) }, worker))
@@ -281,6 +296,8 @@ async function importPlaylist() {
     if (okCount) plUrl.value = ''
   } finally {
     importProgress.value = ''
+    importTotal.value = 0
+    importDone.value = 0
     plLoading.value = false
   }
 }
@@ -467,4 +484,35 @@ onMounted(() => {
   width: auto; padding: 8px 16px; border-radius: 999px; font-size: 12px;
   border: none; background: var(--bg-soft); color: var(--text-soft);
 }
+
+/* 链接导入进度弹窗 */
+.imp-mask {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px;
+}
+.imp-box {
+  width: 100%; max-width: 300px;
+  background: var(--bg-screen); border-radius: var(--radius-lg);
+  padding: 22px 20px 20px;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.28);
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+}
+.imp-spinner {
+  width: 38px; height: 38px; border-radius: 50%;
+  border: 3px solid var(--border); border-top-color: var(--accent);
+  animation: imp-spin 0.8s linear infinite;
+}
+@keyframes imp-spin { to { transform: rotate(360deg); } }
+.imp-title { font-size: 15px; font-weight: 700; font-family: var(--font-serif); }
+.imp-bar {
+  width: 100%; height: 8px; border-radius: 999px;
+  background: var(--bg-soft); overflow: hidden;
+}
+.imp-bar i {
+  display: block; height: 100%; border-radius: 999px;
+  background: var(--accent); transition: width 0.2s ease;
+}
+.imp-count { font-size: 13px; color: var(--text-soft); font-family: var(--font-serif); }
 </style>
