@@ -582,9 +582,14 @@ async function doArchive() {
   archiving.value = true
   archErr.value = ''
   try {
-    await archiveCurrentOssBackup()
+    const made = await archiveCurrentOssBackup()
     notify('已为当前云端备份创建一份历史版本')
     await refreshArchives()
+    /* 兜底：OSS 列举偶尔有短暂延迟（或列举权限受限）导致新存档没出现在列表里。
+       直接把刚生成的这条插到最前，保证点完立刻能看到一条，不用再手动刷新。 */
+    if (made && made.key && !archList.value.some((a) => a.key === made.key)) {
+      archList.value = [{ key: made.key, size: made.size || 0, at: made.at || Date.now() }, ...archList.value]
+    }
   } catch (e) {
     archErr.value = e && e.message ? e.message : '存档失败'
   } finally {

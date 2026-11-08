@@ -24,7 +24,7 @@ import * as musicCache from './services/musicCache'
 import * as mochiService from './services/mochi.service'
 import * as backupService from './services/backup.service'
 import * as notification from './services/notification.service'
-import { readOssCfg, ossReady, ossUpload, ossDownload, ossExists, ossList } from '../utils/oss'
+import { readOssCfg, ossReady, ossUpload, ossDownload, ossExists, ossList, ossKeyOf } from '../utils/oss'
 
 export { resetDb }
 

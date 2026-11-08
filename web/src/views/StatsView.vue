@@ -150,46 +150,99 @@
             <div class="sv-empty-title">{{ favTab === 'mine' ? '还没有收藏' : 'TA还没有收藏你的消息' }}</div>
             <div class="sv-empty-sub">{{ favTab === 'mine' ? '长按聊天里的气泡，点「收藏」即可把消息存到这里' : '聊天时 TA 会偶尔收藏你发的消息，会自动归到这里' }}</div>
           </div>
-          <div v-else class="st-favs">
-            <div v-for="it in curFavs" :key="it.id" class="st-card st-fav-card">
-              <AppAvatar
-                class="st-fav-avatar"
-                :name="favName(it)"
-                :avatar="it.sender === 'me' ? myAvatar : (curContact ? curContact.chat_avatar || curContact.avatar : '')"
-                :size="40"
-              />
-              <div class="st-fav-main">
-                <div class="st-fav-head">
-                  <span class="st-fav-name">{{ favName(it) }}</span>
-                  <span class="st-fav-time">{{ fmtFull(it.created_at) }}</span>
+          <template v-else>
+            <div v-for="g in favGroups" :key="g.key" class="st-group">
+              <button class="st-group-head" type="button" @click="toggleGroup('fav', g.key)">
+                <AppIcon class="st-group-arrow" :class="{ rot: !isOpen('fav', g.key) }" name="chevron-down" :size="13" color="var(--text-soft)" />
+                <span class="st-group-title">{{ g.label }}</span>
+                <span class="st-group-n">{{ g.items.length }} 条</span>
+              </button>
+              <div v-if="isOpen('fav', g.key)" class="st-favs">
+                <div v-for="it in g.items" :key="it.id" class="st-card st-fav-card">
+                  <AppAvatar
+                    class="st-fav-avatar"
+                    :name="favName(it)"
+                    :avatar="it.sender === 'me' ? myAvatar : (curContact ? curContact.chat_avatar || curContact.avatar : '')"
+                    :size="40"
+                  />
+                  <div class="st-fav-main">
+                    <div class="st-fav-head">
+                      <span class="st-fav-name">{{ favName(it) }}</span>
+                      <span class="st-fav-time">{{ fmtFull(it.created_at) }}</span>
+                    </div>
+                    <!-- 语音：可点击播放的语音条 + 转写文字在下方（单行省略） -->
+                    <div v-if="it.content_type === 'voice'" class="st-voice">
+                      <button class="st-voice-bar" type="button" @click="playVoice(it)">
+                        <span class="st-voice-ico" :class="{ playing: playingId === String(it.id) }">
+                          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
+                            <circle cx="6" cy="12" r="1.6" fill="currentColor" stroke="none" />
+                            <path d="M10.6 8.6a5.6 5.6 0 0 1 0 6.8" />
+                            <path d="M14.2 5.8a10 10 0 0 1 0 12.4" />
+                          </svg>
+                        </span>
+                        <span v-if="voiceDur(it)" class="st-voice-dur">{{ voiceDur(it) }}"</span>
+                      </button>
+                      <div v-if="it.text" class="st-voice-asr">{{ it.text }}</div>
+                    </div>
+                    <!-- 红包 -->
+                    <div v-else-if="it.content_type === 'redpacket'" class="st-fav-rp">
+                      <AppIcon name="redpacket" :size="14" color="#e05a4e" />
+                      <span class="st-fav-rp-text">{{ parseJSON(it.text).wish || '红包' }}</span>
+                    </div>
+                    <!-- 图片 -->
+                    <img v-else-if="it.asset_path" :src="it.asset_path" class="st-fav-img" />
+                    <!-- 文本 / 信件 -->
+                    <div v-else class="st-fav-text">{{ it.text || (it.content_type === 'letter' ? '[信件]' : '') }}</div>
+                  </div>
+                  <AppIcon class="st-fav-star" name="star" :size="16" color="#e8b94e" filled />
                 </div>
-                <!-- 语音：可点击播放的语音条 + 转写文字在下方（单行省略） -->
-                <div v-if="it.content_type === 'voice'" class="st-voice">
-                  <button class="st-voice-bar" type="button" @click="playVoice(it)">
-                    <span class="st-voice-ico" :class="{ playing: playingId === String(it.id) }">
-                      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round">
-                        <circle cx="6" cy="12" r="1.6" fill="currentColor" stroke="none" />
-                        <path d="M10.6 8.6a5.6 5.6 0 0 1 0 6.8" />
-                        <path d="M14.2 5.8a10 10 0 0 1 0 12.4" />
-                      </svg>
-                    </span>
-                    <span v-if="voiceDur(it)" class="st-voice-dur">{{ voiceDur(it) }}"</span>
-                  </button>
-                  <div v-if="it.text" class="st-voice-asr">{{ it.text }}</div>
-                </div>
-                <!-- 红包 -->
-                <div v-else-if="it.content_type === 'redpacket'" class="st-fav-rp">
-                  <AppIcon name="redpacket" :size="14" color="#e05a4e" />
-                  <span class="st-fav-rp-text">{{ parseJSON(it.text).wish || '红包' }}</span>
-                </div>
-                <!-- 图片 -->
-                <img v-else-if="it.asset_path" :src="it.asset_path" class="st-fav-img" />
-                <!-- 文本 / 信件 -->
-                <div v-else class="st-fav-text">{{ it.text || (it.content_type === 'letter' ? '[信件]' : '') }}</div>
               </div>
-              <AppIcon class="st-fav-star" name="star" :size="16" color="#e8b94e" filled />
             </div>
+          </template>
+        </template>
+
+        <!-- ── 通话记录：每条 content_type='call' 的消息即一次通话，
+                头像与「谁发起」取该条消息的 sender（发起方），按年月分组可折叠 ── -->
+        <template v-else-if="curTab === 'calls'">
+          <div v-if="!calls.length" class="sv-empty">
+            <div class="sv-empty-emoji">📞</div>
+            <div class="sv-empty-title">还没有通话记录</div>
+            <div class="sv-empty-sub">和 TA 打一通电话，这里会记下每次通话的时间与时长</div>
           </div>
+          <template v-else>
+            <div class="st-q-sum">
+              <span class="st-q-sum-num">{{ calls.length }}</span>
+              <span class="st-q-sum-label">累计通话</span>
+              <span class="st-q-sum-ans">{{ callsConnected }} 次已接通 · 共 {{ fmtDur(callsTotalDur) }}</span>
+            </div>
+            <div v-for="g in callGroups" :key="g.key" class="st-group">
+              <button class="st-group-head" type="button" @click="toggleGroup('calls', g.key)">
+                <AppIcon class="st-group-arrow" :class="{ rot: !isOpen('calls', g.key) }" name="chevron-down" :size="13" color="var(--text-soft)" />
+                <span class="st-group-title">{{ g.label }}</span>
+                <span class="st-group-n">{{ g.items.length }} 次</span>
+              </button>
+              <div v-if="isOpen('calls', g.key)" class="st-favs">
+                <div v-for="c in g.items" :key="c.id" class="st-card st-fav-card st-call-card">
+                  <AppAvatar
+                    class="st-fav-avatar"
+                    :name="callFromName(c)"
+                    :avatar="c.sender === 'me' ? myAvatar : (curContact ? curContact.chat_avatar || curContact.avatar : '')"
+                    :size="40"
+                  />
+                  <div class="st-fav-main">
+                    <div class="st-fav-head">
+                      <span class="st-fav-name">{{ callFromName(c) }}发起</span>
+                      <span class="st-fav-time">{{ fmtFull(c.at) }}</span>
+                    </div>
+                    <div class="st-call-status" :class="{ bad: isAbnormalCall(c) }">
+                      <AppIcon name="phone" :size="13" />
+                      <span>{{ callStatus(c) }}</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </template>
         </template>
 
         <!-- ── 提问（含双方提问与回答） ── -->
@@ -360,6 +413,7 @@ import * as api from '@/api/chat'
 const TABS = [
   { key: 'days', name: '统计', icon: 'chart' },
   { key: 'fav', name: '消息收藏', icon: 'star' },
+  { key: 'calls', name: '通话记录', icon: 'phone' },
   { key: 'q', name: '提问', icon: 'question' },
   { key: 'rp', name: '红包', icon: 'redpacket' },
   { key: 'inv', name: '邀请', icon: 'game' }
@@ -372,7 +426,9 @@ const loading = ref(true)
 const msgs = ref([])
 const favorites = ref([])
 const curCid = ref(null)
-const curTab = ref(LAST_TAB_KEY)
+/* 记住上次停留的页签：以前误把 localStorage 的 key 名当成初始值，
+   导致每次进来都被 mounted 的校验重置回「统计」，记忆功能等于没生效 */
+const curTab = ref(localStorage.getItem(LAST_TAB_KEY) || 'days')
 const contactOpen = ref(false)
 
 const contactsStore = useContactsStore()
@@ -570,6 +626,46 @@ function qLabel(t) {
   return t === 'single' ? '提问 · 单选' : t === 'multi' ? '提问 · 多选' : '提问 · 问答'
 }
 
+/* ── 通话记录：聊天里每条 content_type='call' 的消息就是一次通话。
+   text 是 JSON { duration, result }，sender 即发起方（决定头像与「谁发起」）。
+   result 与聊天气泡一致：answered / hangup_by_them（已接通）、terminated（中断）、
+   missed / rejected / declined / cancelled（未接通）。 ── */
+const UNANSWERED = {
+  rejected: '对方拒绝通话',
+  declined: '已拒绝通话',
+  missed: '未接听',
+  cancelled: '通话已取消'
+}
+const calls = computed(() =>
+  valid.value
+    .filter((m) => m.content_type === 'call')
+    .map((m) => {
+      const meta = parseJSON(m.text)
+      return {
+        id: m.id,
+        sender: m.sender,
+        at: m.created_at,
+        duration: Math.max(0, Math.floor(Number(meta.duration) || 0)),
+        result: meta.result || 'answered'
+      }
+    })
+    .sort((a, b) => b.at - a.at || b.id - a.id)
+)
+/* 未接通（未产生通话）：拒绝 / 未接听 / 取消；「中断」是接通后被掐断，
+   有真实时长，属于一次实际通话，只是要在文案与配色上单独标出来 */
+function isUnansweredCall(c) { return !!UNANSWERED[c.result] }
+function isAbnormalCall(c) { return c.result === 'terminated' || isUnansweredCall(c) }
+function callFromName(c) {
+  return c.sender === 'me' ? '我' : (curContact.value ? curContact.value.name : '对方')
+}
+function callStatus(c) {
+  if (c.result === 'terminated') return c.duration > 0 ? '通话中断 ' + fmtDur(c.duration) : '通话中断'
+  if (UNANSWERED[c.result]) return UNANSWERED[c.result]
+  return '通话时长 ' + fmtDur(c.duration)
+}
+const callsConnected = computed(() => calls.value.filter((c) => !isUnansweredCall(c)).length)
+const callsTotalDur = computed(() => calls.value.reduce((s, c) => s + (isUnansweredCall(c) ? 0 : c.duration), 0))
+
 /* ── 格式化（兼容秒级消息时间戳与毫秒级信件收藏时间戳） ── */
 function pad(n) { return String(n).padStart(2, '0') }
 function toMs(sec) {
@@ -594,6 +690,38 @@ function voiceDur(it) {
 function favName(it) {
   return it.sender === 'me' ? '我' : (curContact.value ? curContact.value.name : '对方')
 }
+
+/* ── 按年月分组（通话记录 / 消息收藏共用）：月份倒序、组内条目倒序，
+   组头可点击展开 / 收起；两个 tab 用独立 scope，同月份互不干扰 ── */
+function fmtDur(sec) {
+  const n = Math.max(0, Math.floor(Number(sec) || 0))
+  return `${pad(Math.floor(n / 60))}:${pad(n % 60)}`
+}
+function groupByMonth(list, ftime) {
+  const map = new Map()
+  for (const it of list) {
+    const ms = toMs(ftime(it))
+    const d = new Date(ms)
+    const ok = Number.isFinite(ms) && ms > 0 && !Number.isNaN(d.getTime())
+    const key = ok ? `${d.getFullYear()}-${pad(d.getMonth() + 1)}` : 'unknown'
+    const label = ok ? `${d.getFullYear()}年${d.getMonth() + 1}月` : '时间未知'
+    if (!map.has(key)) map.set(key, { key, label, items: [] })
+    map.get(key).items.push(it)
+  }
+  return [...map.values()]
+    .sort((a, b) => (a.key === 'unknown' ? -1 : b.key === 'unknown' ? 1 : b.key.localeCompare(a.key)))
+    .map((g) => ({ ...g, items: g.items.slice().sort((a, b) => toMs(ftime(b)) - toMs(ftime(a))) }))
+}
+const collapsed = ref({})
+function toggleGroup(scope, key) {
+  const k = scope + ':' + key
+  collapsed.value = { ...collapsed.value, [k]: !collapsed.value[k] }
+}
+function isOpen(scope, key) {
+  return !collapsed.value[scope + ':' + key]
+}
+const callGroups = computed(() => groupByMonth(calls.value, (c) => c.at))
+const favGroups = computed(() => groupByMonth(curFavs.value, (f) => f.created_at))
 
 /* ── 收藏语音播放（全局单实例，与聊天页语音互斥） ── */
 const playingId = ref('')
@@ -896,4 +1024,28 @@ onBeforeUnmount(() => {
 .st-inv-num { font-size: 26px; font-weight: 700; color: var(--text); line-height: 1.15; font-variant-numeric: tabular-nums; }
 .st-inv-label { margin-top: 4px; font-size: 12px; color: var(--text-soft); }
 .st-inv-div { width: 1px; align-self: stretch; background: var(--border); }
+
+/* ── 年月分组（通话记录 / 消息收藏） ── */
+.st-group { margin-bottom: 4px; }
+.st-group-head {
+  display: flex; align-items: center; gap: 6px;
+  width: calc(100% - 24px); margin: 2px 12px 8px;
+  border: none; background: transparent; padding: 7px 2px;
+  text-align: left; -webkit-tap-highlight-color: transparent;
+}
+.st-group-arrow { flex: 0 0 auto; transition: transform 0.2s ease; }
+.st-group-arrow.rot { transform: rotate(-90deg); }
+.st-group-title { font-size: 13px; font-weight: 600; color: var(--text); }
+.st-group-n {
+  margin-left: auto; flex: 0 0 auto;
+  font-size: 11px; color: var(--text-soft);
+  background: var(--bg-soft); border-radius: 999px; padding: 2px 9px;
+}
+.st-call-card { padding: 12px; }
+.st-call-status {
+  display: inline-flex; align-items: center; gap: 5px;
+  font-size: 13px; color: var(--text-soft);
+  font-variant-numeric: tabular-nums;
+}
+.st-call-status.bad { color: #d0675a; }
 </style>
