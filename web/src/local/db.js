@@ -807,6 +807,14 @@ export async function reloadFromStorage() {
   }
 }
 
+/* 判断内存库自上次成功落盘后是否还有未同步的改动。
+   用于云端自动备份：数据没变时跳过整库全量导出 + 上传，
+   避免长期开前台时每 30 分钟稳定复现一次整库快照的大块内存分配（OOM 闪退隐患）。
+   返回 true = 仍有改动（需要备份）；false = 已落盘干净（可跳过）。 */
+export function dbHasUnsyncedChanges() {
+  return !!(state.dirty || state.pendingFlush || state.deferredFlush || dirtySeq !== savedSeq)
+}
+
 // 清空本地数据并重建（供以后做「重置账号」用）
 export async function resetDb() {
   state.raw = null

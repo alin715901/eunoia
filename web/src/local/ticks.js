@@ -7,7 +7,7 @@
 //      避免每次开页都摇一次；关页超过 1 小时再开页会补摇一次（不补摇期间全部次数）。
 //   3) visibilitychange：页面从后台切回前台时立即补跑一轮 60s tick
 //      （后台标签页定时器会被浏览器节流，睡眠唤醒后定时器也会停摆）。
-import db from './db'
+import db, { dbHasUnsyncedChanges } from './db'
 import * as notification from './services/notification.service'
 import { proactiveTick, redpacketTick, upgradeAllPseudoVoices } from './services/chat.service'
 import { backupToOss, getSettings } from './api'
@@ -195,6 +195,11 @@ async function ossAutoBackupTick() {
     const s = await getSettings()
     if (!ossReady(readOssCfg(s))) return
     if (now - (Number(s.oss_last_backup_at) || 0) < OSS_SYNC_MS) return
+    /* 数据自上次落盘后没有任何改动：跳过整库全量导出 + 上传。
+       否则长期开前台、什么都没操作也会每 30 分钟稳定复现一次整库快照的
+       大块内存分配（数据含音乐/图片 base64 时可达数十 MB 甚至上百 MB），
+       正是「前台时间一久就闪退」的 OOM 隐患之一。 */
+    if (!dbHasUnsyncedChanges()) return
     ossSyncBusy = true
     await backupToOss()
   } catch (e) {
