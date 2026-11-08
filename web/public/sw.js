@@ -284,3 +284,20 @@ self.addEventListener('push', (event) => {
   }
   event.waitUntil(self.registration.showNotification(payload.title || 'Eunoia', options))
 })
+
+/* ── 保活心跳响应 ──
+   页面 useKeepAlive 每 10s 发 KEEPALIVE_HEARTBEAT 给 SW。本监听器让 SW 真正
+   被唤醒并保持活跃（SW 冻结后收到的消息会先将其唤醒），并回 pong 告知页面
+   SW 在线 —— 这是网页版「切后台后尽量不被回收」的真实保活手段之一（与屏幕
+   常亮锁无关，且切后台时锁本就被系统释放）。 */
+self.addEventListener('message', (event) => {
+  const data = event.data || {}
+  if (data.type === 'KEEPALIVE_HEARTBEAT') {
+    try {
+      const src = event.source
+      if (src && typeof src.postMessage === 'function') {
+        src.postMessage({ type: 'KEEPALIVE_PONG', t: data.t })
+      }
+    } catch (e) { /* ignore */ }
+  }
+})
