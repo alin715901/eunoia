@@ -420,6 +420,9 @@ onMounted(async () => {
 input[type="date"].field {
   -webkit-appearance: none;
   appearance: none;
+  /* 去掉原生外观后内禀高度变小，这里拉高到与名称框一致并垂直居中 */
+  min-height: 40px;
+  line-height: normal;
 }
 .field:focus { border-color: var(--accent); outline: none; }
 /* 归属字段：外观同输入框，点击弹应用内选择列表 */

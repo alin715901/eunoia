@@ -136,7 +136,7 @@ onActivated(() => { refreshContact() })
 .sec-title { font-size: 14px; font-weight: 700; margin-bottom: 10px; }
 .hint { font-size: 11px; color: var(--text-soft); line-height: 1.6; margin: 10px 0 0; }
 .hint.center { text-align: center; }
-.sec-title:first-child { margin-top: 12px; }
+/* 大标题上方不再额外留白：卡片已有 14px 内边距，叠加 margin 会显得空（对齐聊天气泡页间距） */
 
 /* 聊天预览 */
 .chat-mock {

@@ -48,6 +48,27 @@
         <input class="blur-range" type="range" min="45" max="90" step="1" v-model.number="bs.size" @input="queueSave" />
       </div>
 
+      <!-- 预设模板：淡雅中国色（置于自定义 CSS 之上） -->
+      <div class="panel sec">
+        <div class="sec-title">预设模板</div>
+        <div class="preset-grid">
+          <button
+            v-for="p in BUBBLE_PRESETS"
+            :key="p.name"
+            class="preset"
+            :class="{ selected: selectedPreset === p.name }"
+            @click="applyPreset(p)"
+          >
+            <span v-if="selectedPreset === p.name" class="p-check">✓</span>
+            <span class="p-bubbles">
+              <span class="p-me" :style="{ background: p.my }"></span>
+              <span class="p-contact" :style="{ background: p.contact }"></span>
+            </span>
+            <span class="p-name">{{ p.name }}</span>
+          </button>
+        </div>
+      </div>
+
       <!-- 自定义气泡 CSS（声明式统一生效 / 规则式可分别设置双方） -->
       <div class="panel sec">
         <div class="sec-head">
@@ -67,27 +88,6 @@
           @change="queueSave"
         ></textarea>
         <p class="hint">留空则使用上面选择的颜色；改完自动保存。</p>
-      </div>
-
-      <!-- 预设模板：淡雅中国色 -->
-      <div class="panel sec">
-        <div class="sec-title">预设模板</div>
-        <div class="preset-grid">
-          <button
-            v-for="p in BUBBLE_PRESETS"
-            :key="p.name"
-            class="preset"
-            :class="{ selected: selectedPreset === p.name }"
-            @click="applyPreset(p)"
-          >
-            <span v-if="selectedPreset === p.name" class="p-check">✓</span>
-            <span class="p-bubbles">
-              <span class="p-me" :style="{ background: p.my }"></span>
-              <span class="p-contact" :style="{ background: p.contact }"></span>
-            </span>
-            <span class="p-name">{{ p.name }}</span>
-          </button>
-        </div>
       </div>
     </div>
   </div>
