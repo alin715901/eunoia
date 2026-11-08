@@ -4,6 +4,7 @@ import { App } from '@capacitor/app'
 import { isNativePlatform } from '@/composables/useLocalNotification'
 import { openExternal } from '@/utils/openExternal'
 import { APP_VERSION } from '@/utils/version'
+import { prepareReload } from '@/local/db'
 
 // 原生插件：应用内下载 APK + 拉起系统安装器
 const Updater = registerPlugin('Updater')
@@ -69,7 +70,8 @@ async function checkAndReloadIfUpdated() {
     const nv = (r && r.version) || ''
     const cur = APP_VERSION.replace(/^v/i, '')
     if (nv && nv !== cur) {
-      setTimeout(() => { location.reload() }, 300)
+      await prepareReload()
+      location.reload()
     }
   } catch (e) { /* 读取失败则不强刷 */ }
 }

@@ -53,14 +53,23 @@
       <button class="btn-block" type="button" :disabled="migrating || !configured" @click="doMigrate">
         {{ migrating ? `迁移中…（已完成 ${migDone}）` : '迁移本地图片到云端（省空间）' }}
       </button>
-      <!-- 云端历史备份：覆盖云端前自动留存的旧备份，误覆盖可从这里找回 -->
+      <!-- 云端历史版本：每次上传前自动留存的「云端旧快照」，误覆盖可从这里找回 -->
       <div class="hist-block">
         <div class="hist-head">
-          <span class="hist-title">云端历史备份</span>
+          <span class="hist-title">云端历史版本</span>
           <button class="hist-refresh" type="button" :disabled="listing" @click="refreshArchives">{{ listing ? '刷新中…' : '刷新列表' }}</button>
         </div>
-        <p class="sub">覆盖云端另一台设备的数据前，系统会把被覆盖的旧备份自动另存到这里。若误覆盖（例如拿回旧手机里的数据），可从此处下载找回。</p>
+        <p class="sub">
+          这里存的是「云端过去的样子」：每次点「上传本机数据到云端」，系统会先把云端原有的那份备份另存到这里，再写入本机数据；万一覆盖错了（例如把旧手机的数据传上去），可以把它下载回来。
+        </p>
+        <p class="sub">
+          「从云端恢复 / 覆盖导入」只是把云端数据下载到本机，<b>不会</b>在这里生成记录。想马上看到一条，点下面的「立即存档」就行。
+        </p>
+        <button class="btn-block" type="button" :disabled="archiving || !configured" @click="doArchive">
+          {{ archiving ? '存档中…' : '立即存档当前云端备份' }}
+        </button>
         <div v-if="archList.length" class="hist-list">
+          <p class="sub">点「下载并恢复」后，仍会让你选「合并」或「覆盖」。</p>
           <div v-for="a in archList" :key="a.key" class="hist-item">
             <div class="hist-info">
               <span class="hist-at">{{ fmtTime(a.at) }}</span>
@@ -70,9 +79,10 @@
           </div>
         </div>
         <p v-else-if="archTried && !listing" class="hist-empty">
-          暂无历史备份。说明覆盖云端时未触发归档（云端本就为空，或当时状态未知被取消上传），
-          可改用阿里云 OSS 控制台直接查看 <code>{{ prefixHint }}/backup/archive/</code> 目录。
+          还没有历史版本。常见原因：云端原本没有备份，或你只做过「从云端恢复 / 覆盖导入」（这一步不生成历史版本）。点上面的「立即存档」可以手动留一份，之后每次上传也会自动留一份。
         </p>
+        <p v-if="archErr" class="hist-err">{{ archErr }}</p>
+        <p class="sub">历史文件存放在 OSS 的 <code>{{ prefixHint }}/</code> 目录。</p>
       </div>
       <!-- 本机设备标识：多设备共用同一个 Bucket 时，用来区分数据来自哪台设备 -->
       <p class="sub">本机标识：{{ deviceLabel }}<span v-if="syncState && syncState.cloudLabel"> · 云端备份来自：{{ syncState.cloudLabel }}</span></p>
@@ -183,8 +193,9 @@ import { useRouter } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import Modal from '@/components/common/Modal.vue'
-import { getSettings, saveSettings, migrateImagesToOss, backupToOss, downloadOssBackup, importBackup, getOssSyncState, getDeviceLabel, markOssCloudSeen, listOssArchives, downloadOssArchive } from '@/api/settings'
+import { getSettings, saveSettings, migrateImagesToOss, backupToOss, downloadOssBackup, importBackup, getOssSyncState, getDeviceLabel, markOssCloudSeen, listOssArchives, downloadOssArchive, archiveCurrentOssBackup } from '@/api/settings'
 import { fmtBackupTime, backupTotalRows, backupFeatureSummary } from '@/utils/backupInfo'
+import { prepareReload } from '@/local/db'
 import { readOssCfg, ossReady, ossTest } from '@/utils/oss'
 import { fmtSyncTime } from '@/utils/syncTime'
 import { notify, confirmDialog } from '@/utils/dialog'
@@ -258,6 +269,9 @@ function onImportProgress(p) { progress.value = p }
 const archList = ref([])
 const listing = ref(false)
 const archTried = ref(false)
+const archiving = ref(false)
+/* 历史版本读取 / 存档失败只在这一块提示，不覆盖顶部上传、保存的状态文案 */
+const archErr = ref('')
 const prefixHint = computed(() => (form.prefix && form.prefix.trim()) ? form.prefix.trim() + '/backup/archive' : 'backup/archive')
 /* 本机设备标识 + 云端备份状态（用于冲突提示） */
 const deviceLabel = getDeviceLabel()
@@ -366,10 +380,14 @@ async function doUpload(force = false) {
         const r = await backupToOss({ force: hard, archive: true })
         await loadSyncTime()
         await refreshSyncState()
+        /* 上传后立刻刷新历史版本列表：以前不刷新，用户传完看到的还是
+           「暂无历史备份」，以为这功能根本没生效 */
+        await refreshArchives()
         msgOk.value = true
+        const archTip = r.archived ? '（原备份已存为历史版本）' : ''
         msg.value = overwrote
-          ? '已更新云端数据（原有备份已存档）'
-          : `已上传本机数据到云端（约 ${Math.round((r.bytes || 0) / 1024)} KB）`
+          ? `已更新云端数据${archTip}`
+          : `已上传本机数据到云端（约 ${Math.round((r.bytes || 0) / 1024)} KB）${archTip}`
         notify(overwrote ? '已更新云端数据' : '已上传本机数据到云端')
         return
       } catch (e) {
@@ -485,7 +503,10 @@ async function doRestore(mode) {
     isErr.value = false
     msg.value = '恢复完成，正在刷新…'
     notify(`${r && r.text ? r.text : '已恢复云端数据'}${n != null ? `（共 ${n} 条）` : ''}`)
-    setTimeout(() => location.reload(), 300)
+    /* 与本地导入一致：刷新前先关闭数据库连接、停掉 pagehide 的重复落盘，
+       避免 refresh 后卡在启动界面（详见 db.js prepareReload）。 */
+    await prepareReload()
+    location.reload()
   } catch (e) {
     /* 错误留在「导入数据」弹窗内展示，本机原数据未受影响 */
     importErr.value = e && e.message ? e.message : '导入失败'
@@ -543,12 +564,31 @@ async function refreshArchives() {
   archTried.value = true
   try {
     archList.value = await listOssArchives()
+    archErr.value = ''
   } catch (e) {
-    isErr.value = true
-    msg.value = e.message || '读取历史备份失败'
+    /* 列表读取失败只在这一块提示：以前会把顶部的上传成功文案改成红色报错，
+       让用户误以为上传也失败了 */
+    archErr.value = '读取历史版本失败：' + (e.message || '请检查网络 / AccessKey 权限 / 本机时间')
     archList.value = []
   } finally {
     listing.value = false
+  }
+}
+
+/* 手动存档：把云端当前备份另存一份，不改动主备份。
+   既让用户能主动留后悔药，也能立刻看到「历史版本」是怎么产生的 */
+async function doArchive() {
+  if (archiving.value) return
+  archiving.value = true
+  archErr.value = ''
+  try {
+    await archiveCurrentOssBackup()
+    notify('已为当前云端备份创建一份历史版本')
+    await refreshArchives()
+  } catch (e) {
+    archErr.value = e && e.message ? e.message : '存档失败'
+  } finally {
+    archiving.value = false
   }
 }
 
@@ -732,7 +772,8 @@ function fmtKb(n) {
 }
 .hist-restore:disabled { opacity: 0.5; cursor: default; }
 .hist-empty { font-size: 12px; color: var(--text-soft); line-height: 1.6; margin: 12px 0 0; }
-.hist-empty code { background: var(--bg-soft); padding: 1px 5px; border-radius: 5px; font-size: 11px; word-break: break-all; }
+.hist-empty code, .hist-block .sub code { background: var(--bg-soft); padding: 1px 5px; border-radius: 5px; font-size: 11px; word-break: break-all; }
+.hist-err { font-size: 12px; color: #c0576b; line-height: 1.6; margin: 10px 0 0; }
 
 /* 底部按钮栏：取消 / 测试连接 / 保存并连接 */
 .oss-footer {

@@ -28,5 +28,6 @@ export {
   markOssCloudSeen,
   listOssArchives,
   downloadOssArchive,
+  archiveCurrentOssBackup,
 } from '../local/api'
 export { BACKUP_FEATURES, BACKUP_TABLE_LABELS } from '../local/services/backup.service'

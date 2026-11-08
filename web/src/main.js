@@ -17,6 +17,10 @@ app.use(createPinia())
 app.use(router)
 app.mount('#app')
 
+/* 静态骨架已被 Vue 替换 → JS 加载成功，清掉「加载超时自动重试」计数，
+   下次真遇到加载卡住仍能自动重试一次（见 index.html 的静态骨架兜底） */
+try { sessionStorage.removeItem('eunoia-static-retry') } catch (e) { /* ignore */ }
+
 // 数据库就绪后再启动前端调度器（主动消息 / 朋友圈 / 信件 / 来电 / 红包等定时逻辑，原服务端 cron）
 dbReady
   .then(() => startTicks())

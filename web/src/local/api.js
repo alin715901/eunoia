@@ -1500,12 +1500,15 @@ export async function backupToOss(opts = {}) {
      条件只看 hasCloud：老版本备份没有 meta（cloudRev 为 0），但弹窗已经
      承诺「会另存一份历史文件」，此时不归档就是说了不做——而用户反馈的场景
      恰恰全是这种「未知来源（旧版本备份）」的云端数据。 */
+  let archived = false
   if (opts.archive && st.hasCloud) {
     try {
       const old = await ossDownload(cfg, OSS_BACKUP_PATH)
-      /* 没有 meta 时 cloudAt 为 0，用当前时间兜底，避免文件名出现 eunoia-0.json */
+      /* 文件名带随机后缀：同一秒内多次上传也不会互相覆盖，历史版本不会少一条 */
       const ts = st.cloudAt || Date.now()
-      await ossUpload(cfg, old, `${OSS_ARCHIVE_DIR}eunoia-${ts}.json`)
+      const name = `eunoia-${ts}-${Math.random().toString(36).slice(2, 7)}.json`
+      await ossUpload(cfg, old, `${OSS_ARCHIVE_DIR}${name}`)
+      archived = true
     } catch (e) {
       /* 归档失败不阻断上传（云端数据仍在，只是少了份历史副本） */
       console.warn('[oss] 覆盖前归档旧备份失败', e && e.message)
@@ -1530,7 +1533,30 @@ export async function backupToOss(opts = {}) {
   settingsRepo.setGlobal('oss_rev', rev)
   settingsRepo.setGlobal('oss_last_backup_at', meta.created_at)
   settingsRepo.setGlobal('oss_last_backup_device', meta.device_id)
-  return { url: r, rev, bytes: blob.size }
+  return { url: r, rev, bytes: blob.size, archived }
+}
+
+/**
+ * 手动把「云端当前备份」另存为一份历史版本（不改动主备份 eunoia.json）。
+ * 用途：让「云端历史版本」不再是个只能等上传才出现的空列表——用户可主动
+ * 留一份后悔药，也能直观看到「历史版本 = 云端某一时刻的旧快照」。
+ * 返回 { key, size, at }；云端还没有备份时给出可操作的提示。
+ */
+export async function archiveCurrentOssBackup() {
+  const cfg = readOssCfg(readGlobalSettings())
+  if (!ossReady(cfg)) throw new Error('请先填写并保存 OSS 配置')
+  let old
+  try {
+    old = await ossDownload(cfg, OSS_BACKUP_PATH)
+  } catch (e) {
+    if (e && e.status === 404) throw new Error('云端还没有备份，请先点一次「上传本机数据到云端」')
+    throw e
+  }
+  const at = Date.now()
+  const name = `eunoia-${at}-${Math.random().toString(36).slice(2, 7)}.json`
+  const path = `${OSS_ARCHIVE_DIR}${name}`
+  await ossUpload(cfg, old, path)
+  return { key: ossKeyOf(cfg, path), size: old.size, at }
 }
 
 /* 从云端下载备份 JSON 并校验（只下载，不导入）。
@@ -1558,9 +1584,11 @@ export async function listOssArchives() {
   const prefix = ossKeyOf(cfg, OSS_ARCHIVE_DIR)
   const { keys } = await ossList(cfg, prefix)
   const archs = keys
-    .filter((k) => /\/backup\/archive\/.+\.json$/.test(k.key))
+    /* prefix 允许为空，故目录前不一定有斜杠 */
+    .filter((k) => /(^|\/)backup\/archive\/.+\.json$/.test(k.key))
     .map((k) => {
-      const ts = Number((/eunoia-(\d+)\.json$/.exec(k.key) || [])[1] || 0)
+      /* 文件名形如 eunoia-<时间>-<随机后缀>.json；兼容早期无随机后缀的文件 */
+      const ts = Number((/eunoia-(\d+)(?:-[a-z0-9]+)?\.json$/.exec(k.key) || [])[1] || 0)
       return { key: k.key, size: k.size, at: ts || k.lastModified || 0 }
     })
     .filter((a) => a.at > 0)
@@ -1573,7 +1601,13 @@ export async function listOssArchives() {
 export async function downloadOssArchive(key) {
   const cfg = readOssCfg(readGlobalSettings())
   if (!ossReady(cfg)) throw new Error('请先填写并保存 OSS 配置')
-  const blob = await ossDownload(cfg, key)
+  /* listOssArchives 返回的是 OSS 完整 Key（已含路径前缀），而 ossDownload 会
+     再拼一次前缀。这里先剥掉，否则请求的是 eunoia/eunoia/backup/archive/…
+     → 404，历史版本列表里的「下载并恢复」按钮会永远打不开。 */
+  const full = String(key || '')
+  const head = cfg.prefix ? cfg.prefix + '/' : ''
+  const path = head && full.startsWith(head) ? full.slice(head.length) : full
+  const blob = await ossDownload(cfg, path)
   const text = await blob.text()
   let payload
   try { payload = JSON.parse(text) } catch (e) { throw new Error('历史备份文件格式不正确') }

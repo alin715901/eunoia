@@ -123,6 +123,10 @@
       [data-theme="dark"] .boot-static .boot-text { color: #9b9ba3; }
       /* 文字轮播与 Vue 骨架同款：JS 下载/解析期间也保持「活着」 */
       .boot-static .boot-text.boot-text-fade { opacity: 0; }
+      /* 加载超时兜底：同样限定在 .boot-static 下，不污染 Vue 骨架 */
+      .boot-static .boot-static-slow { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 4px; }
+      .boot-static .boot-static-slow p { font-size: 12px; color: #8e8e93; margin: 0; text-align: center; line-height: 1.6; }
+      .boot-static .boot-static-slow button { border: 0; border-radius: 999px; padding: 7px 24px; font-size: 13px; font-weight: 600; background: #c5a47e; color: #fff; }
     </style>
     <script>
       /* 静态骨架期的提示语轮播（Vue 挂载前也能看到文字在换） */
@@ -141,6 +145,32 @@
             el.classList.remove('boot-text-fade')
           }, 320)
         }, 2600)
+      })()
+    </script>
+    <script>
+      /* JS 迟迟没加载完（弱网 / SW 缓存错位）时，静态骨架会永远停在这里，
+         用户只能「清后台重进」。15 秒后自动重载一次（最多一次防死循环），
+         仍不行则显示可点的重试按钮。main.js 成功挂载后会清掉计数。 */
+      (function () {
+        setTimeout(function () {
+          var el = document.querySelector('.boot-static')
+          if (!el || !el.isConnected) return
+          var n = 0
+          try { n = Number(sessionStorage.getItem('eunoia-static-retry') || '0') } catch (e) {}
+          if (n < 1) {
+            try { sessionStorage.setItem('eunoia-static-retry', String(n + 1)) } catch (e) {}
+            /* 带一次性 query 回源，绕开 SW / HTTP 缓存里可能残留的旧 HTML */
+            var u = new URL(location.href)
+            u.searchParams.set('__boot', String(Date.now()))
+            location.replace(u.href)
+            return
+          }
+          var box = document.createElement('div')
+          box.className = 'boot-static-slow'
+          box.innerHTML = '<p>加载时间有点久，点下方按钮重新加载即可</p><button type="button">重新加载</button>'
+          box.querySelector('button').onclick = function () { location.reload() }
+          el.appendChild(box)
+        }, 15000)
       })()
     </script>
     <script type="module" src="/src/main.js"></script>

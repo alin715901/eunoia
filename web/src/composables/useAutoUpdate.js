@@ -1,5 +1,6 @@
 import { onMounted, onUnmounted } from 'vue'
 import { isWebView } from '@/utils/env'
+import { prepareReload } from '@/local/db'
 
 /* 60s：version.json 在慢链路下一次请求可能耗时数十秒，15s 轮询太吵；
    且部署不是分钟级敏感事，60s 足够及时 */
@@ -90,6 +91,8 @@ async function reloadIfNewDocReady(server) {
   } catch (e) { /* SW 不可用忽略，照常刷新 */ }
 
   try { localStorage.setItem(LAST_RELOAD_KEY, String(Date.now())) } catch (e) { /* ignore */ }
+  /* 刷新前先收尾落盘并关闭数据库连接，避免旧文档残留事务把新页面卡在启动页 */
+  await prepareReload()
   location.reload()
   return true
 }

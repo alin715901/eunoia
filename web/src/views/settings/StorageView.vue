@@ -187,6 +187,7 @@ import {
 } from '@/api/settings'
 import { fmtBackupTime, backupScopeText, backupTotalRows, backupFeatureSummary } from '@/utils/backupInfo'
 import { BACKUP_FORMAT } from '@/local/services/backup.service'
+import { prepareReload } from '@/local/db'
 import { exportJsonFile } from '@/utils/exportFile'
 import { confirmDialog } from '@/utils/dialog'
 import { useNotificationsStore } from '@/stores/notifications'
@@ -395,8 +396,11 @@ async function doImport(mode) {
     await new Promise((resolve) => setTimeout(resolve, 800))
     importOpen.value = false
     toast.pushToast({ title: mode === 'overwrite' ? '已覆盖导入' : '已合并导入', text: r.text })
-    /* importBackup 内部已等待写盘完成（await flushNow），这里只需给一点刷新缓冲 */
-    setTimeout(() => window.location.reload(), 300)
+    /* 刷新前先收尾：等在途落盘完成、关闭 IndexedDB 连接、禁止 pagehide 再发起
+       整库导出。否则旧文档残留的连接 / 大 blob 写入事务会把 reload 后新页面的
+       数据库打开卡住，表现为「重进一直停在启动界面，必须清后台」。 */
+    await prepareReload()
+    window.location.reload()
   } catch (err) {
     toast.pushToast({ title: '导入失败', text: err && err.message ? err.message : '未知错误' })
   } finally {
@@ -436,7 +440,8 @@ async function askReset() {
   try {
     await resetDb()
     toast.pushToast({ title: '已重置数据' })
-    setTimeout(() => window.location.reload(), 900)
+    await prepareReload()
+    window.location.reload()
   } catch (err) {
     resetting.value = false
     toast.pushToast({ title: '重置失败', text: err && err.message ? err.message : '未知错误' })

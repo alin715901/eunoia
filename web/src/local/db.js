@@ -19,38 +19,155 @@ const IDB_NAME = 'eunoia-db'
 const IDB_STORE = 'kv'
 const IDB_KEY = 'app-db'
 
-/* ── IndexedDB 极简封装 ── */
+/* ── IndexedDB 极简封装 ──
+ * 旧实现每次读写都 indexedDB.open() 一个新连接且从不关闭，也不设任何超时。
+ * 导入 / 云端恢复后会 location.reload()：旧文档残留的连接与 pagehide 里
+ * 临时发起的「整库 export + 大 blob readwrite 事务」会占住同一个 object store，
+ * 新文档的 open / get 在 Android WebView 上可能永久 pending —— 表现就是
+ * 「刷新后一直卡在启动界面，必须清后台重进」。
+ * 现在：全模块复用一条连接、打开与事务都带超时、主动刷新前显式关闭连接。 */
+
+const IDB_TIMEOUT = 8000         // 打开连接
+const IDB_READ_TIMEOUT = 12000   // 读快照（大库结构化克隆可能较慢）
+const IDB_WRITE_TIMEOUT = 30000  // 写快照（含 base64 音乐/图片时可能很大，别误判超时）
+let sharedIdb = null
+/* 主动刷新前置位：见 prepareReload() 与下方 visibilitychange / pagehide */
+let reloading = false
 
 function idbOpen() {
+  if (sharedIdb) return Promise.resolve(sharedIdb)
   return new Promise((resolve, reject) => {
-    const req = indexedDB.open(IDB_NAME, 1)
+    let req
+    try {
+      req = indexedDB.open(IDB_NAME, 1)
+    } catch (e) {
+      reject(e)
+      return
+    }
+    let done = false
+    const timer = setTimeout(() => {
+      if (done) return
+      done = true
+      reject(new Error('本地数据库打开超时'))
+    }, IDB_TIMEOUT)
     req.onupgradeneeded = () => {
       const idb = req.result
       if (!idb.objectStoreNames.contains(IDB_STORE)) idb.createObjectStore(IDB_STORE)
     }
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
+    /* 被别的连接阻塞时不要静默挂死：交给上面的超时兜底 */
+    req.onblocked = () => console.warn('[db] indexedDB.open 被其他连接阻塞')
+    req.onsuccess = () => {
+      const idb = req.result
+      if (done) {
+        try { idb.close() } catch (e) { /* ignore */ }
+        return
+      }
+      done = true
+      clearTimeout(timer)
+      /* 另一页面升级数据库版本时主动让出连接，避免把对方卡死 */
+      idb.onversionchange = () => {
+        try { idb.close() } catch (e) { /* ignore */ }
+        if (sharedIdb === idb) sharedIdb = null
+      }
+      sharedIdb = idb
+      resolve(idb)
+    }
+    req.onerror = () => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      reject(req.error || new Error('本地数据库打开失败'))
+    }
   })
 }
 
 async function idbGet(key) {
   const idb = await idbOpen()
   return new Promise((resolve, reject) => {
+    let done = false
+    const timer = setTimeout(() => {
+      if (done) return
+      done = true
+      reject(new Error('本地数据库读取超时'))
+    }, IDB_READ_TIMEOUT)
     const tx = idb.transaction(IDB_STORE, 'readonly')
     const req = tx.objectStore(IDB_STORE).get(key)
-    req.onsuccess = () => resolve(req.result)
-    req.onerror = () => reject(req.error)
+    req.onsuccess = () => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      resolve(req.result)
+    }
+    req.onerror = () => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      reject(req.error || new Error('本地数据库读取失败'))
+    }
   })
 }
 
 async function idbPut(key, value) {
   const idb = await idbOpen()
   return new Promise((resolve, reject) => {
+    let done = false
+    const timer = setTimeout(() => {
+      if (done) return
+      done = true
+      reject(new Error('本地数据库写入超时'))
+    }, IDB_WRITE_TIMEOUT)
     const tx = idb.transaction(IDB_STORE, 'readwrite')
     tx.objectStore(IDB_STORE).put(value, key)
-    tx.oncomplete = () => resolve()
-    tx.onerror = () => reject(tx.error)
+    tx.oncomplete = () => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      resolve()
+    }
+    tx.onerror = () => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      reject(tx.error || new Error('本地数据库写入失败'))
+    }
+    tx.onabort = () => {
+      if (done) return
+      done = true
+      clearTimeout(timer)
+      reject(tx.error || new Error('本地数据库写入被中止'))
+    }
   })
+}
+
+/**
+ * 主动刷新页面（导入 / 恢复 / 重置 / 更新）前调用。
+ * 1) 置位 reloading，让 pagehide / visibilitychange 不再发起整库 export；
+ * 2) 等在途落盘真正结束（最多 4s，不把刷新卡死）；
+ * 3) 主动关闭 IndexedDB 连接，避免旧文档残留连接占住新文档的 open。
+ * 数据在此之前的 flushNow() 已落盘齐全，跳过 pagehide 的重复落盘不会丢数据。
+ */
+export async function prepareReload() {
+  reloading = true
+  /* 若因异常没能真正刷新，5 秒后恢复正常的自动落盘，避免长期跳过 pagehide 落盘 */
+  setTimeout(() => { reloading = false }, 5000)
+  if (state.timer) {
+    clearTimeout(state.timer)
+    state.timer = null
+  }
+  if (flushPromise) {
+    try {
+      await Promise.race([
+        flushPromise,
+        new Promise((r) => setTimeout(r, 4000))
+      ])
+    } catch (e) { /* 在途落盘失败也照常刷新，错误会在下次启动体现 */ }
+  }
+  try {
+    if (sharedIdb) {
+      sharedIdb.close()
+      sharedIdb = null
+    }
+  } catch (e) { /* ignore */ }
 }
 
 /* ── App 私有文件镜像（耐久存储兜底）──
@@ -356,17 +473,19 @@ export function setImporting(v) {
 }
 
 if (typeof window !== 'undefined') {
-  // 切到后台/关闭页面前尽力落盘（debounce 之外的保险），并把快照保底镜像到 App 私有文件
-  window.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden') {
-      flush()
-      if (state.raw && state.inTx === 0) tryMirrorToFile(true)
-    }
-  })
-  window.addEventListener('pagehide', () => {
+  /* 切到后台/关闭页面前尽力落盘（debounce 之外的保险），并把快照保底镜像到 App 私有文件。
+     主动刷新（prepareReload 已置位）时一律跳过：这时数据已 flushNow 落盘齐全，
+     再同步发起一次「整库 export + 大 blob 写入」只会与 reload 后新文档的
+     IndexedDB 打开互相抢锁，正是「导入后重进卡在启动页」的根因。 */
+  const beforeLeave = () => {
+    if (reloading) return
     flush()
     if (state.raw && state.inTx === 0) tryMirrorToFile(true)
+  }
+  window.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'hidden') beforeLeave()
   })
+  window.addEventListener('pagehide', beforeLeave)
 }
 
 /* ── better-sqlite3 风格门面 ── */
@@ -456,11 +575,21 @@ const db = {
       下载（index.html 有 modulepreload），.js 响应 CDN 不卡流，
       主 JS 回到 ~242KB gzip。加载失败时重试，仍失败则抛错由
       App.vue 错误页提供「重新加载」。 */
+/* 带超时的 Promise：动态 import 在慢链路 / SW 缓存错位时可能永远 pending
+   （历史上 GitHub Pages 对 .wasm 卡流就让 initDb 永久停在第一步），
+   必须给每一步设上限，否则用户只能「清后台重进」才能恢复。 */
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) => setTimeout(() => reject(new Error(label + '超时')), ms))
+  ])
+}
+
 async function loadWasmDataUrl() {
   let lastErr = null
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      const mod = await import('./wasm-data.js')
+      const mod = await withTimeout(import('./wasm-data.js'), 8000, 'wasm 数据 chunk 加载')
       if (mod && typeof mod.default === 'string' && mod.default.length > 1024) return mod.default
       throw new Error('wasm 数据模块内容异常')
     } catch (e) {
@@ -478,7 +607,7 @@ async function loadSqlJs() {
   const bin = atob(b64)
   const bytes = new Uint8Array(bin.length)
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i)
-  const SQL = await initSqlJs({ wasmBinary: bytes })
+  const SQL = await withTimeout(initSqlJs({ wasmBinary: bytes }), 12000, 'SQLite 引擎初始化')
   SQL_CTOR = SQL
   console.log('[db] wasm 数据 chunk 加载成功', bytes.byteLength, 'bytes')
   return SQL
@@ -510,6 +639,10 @@ async function buildFreshDb(SQL) {
   state.raw = new SQL.Database()
   state.raw.exec('PRAGMA foreign_keys = ON')
   state.raw.exec(schemaSql)
+  /* schema.sql 只含初始表，songs / song_favs 等后续新增表由 migrate() 补齐
+     （migrate 本身就是设计成「全新库也完整跑一遍」）。以前首次建库漏了这一步，
+     全局音乐组件在 db 就绪后查歌曲会直接报 "no such table: songs"。 */
+  migrate()
   runSeed()
   markDirty()
   await flushNow() // 落 IndexedDB + 镜像到文件
@@ -528,15 +661,31 @@ export async function initDb() {
   let bytes = null
   let fromFile = false
   let hadData = false
-  try {
-    const saved = await idbGet(IDB_KEY)
-    if (saved && saved.byteLength) { bytes = saved; hadData = true }
-  } catch (e) { /* IndexedDB 读取异常不致命，往下走文件来源 */ }
+  let idbFailed = false
+  /* 主来源读取：只有「确认拿到空值」才算真·首次。读取异常 / 超时必须重试，
+     重试仍失败时直接抛错交给启动错误页（可点「重新加载」），绝不继续往下
+     「重建空白库」——那样会用空库覆盖 IndexedDB，把整库数据不可逆地清掉。 */
+  let saved = null
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      saved = await idbGet(IDB_KEY)
+      idbFailed = false
+      break
+    } catch (e) {
+      idbFailed = true
+      console.warn('[db] IndexedDB 读取失败，第 ' + (attempt + 1) + ' 次重试', e && e.message)
+      if (attempt < 1) await new Promise((r) => setTimeout(r, 350))
+    }
+  }
+  if (saved && saved.byteLength) { bytes = saved; hadData = true }
   if (!bytes) {
     try {
       const fb = await readDbFile()
       if (fb && fb.byteLength) { bytes = fb; fromFile = true; hadData = true }
     } catch (e) { /* 文件读取异常不致命 */ }
+  }
+  if (!bytes && idbFailed) {
+    throw new Error('本地数据暂时无法读取（数据库被占用或响应超时）。请点下方「重新加载」重试；若反复出现，请重启应用。')
   }
 
   /* 尝试打开拿到的字节；主来源坏则尝试备用来源兜底，避免「进不去应用」死循环。
@@ -549,7 +698,12 @@ export async function initDb() {
       loadedRaw = t
     } catch (e) {
       console.error('[db] 主来源解析失败，尝试备用来源', e)
-      const alt = fromFile ? await idbGet(IDB_KEY) : await readDbFileSafe()
+      let alt = null
+      try {
+        alt = fromFile ? await idbGet(IDB_KEY) : await readDbFileSafe()
+      } catch (e2) {
+        console.warn('[db] 备用来源读取失败', e2 && e2.message)
+      }
       if (alt && alt.byteLength) {
         try {
           const t = new SQL.Database(new Uint8Array(alt))
@@ -575,7 +729,9 @@ export async function initDb() {
       lastInitWarning = '本地数据已加载，但结构升级时出错：' + (e && e.message ? e.message : e) + '。若部分功能异常，建议从「云端备份」恢复。'
     }
     // 同步双来源（延迟非阻塞），保证二者一致
-    if (fromFile) {
+    /* 主来源读取失败时不要再往 IndexedDB 写回：此时连接状态不明，
+       写回既可能失败拖慢启动，也可能把较旧的文件镜像盖到主存储上。 */
+    if (fromFile && !idbFailed) {
       const b = state.raw.export()
       try { stmtCache.clear(); state.raw.exec('PRAGMA foreign_keys = ON') } catch (e) {}
       try { await idbPut(IDB_KEY, b) } catch (e) {}

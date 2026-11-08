@@ -20,6 +20,11 @@
         <Transition name="boot-fade" mode="out-in">
           <div class="boot-text" :key="bootMsgIdx">{{ bootMsgs[bootMsgIdx] }}</div>
         </Transition>
+        <!-- 启动超过 15 秒仍未就绪：给出明确出口，不必再「清后台重进」 -->
+        <div v-if="bootSlow" class="boot-slow">
+          <p>{{ bootRetryUsed ? '加载仍未完成，点下方按钮重新加载即可（不用清后台）' : '加载时间有点久，正在自动重试…' }}</p>
+          <button class="boot-retry mini" @click="reload">重新加载</button>
+        </div>
       </div>
     </div>
     <!-- 数据库初始化失败：错误页 + 重试（显示真实异常，不再一概归咎网络） -->
@@ -101,7 +106,7 @@ import { ensureLocalNotificationPermission, initLocalNotifications, isNativePlat
 import { initReplyQueueSync } from '@/local/services/replyQueue.service'
 import { checkReleaseUpdate, promptRelease, isReleaseAutoCheck } from '@/composables/useReleaseUpdate'
 import router from '@/router'
-import { dbReady, onDbProgress, getInitWarning } from '@/local/db'
+import { dbReady, onDbProgress, getInitWarning, prepareReload } from '@/local/db'
 import { useSettingsStore } from '@/stores/settings'
 import { useContactsStore } from '@/stores/contacts'
 import { useCompanionStore } from '@/stores/companion'
@@ -150,8 +155,9 @@ onUnmounted(() => { if (offDbProgress) { offDbProgress(); offDbProgress = null }
    更新条，用户点一下才刷新，避免强制 reload 的「白屏卡死 + 反复重刷」。 */
 const showUpdateBanner = ref(false)
 function onUpdateAvailable() { showUpdateBanner.value = true }
-function applyUpdate() {
+async function applyUpdate() {
   showUpdateBanner.value = false
+  await prepareReload()
   location.reload()
 }
 onMounted(() => { window.addEventListener('eunoia:update-available', onUpdateAvailable) })
@@ -198,6 +204,36 @@ watch(dbErr, (v) => { if (v) stopBootMsgs() })
 onMounted(startBootMsgs)
 onUnmounted(stopBootMsgs)
 
+/* 启动看门狗：dbReady 若因任何原因长时间停在 pending（wasm chunk 卡流、
+   IndexedDB 被旧文档残留连接占住等），用户会永远停在骨架屏，只能清后台重进。
+   15 秒后自动重载一次（只自动重试一次，防无限刷新），并始终给出可点按钮。 */
+const bootSlow = ref(false)
+const bootRetryUsed = ref(false)
+let bootWatchdog = null
+onMounted(() => {
+  bootWatchdog = setTimeout(async () => {
+    if (dbOk.value || dbErr.value) return
+    bootSlow.value = true
+    try {
+      const n = Number(sessionStorage.getItem('eunoia-boot-retry') || '0')
+      if (n < 1) {
+        sessionStorage.setItem('eunoia-boot-retry', String(n + 1))
+        await prepareReload()
+        location.reload()
+        return
+      }
+    } catch (e) { /* 存储不可用则直接给用户按钮 */ }
+    bootRetryUsed.value = true
+  }, 15000)
+})
+watch([dbOk, dbErr], ([ok, err]) => {
+  if (ok || err) {
+    if (bootWatchdog) clearTimeout(bootWatchdog)
+    bootSlow.value = false
+  }
+})
+onUnmounted(() => { if (bootWatchdog) clearTimeout(bootWatchdog) })
+
 /* 使用须知：本机同意标记（key 带版本号，条款更新时可换 key 重新征集） */
 const NOTICE_KEY = 'eunoia-notice-acked-v1'
 const showNotice = ref(false)
@@ -214,6 +250,8 @@ function enterApp() {
   if (bootEntered) return
   bootEntered = true
   dbOk.value = true
+  /* 本次已正常进入，清掉自动重试计数：下次真卡住仍能自动重试一次 */
+  try { sessionStorage.removeItem('eunoia-boot-retry') } catch (e) { /* ignore */ }
   boot()
   /* 首次进入：数据就绪后弹出使用须知（勾选同意才放行） */
   try {
@@ -323,8 +361,9 @@ async function boot() {
   }
 }
 
-/* 数据初始化失败页的「重新加载」按钮 */
-function reload() {
+/* 数据初始化失败页 / 启动超时提示的「重新加载」按钮 */
+async function reload() {
+  try { await prepareReload() } catch (e) { /* 收尾失败也照常刷新 */ }
   location.reload()
 }
 
@@ -571,6 +610,10 @@ html[data-theme='dark'] .boot-screen {
   border-radius: 999px;
   padding: 10px 36px;
 }
+/* 启动超时提示：文字 + 小号重试按钮，仍沿用开屏配色 */
+.boot-slow { display: flex; flex-direction: column; align-items: center; gap: 10px; margin-top: 4px; }
+.boot-slow p { font-size: 12px; color: var(--text-soft); line-height: 1.6; text-align: center; max-width: 250px; margin: 0; }
+.boot-retry.mini { margin-top: 0; padding: 7px 24px; font-size: 13px; }
 
 /* 全局「有新版本」提示条：固定在底部，点一下刷新 */
 .up-banner {
