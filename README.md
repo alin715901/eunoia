@@ -1,9 +1,10 @@
 # Eunoia
 
->纯前端、本地优先（local-first）的陪伴 Web 应用。
+> 纯前端、本地优先（local-first）的陪伴 Web 应用。可自由 Fork 用于私人部署。
 
 **每个人打开都是全新空白的数据**：没有服务器、没有账号，所有数据只存在你自己的浏览器里
-（IndexedDB），清缓存即重置。
+（IndexedDB），清缓存即重置。也就是说，把网址发给别人用，对方看到的也是完全独立的一份数据，
+不会读到你的聊天记录、歌曲或设置。
 
 ## 功能一览
 
@@ -19,24 +20,29 @@
 | 陪伴邀请 | 实时邀请、接受/拒绝/取消、时长累计 |
 | 主动陪伴 | 对方按间隔主动发字卡/寄信/发朋友圈/来电/发红包 |
 | 音乐 | 网易云/酷狗链接导入（批量）、歌词、进度拖动、一起听、后台保活 |
+| 统计 | 消息收藏 / 通话记录 / 提问 / 红包 / 邀请，按年月分组 |
 
 ## 技术栈
 
 - **前端**：Vue 3 + Vite + Pinia + Vue Router（hash 路由）
 - **数据库**：sql.js（WASM SQLite 完整跑在浏览器里），快照持久化到 IndexedDB
-- **部署**：GitHub Pages（纯静态，零服务端成本）
-- **音乐解析中转**：Cloudflare Worker（免费 10 万请求/天，见 `workers/`）
+- **部署**：任意静态托管（仓库自带 GitHub Pages / Actions 工作流，零服务端成本）
+- **安卓 APK**：Capacitor，见 [CAPACITOR_APK_GUIDE.md](CAPACITOR_APK_GUIDE.md)
+- **音乐解析中转**：Cloudflare Worker（可选，见 `workers/`）
 
 ### 目录结构
 
 ```
-web/                  纯前端应用（本地版全部逻辑都在这里）
-  src/local/          db.js（sql.js+IndexedDB 门面）、api.js（路由整体移植）、
-                      services/ repositories/（从 server 原样搬入）、ticks.js（前端调度器）、seed.js、migrate.js
-  public/config.js    运行时配置（音乐中转地址，改完即生效无需重新构建）
-workers/              音乐解析 Cloudflare Worker（music-proxy.js + wrangler.toml）
-.github/workflows/    GitHub Pages 自动部署
-server/               旧的自托管服务端版本（已不再维护，仅作历史保留）
+web/                     纯前端应用（本地版全部逻辑都在这里）
+  src/local/             db.js（sql.js+IndexedDB 门面）、api.js（路由整体移植）、
+                         services/ repositories/、ticks.js、seed.js、migrate.js
+  src/utils/runtimeConfig.js   统一读取运行时 / 构建变量配置
+  public/config.js      唯一的「部署者专属配置」入口，改完刷新即生效
+  android/              Capacitor 安卓工程
+workers/                 音乐解析 Cloudflare Worker（可选）
+.github/workflows/       GitHub Pages 部署 + APK 构建发布
+LICENSE                  MIT 开源协议
+server/                  旧的自托管服务端版本（已不再维护，仅作历史保留）
 ```
 
 ## 本地运行
@@ -45,14 +51,32 @@ server/               旧的自托管服务端版本（已不再维护，仅作�
 cd web && npm install && npm run dev
 ```
 
-## 部署
+## 部署 / Fork
 
 推送到 GitHub `main` 分支即自动构建并部署到 GitHub Pages，详见
-[README-deploy.md](README-deploy.md)（含音乐导入中转的可选配置）。
+[README-deploy.md](README-deploy.md)。
+
+**Fork 到自己名下后不需要改代码**：所有与「原作者账号」相关的配置（检查更新的仓库、
+音乐解析 Worker、工作台外链）都集中在 `web/public/config.js`，部署到别的域名时会自动失效，
+不会连到原作者的 GitHub Releases 或 Worker。想启用其中某项，在那个文件里填自己的地址即可，
+完整清单见部署指南第一节。
+
+## 隐私
+
+- 无服务端、无账号、无埋点；所有数据只写在使用者自己的浏览器 / 手机 App 私有目录。
+- 仓库里**不含**任何真实数据：`server/data/`（数据库与上传文件）、本地构建产物、
+  调试截图均已由 `.gitignore` 排除。OSS 云端同步的 AccessKey 由使用者在设置页自行填写，
+  不随代码分发。
+- 联系人均为代码生成的虚构角色，主动消息 / 来信 / 来电全部由本地定时器按概率驱动。
+
+## 开源协议
+
+[MIT](LICENSE)。可以自由使用、修改、再分发，包含商业用途，只需保留版权与许可声明。
 
 ## 说明
 
-- 联系人均为代码生成的虚构角色，主动消息/来信/来电等全部由本地定时器按概率与时间戳驱动。
 - 音乐链接导入需要配置 Cloudflare Worker 中转（网易云/酷狗接口有 CORS 限制）；
   不配置也不影响其它任何功能。
+- 安卓工程里附带的 `eunoia.keystore` 是**公开演示签名**，仅用于自用分发，不是机密，
+  也请勿用于正式上架。换密钥会导致旧版必须卸载重装，详见部署指南。
 - `server/` 目录是早期的自托管版本，本仓库主线已迁移为纯静态架构，不再随部署流程运行。

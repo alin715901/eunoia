@@ -5,6 +5,7 @@ import { isNativePlatform } from '@/composables/useLocalNotification'
 import { openExternal } from '@/utils/openExternal'
 import { APP_VERSION } from '@/utils/version'
 import { prepareReload } from '@/local/db'
+import { RUNTIME_CONFIG } from '@/utils/runtimeConfig'
 
 // 原生插件：应用内下载 APK + 拉起系统安装器
 const Updater = registerPlugin('Updater')
@@ -30,14 +31,7 @@ let installTriggered = false // 已拉起系统安装器，等待用户回应用
    则应用内更新会优先走代理服务端代拉 GitHub，大陆也能正常下载安装。
    优先级：运行时配置 apkProxy → musicProxy → 构建环境变量 VITE_APK_PROXY。 */
 export function resolveProxy() {
-  try {
-    const cfg = (typeof window !== 'undefined' && window.__EUNOIA_CONFIG__) || {}
-    const fromEnv = (import.meta.env && import.meta.env.VITE_APK_PROXY) || ''
-    const p = (cfg.apkProxy || cfg.musicProxy || fromEnv || '').trim()
-    return p
-  } catch (e) {
-    return ''
-  }
+  return RUNTIME_CONFIG.apkProxy || RUNTIME_CONFIG.musicProxy || ''
 }
 
 export function useUpdater() {
@@ -53,7 +47,7 @@ export async function retryUpdate() {
 }
 
 /* 自动更新失败时，跳转浏览器打开 Releases 页面手动下载（点击「前往手动更新」）。
-   优先用 release 页面（如 https://github.com/alin715901/eunoia/releases/tag/v1.2.2），
+   优先用 release 页面（如 https://github.com/<owner>/<repo>/releases/tag/v1.2.2），
    而非直接下载直链——让用户看到更新说明并能自行选择下载。 */
 export function openManualUpdate() {
   const url = lastHtmlUrl || lastUrl

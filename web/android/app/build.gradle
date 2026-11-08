@@ -7,8 +7,8 @@ android {
         applicationId "com.eunoia.app"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
-        versionCode 52
-        versionName "2.4.4"
+        versionCode 53
+        versionName "2.4.5"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
              // Files and dirs to omit from the packaged assets dir, modified to accommodate modern web apps.
@@ -16,15 +16,17 @@ android {
             ignoreAssetsPattern '!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~'
         }
     }
-    // 固定签名密钥：仓库内置 eunoia.keystore，保证每次 CI 构建使用同一签名，
-    // 从而支持「原地覆盖升级」（否则每次临时 debug 密钥不同，安卓会报「签名冲突」必须卸载重装）。
-    // 密钥与密码随仓库提交（debug 分发用途，非 Play 商店发布）。
+    // 公开演示签名：仓库内的 eunoia.keystore 与默认口令都不是机密，仅用于自用分发，
+    // 保证每次 CI 构建签名一致、可「原地覆盖升级」（换密钥会导致安卓报签名冲突，
+    // 必须先卸载旧版，卸载会清掉 App 本地数据）。
+    // Fork 后若要正式分发，请自行生成密钥，并用环境变量 / gradle 属性注入下列四项，
+    // 详见 README-deploy.md 的「APK 签名密钥」一节。
     signingConfigs {
         eunoia {
-            storeFile file('eunoia.keystore')
-            storePassword 'eunoia123'
-            keyAlias 'eunoia'
-            keyPassword 'eunoia123'
+            storeFile file(System.getenv('EUNOIA_KEYSTORE') ?: 'eunoia.keystore')
+            storePassword (System.getenv('EUNOIA_STORE_PASSWORD') ?: 'eunoia123')
+            keyAlias (System.getenv('EUNOIA_KEY_ALIAS') ?: 'eunoia')
+            keyPassword (System.getenv('EUNOIA_KEY_PASSWORD') ?: 'eunoia123')
         }
     }
     buildTypes {

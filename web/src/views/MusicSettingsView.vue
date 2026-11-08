@@ -119,6 +119,7 @@ import { useDesktopStore } from '@/stores/desktop'
 import { useNotificationsStore } from '@/stores/notifications'
 import { uploadFile } from '@/api/settings'
 import { backfillMusicCache, getMusicCacheStats, backfillSongDurations } from '@/api/music'
+import { RUNTIME_CONFIG } from '@/utils/runtimeConfig'
 
 const store = useMusicStore()
 const desktop = useDesktopStore()
@@ -146,11 +147,7 @@ const testing = ref(false)
 let cachePollTimer = null
 /* 唱片图片圆形裁剪 */
 function defaultProxy() {
-  try {
-    return (window.__EUNOIA_CONFIG__ && window.__EUNOIA_CONFIG__.musicProxy) || ''
-  } catch (e) {
-    return ''
-  }
+  return RUNTIME_CONFIG.musicProxy
 }
 function saveProxy() {
   const v = String(proxyUrl.value || '').trim().replace(/\/+$/, '')

@@ -3,6 +3,7 @@ import * as crypto from '../shims/crypto.js'
 import db from '../db'
 import { pctToProb } from '@/utils/prob'
 import * as notification from './notification.service'
+import { RUNTIME_CONFIG } from '@/utils/runtimeConfig'
 
 const UA =
   'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148';
@@ -19,11 +20,8 @@ function proxyBase() {
   } catch (e) {
     /* 隐私模式下 localStorage 不可用，忽略 */
   }
-  const rt =
-    typeof window !== 'undefined' && window.__EUNOIA_CONFIG__ && window.__EUNOIA_CONFIG__.musicProxy
-      ? String(window.__EUNOIA_CONFIG__.musicProxy).trim()
-      : ''
-  return (local || rt || (import.meta.env && import.meta.env.VITE_MUSIC_PROXY) || '').trim()
+  // 运行时配置 / 构建变量统一收敛到 runtimeConfig.js，保留用户手填的最高优先级
+  return (local || RUNTIME_CONFIG.musicProxy).trim()
 }
 
 function withProxy(url) {

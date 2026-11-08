@@ -2,9 +2,11 @@ import { isNativePlatform } from '@/composables/useLocalNotification'
 import { confirmDialog } from '@/utils/dialog'
 import { startUpdate, resolveProxy } from '@/composables/useUpdater'
 import { APP_VERSION } from '@/utils/version'
+import { RUNTIME_CONFIG } from '@/utils/runtimeConfig'
 
-// 仓库（与 git remote 一致）。CI 把每次构建的 APK 发布到该仓库的 Releases。
-const REPO = 'alin715901/eunoia'
+// 检查更新所用的 GitHub 仓库，由运行时配置注入。
+// 留空表示已 Fork 到自己名下部署：完全关闭更新检测，避免拉到原作者的 APK 覆盖自身版本。
+const REPO = RUNTIME_CONFIG.releaseRepo
 // 用户「暂不更新」后忽略该版本的本地标记：下次启动对该版本不再弹窗
 const IGNORE_KEY = 'eunoia.ignoredRelease'
 
@@ -76,6 +78,7 @@ async function fetchWithTimeout(url, ms) {
      3) 公共 GitHub 代理 ghproxy.net / gh-proxy.com（作为未配代理时的兜底）
    任一成功即返回；全部失败才返回 null（上层表现为「检查失败」）。 */
 async function fetchLatestRelease() {
+  if (!REPO) return null
   const apiUrl = `https://api.github.com/repos/${REPO}/releases/latest`
   const proxy = resolveProxy()
   const candidates = []
@@ -129,6 +132,8 @@ export async function checkReleaseUpdate(options = {}) {
   // 始终给出真实的可用结果，让用户随时都能主动升级（不再被「已忽略」堵死）。
   const respectIgnore = options.respectIgnore !== false
   if (!isNativePlatform()) return { status: 'skip' }
+  // 未配置更新源：不联网、不弹窗，直接跳过
+  if (!REPO) return { status: 'skip' }
   const latest = await fetchLatestRelease()
   if (!latest || !latest.tag) return { status: 'error' }
   if (cmpVer(latest.tag, APP_VERSION) <= 0) return { status: 'latest' }

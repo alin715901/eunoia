@@ -50,10 +50,14 @@ jobs:
         working-directory: web
         env:
           BASE_PATH: ${{ env.BASE_PATH }}
-          # 音乐解析中转（Cloudflare Worker 地址）。
-          # 在仓库 Settings → Secrets and variables → Actions → Variables 里配置；
-          # 未配置时为空，网站改读 config.js 里的 musicProxy。
+          # 以下均为可选项，未配置即留空 = 关闭对应功能。
+          # Fork 到自己名下后，releaseRepo 会自动指向你自己的仓库，
+          # 不会去检查原作者的 Release；其余地址请填自己的，避免蹭用别人的服务。
+          # 配置位置：仓库 Settings → Secrets and variables → Actions → Variables
+          VITE_RELEASE_REPO: ${{ github.repository }}
           VITE_MUSIC_PROXY: ${{ vars.VITE_MUSIC_PROXY }}
+          VITE_TRACE_URL: ${{ vars.VITE_TRACE_URL }}
+          VITE_APK_PROXY: ${{ vars.VITE_APK_PROXY }}
         run: npm run build
 
       - name: 生成 SPA 404 回退页

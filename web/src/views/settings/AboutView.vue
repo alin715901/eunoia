@@ -65,6 +65,7 @@ async function onCheck() {
     if (r.status === 'latest') checkMsg.value = '已是最新版'
     else if (r.status === 'update') checkMsg.value = `发现新版本 ${r.tag}`
     else if (r.status === 'ignored') checkMsg.value = '已忽略该版本'
+    else if (r.status === 'skip') checkMsg.value = '未配置更新源（自行部署版本）'
     else if (r.status === 'error') checkMsg.value = '检查失败'
     return
   }
