@@ -29,5 +29,6 @@ export {
   listOssArchives,
   downloadOssArchive,
   archiveCurrentOssBackup,
+  deleteOssArchive,
 } from '../local/api'
 export { BACKUP_FEATURES, BACKUP_TABLE_LABELS } from '../local/services/backup.service'

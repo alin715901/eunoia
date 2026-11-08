@@ -321,6 +321,37 @@ function parseOssListXml(xml) {
 }
 
 /**
+ * 删除云端对象（预签名 DELETE，供「云端历史版本」自行清理旧快照用）。
+ * OSS 删除成功返回 204；404 说明对象已经不在，也按成功处理（幂等）。
+ * 签名复用同文件的 signedUrlOf，不对外暴露内部签名细节。
+ */
+export async function ossDelete(cfg, path) {
+  if (!ossReady(cfg)) throw new Error('阿里云 OSS 配置不完整（AccessKey / Bucket / 地域节点）')
+  const key = ossKeyOf(cfg, path)
+  let res
+  try {
+    const url = await signedUrlOf(cfg, 'DELETE', key, null, '', 600)
+    res = await fetch(url, { method: 'DELETE' })
+  } catch (e) {
+    const err = new Error('删除请求失败（网络异常或被 CORS 拦截，需在 OSS 控制台配置 CORS 规则允许 DELETE）')
+    err.status = 0
+    throw err
+  }
+  if (res.status === 404) return // 对象已不存在，删除视为完成
+  if (res.status === 403) {
+    const err = new Error('无权删除云端文件（HTTP 403）：请检查 AccessKey 的删除权限；若本机时间与标准时间偏差较大也会导致签名失效')
+    err.status = 403
+    throw err
+  }
+  if (!res.ok) {
+    const txt = await res.text().catch(() => '')
+    const err = new Error('删除云端文件失败：' + parseOssError(res.status, txt))
+    err.status = res.status
+    throw err
+  }
+}
+
+/**
  * 测试连接：上传一个探测文件再删除。
  * 返回 { ok, level, message }——level: 'ok' 读写正常 / 'write' 只能写 / 'cors' 疑似 CORS。
  */

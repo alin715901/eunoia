@@ -24,7 +24,7 @@ import * as musicCache from './services/musicCache'
 import * as mochiService from './services/mochi.service'
 import * as backupService from './services/backup.service'
 import * as notification from './services/notification.service'
-import { readOssCfg, ossReady, ossUpload, ossDownload, ossExists, ossList, ossKeyOf } from '../utils/oss'
+import { readOssCfg, ossReady, ossUpload, ossDownload, ossExists, ossList, ossKeyOf, ossDelete } from '../utils/oss'
 
 export { resetDb }
 
@@ -1614,6 +1614,21 @@ export async function downloadOssArchive(key) {
   const err = backupService.validateBackup(payload)
   if (err) throw new Error(err)
   return payload
+}
+
+/* 删除某个云端历史版本。key 是 listOssArchives 返回的完整 Key，和下载一样
+   要先剥掉 prefix（ossDelete 内部会再拼一次），否则会请求到重复前缀。
+   安全约束：只允许删 backup/archive/ 下的 json，绝不碰主备份 eunoia.json。 */
+export async function deleteOssArchive(key) {
+  const cfg = readOssCfg(readGlobalSettings())
+  if (!ossReady(cfg)) throw new Error('请先填写并保存 OSS 配置')
+  const full = String(key || '')
+  const head = cfg.prefix ? cfg.prefix + '/' : ''
+  const path = head && full.startsWith(head) ? full.slice(head.length) : full
+  if (!/(^|\/)backup\/archive\/[^/]+\.json$/.test(path)) {
+    throw new Error('只能删除历史版本文件')
+  }
+  await ossDelete(cfg, path)
 }
 
 /* 导入成功后调用：把「本机已见到的云端版本」记下来，

@@ -75,7 +75,19 @@
               <span class="hist-at">{{ fmtTime(a.at) }}</span>
               <span class="hist-size">{{ fmtKb(a.size) }}</span>
             </div>
-            <button class="hist-restore" type="button" :disabled="restoring || importing" @click="doRestoreArchive(a)">下载并恢复</button>
+            <div class="hist-actions">
+              <button class="hist-restore" type="button" :disabled="restoring || importing || !!deleting" @click="doRestoreArchive(a)">下载并恢复</button>
+              <button
+                class="hist-del"
+                type="button"
+                :disabled="restoring || importing || !!deleting"
+                :aria-label="`删除 ${fmtTime(a.at)} 的历史版本`"
+                @click="doDeleteArchive(a)"
+              >
+                <AppIcon name="trash" :size="13" />
+                <span>{{ deleting === a.key ? '删除中' : '删除' }}</span>
+              </button>
+            </div>
           </div>
         </div>
         <p v-else-if="archTried && !listing" class="hist-empty">
@@ -193,7 +205,7 @@ import { useRouter } from 'vue-router'
 import AppHeader from '@/components/layout/AppHeader.vue'
 import AppIcon from '@/components/common/AppIcon.vue'
 import Modal from '@/components/common/Modal.vue'
-import { getSettings, saveSettings, migrateImagesToOss, backupToOss, downloadOssBackup, importBackup, getOssSyncState, getDeviceLabel, markOssCloudSeen, listOssArchives, downloadOssArchive, archiveCurrentOssBackup } from '@/api/settings'
+import { getSettings, saveSettings, migrateImagesToOss, backupToOss, downloadOssBackup, importBackup, getOssSyncState, getDeviceLabel, markOssCloudSeen, listOssArchives, downloadOssArchive, archiveCurrentOssBackup, deleteOssArchive } from '@/api/settings'
 import { fmtBackupTime, backupTotalRows, backupFeatureSummary } from '@/utils/backupInfo'
 import { prepareReload } from '@/local/db'
 import { readOssCfg, ossReady, ossTest } from '@/utils/oss'
@@ -270,6 +282,8 @@ const archList = ref([])
 const listing = ref(false)
 const archTried = ref(false)
 const archiving = ref(false)
+/* 正在删除的历史版本 key（空串=空闲），防止重复点击与并发删除 */
+const deleting = ref('')
 /* 历史版本读取 / 存档失败只在这一块提示，不覆盖顶部上传、保存的状态文案 */
 const archErr = ref('')
 const prefixHint = computed(() => (form.prefix && form.prefix.trim()) ? form.prefix.trim() + '/backup/archive' : 'backup/archive')
@@ -616,6 +630,30 @@ async function doRestoreArchive(a) {
   }
 }
 
+/* 删除某条历史版本：二次确认后从 OSS 移除，成功后从列表移除。
+   api 层限制只能删 backup/archive/*.json，云端主备份 eunoia.json 不受影响。 */
+async function doDeleteArchive(a) {
+  if (deleting.value || restoring.value || importing.value) return
+  const ok = await confirmDialog({
+    title: '删除这份历史版本？',
+    text: `${fmtTime(a.at)}（${fmtKb(a.size)}）\n\n删除后无法从应用内找回。云端当前备份 eunoia.json 不受影响。`,
+    danger: true,
+    okText: '删除'
+  })
+  if (!ok) return
+  deleting.value = a.key
+  archErr.value = ''
+  try {
+    await deleteOssArchive(a.key)
+    archList.value = archList.value.filter((x) => x.key !== a.key)
+    notify('已删除该历史版本')
+  } catch (e) {
+    archErr.value = e && e.message ? e.message : '删除失败'
+  } finally {
+    deleting.value = ''
+  }
+}
+
 /* 历史备份大小友好显示 */
 function fmtKb(n) {
   if (!n) return ''
@@ -771,11 +809,28 @@ function fmtKb(n) {
 .hist-info { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .hist-at { font-size: 13px; color: var(--text); }
 .hist-size { font-size: 11px; color: var(--text-soft); }
+/* 操作区分两档层次：主操作由实心强调色块改为描边轻量胶囊（原先在浅色列表里
+   太抢眼），删除用更轻的文字按钮，只在按下时显危险色，与「刷新列表」同风格 */
+.hist-actions { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
 .hist-restore {
-  flex: 0 0 auto; border: none; border-radius: 10px; padding: 8px 14px;
-  background: var(--accent); color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;
+  flex: 0 0 auto;
+  border: 1px solid var(--border); background: transparent;
+  border-radius: 999px; padding: 6px 12px;
+  font-size: 12px; color: var(--accent); cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
-.hist-restore:disabled { opacity: 0.5; cursor: default; }
+.hist-restore:active { background: var(--bg-soft); }
+.hist-restore:disabled { opacity: 0.45; cursor: default; }
+.hist-del {
+  display: inline-flex; align-items: center; gap: 3px;
+  flex: 0 0 auto;
+  border: none; background: transparent;
+  border-radius: 8px; padding: 6px 7px;
+  font-size: 12px; color: var(--text-soft); cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.hist-del:active { color: #c0576b; background: rgba(192, 87, 107, 0.08); }
+.hist-del:disabled { opacity: 0.4; cursor: default; }
 .hist-empty { font-size: 12px; color: var(--text-soft); line-height: 1.6; margin: 12px 0 0; }
 .hist-empty code, .hist-block .sub code { background: var(--bg-soft); padding: 1px 5px; border-radius: 5px; font-size: 11px; word-break: break-all; }
 .hist-err { font-size: 12px; color: #c0576b; line-height: 1.6; margin: 10px 0 0; }
