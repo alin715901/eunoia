@@ -412,7 +412,14 @@ onMounted(async () => {
   color: var(--text);
   width: 100%;
   min-width: 0; /* 关键：flex 列布局下允许收缩，避免 iOS 原生 date 输入框因内禀最小宽度溢出弹窗 */
+  max-width: 100%; /* 双保险：锁死最大宽度，iOS Safari 下仍能挣脱 100% 时兜底 */
   box-sizing: border-box;
+}
+/* iOS Safari 对 type=date 原生输入框有内禀最小宽度，即使 width:100% + min-width:0
+   仍会向右溢出弹窗。去掉原生外观后可被正常约束（点击仍唤起系统日期滚轮） */
+input[type="date"].field {
+  -webkit-appearance: none;
+  appearance: none;
 }
 .field:focus { border-color: var(--accent); outline: none; }
 /* 归属字段：外观同输入框，点击弹应用内选择列表 */
