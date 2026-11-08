@@ -65,8 +65,9 @@ function startHeartbeat() {
   stopHeartbeat()
   // 多数浏览器对后台定时器会节流（降到约 1 分钟一次），这里以 10s 为周期，
   // 前台频繁保活、后台至少留一个“心跳”信号尽力维持。
+  // 仅做 SW 心跳（维持后台保活），不再每 10s 重新抢「屏幕常亮」锁——
+  // 那把锁会让屏幕永远亮、CPU 一直转，是长期前台发热闪退的元凶。
   heartbeatTimer = setInterval(() => {
-    if (!document.hidden) acquireWakeLock()
     pingServiceWorker()
   }, 10000)
 }
@@ -80,11 +81,9 @@ function stopHeartbeat() {
 
 function handleVisibility() {
   if (document.hidden) {
-    // 切到后台：屏幕锁由系统自动释放；心跳定时器继续（节流后仍尽力保活）
-    releaseWakeLock()
+    // 切到后台：屏幕锁本就由系统自动释放；心跳定时器继续（节流后仍尽力保活）
   } else {
-    // 切回前台：补挂锁 + 立即心跳
-    acquireWakeLock()
+    // 切回前台：立即给 SW 发一次心跳，让后台期间错过的推送尽快补回
     pingServiceWorker()
   }
 }
@@ -97,7 +96,11 @@ function start() {
   started = true
   visibilityHandler = handleVisibility
   document.addEventListener('visibilitychange', visibilityHandler)
-  acquireWakeLock()
+  /* 关键修复：不再在空闲前台持有「屏幕常亮」锁。
+   * 该锁会让屏幕永远亮着、CPU 持续运行，手机长时间开前台会因发热被系统 OOM
+   * 杀进程 —— 表现为「前台时间一久就闪退」，且与停留在哪个页面无关。
+   * 后台保活只需 SW 心跳 + 原生前台服务（通话/音乐用），屏幕常亮锁在切后台时
+   * 本就被系统释放，对后台保活毫无作用，纯属发热/闪退诱因，故移除。 */
   startHeartbeat()
   pingServiceWorker()
 }
