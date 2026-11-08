@@ -5,9 +5,9 @@
       <iframe class="ws-iframe" :src="traceUrl" title="心迹工作台"></iframe>
     </div>
     <div v-else class="ws-empty">
-      <div class="ws-empty-title">尚未配置工作台页面</div>
-      <p>为避免连到别人的站点，未配置时这里不会加载任何外部页面。</p>
-      <p>在 <code>web/public/config.js</code> 填写 <code>traceUrl</code> 后刷新即可显示。</p>
+      <div class="ws-empty-title">工作台已关闭</div>
+      <p>当前部署把 <code>traceUrl</code> 设为空，因此这里不加载任何外部页面。</p>
+      <p>想开启或换成自己的站点，在 <code>web/public/config.js</code> 填写地址后刷新即可。</p>
     </div>
   </div>
 </template>
