@@ -183,7 +183,7 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew :app:dependencies --no-daemon --network-timeout 900000 || echo "预下载未完全完成（容忍），正式构建会继续下载"
+          ./gradlew :app:dependencies --no-daemon || echo "预下载未完全完成（容忍），正式构建会继续下载"
 
       - name: Build APK (debug)
         env:
@@ -201,7 +201,7 @@ jobs:
             # 注意：先把 gradle 输出落盘到 /tmp/gradle.log（便于失败时排查），再用 $? 判断 gradle 真实退出码；
             # 不要写成 `./gradlew | tee` 再用 if 判断——管道会让 if 拿到 tee 的退出码（恒为 0），
             # 导致 gradle 实际失败时也被误判为成功。
-            ./gradlew assembleDebug --no-daemon --network-timeout 900000 --stacktrace > /tmp/gradle.log 2>&1
+            ./gradlew assembleDebug --no-daemon --stacktrace > /tmp/gradle.log 2>&1
             rc=$?
             if [ "$rc" -eq 0 ]; then
               ok=1
