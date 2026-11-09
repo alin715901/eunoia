@@ -831,22 +831,54 @@ export async function initDb() {
       }
     }
     if (corrupt && bytes && bytes.byteLength <= DB_SIZE_HARD_CAP) {
+      let rebuilt = false
       try {
         const salvaged = salvageFromCorrupt(SQL, state.raw)
-        if (salvaged && salvaged.rowCount > 0) {
+        /* 关键修正：只要拿到了干净库（salvaged.db 存在）就切换——即便某张损坏表读不出
+           数据（rowCount=0），其表结构仍会被重建为干净空表，写入同样能成功；用户后续可从
+           「云端备份 → 从云端恢复」取回丢失的数据。旧逻辑要求 rowCount>0 才切换，导致
+           「库损坏但读不出数据」时直接放弃修复、继续用损坏库 → 保存必报 malformed。 */
+        if (salvaged && salvaged.db) {
           try { state.raw.close() } catch (e2) { /* ignore */ }
           state.raw = salvaged.db
           stmtCache.clear()
           try { migrate() } catch (e2) { console.warn('[db] 干净库 migrate 失败', e2 && e2.message) }
-          lastInitWarning = '本地数据库文件部分损坏，已自动修复为干净库（抢救出 ' + salvaged.rowCount + ' 条可读数据）。若部分功能异常，建议从「云端备份」恢复以确保完整。'
-          /* 干净库落盘交给启动期后续的非阻塞回写（见下方「同步双来源」，已按小库才同步
-             export 做了 OOM 防护）以及正常的 markDirty→flush / tryMirrorToFile——这里不额外
-             整库 export，避免大库瞬间翻倍内存。 */
+          markDirty()
+          lastInitWarning = salvaged.rowCount > 0
+            ? '本地数据库文件部分损坏，已自动修复为干净库（抢救出 ' + salvaged.rowCount + ' 条可读数据）。若部分功能异常，建议从「云端备份」恢复以确保完整。'
+            : '本地数据库损坏较严重，已为你重建为可正常使用的干净库（部分数据未能抢救）。请尽快从「云端备份 → 从云端恢复」取回完整数据。'
+          rebuilt = true
         } else {
-          console.warn('[db] 检出损坏，但抢救未取到可读数据，保留原库')
+          console.warn('[db] 检出损坏，但抢救未取到可读数据，尝试降级重建空白库')
         }
       } catch (e) {
-        console.warn('[db] 重建干净库失败，保留原库', e && e.message)
+        console.warn('[db] 重建干净库失败，尝试降级重建空白库', e && e.message)
+      }
+      /* 连抢救都拿不到干净库（损坏极严重 / 表清单读不出）：降级为带完整 schema 的空白库，
+         至少保证写入能力（保存设置、云端配置等），数据可从云端恢复。
+         绝不再「保留原损坏库」——那只会让保存继续报 malformed、功能永远不可用。 */
+      if (!rebuilt) {
+        try {
+          await buildFreshDb(SQL)
+          lastInitWarning = '本地数据库损坏严重，已重建为空白库。此前本地数据无法自动找回——请尽快从「云端备份 → 从云端恢复」。'
+          rebuilt = true
+        } catch (e) {
+          console.error('[db] 降级空白库也失败，继续用原库（保存可能失败）', e && e.message)
+        }
+      }
+      /* 重建/抢救后必须把干净库落盘，否则下次启动又从 IndexedDB 读到损坏库，修复成果被
+         抵消。小库（≤60MB）同步 export 落盘（即时、强保证）；大库交给 markDirty 触发的
+         异步 flush（已带重试与 OOM 防护）与文件镜像，确保最终落盘。 */
+      if (rebuilt && bytes && bytes.byteLength <= 60 * 1024 * 1024) {
+        try {
+          const b = state.raw.export()
+          stmtCache.clear()
+          try { state.raw.exec('PRAGMA foreign_keys = ON') } catch (e) { /* ignore */ }
+          try { await idbPut(IDB_KEY, b) } catch (e) { /* ignore */ }
+          tryMirrorToFile(true, b)
+        } catch (e) {
+          console.warn('[db] 重建后即时落盘失败（将依赖异步 flush）', e && e.message)
+        }
       }
     } else if (corrupt) {
       console.warn('[db] 检出损坏但库体积超过硬上限，跳过重建（打开期应已重建空白库）')
