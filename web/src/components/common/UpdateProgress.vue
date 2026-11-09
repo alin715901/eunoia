@@ -2,7 +2,7 @@
   <transition name="up-fade">
     <div v-if="visible" class="up-mask">
       <div class="up-card">
-        <button v-if="status !== 'downloading'" class="up-x" type="button" @click="onClose">×</button>
+        <button class="up-x" type="button" @click="onClose" aria-label="关闭">×</button>
         <h3 class="up-h">应用更新</h3>
 
         <template v-if="status === 'downloading'">
@@ -16,7 +16,7 @@
             <span v-else>下载中…</span>
             <span>{{ fmt(downloaded) }}<template v-if="total > 0"> / {{ fmt(total) }}</template></span>
           </div>
-          <p class="up-tip">若长时间无进展，多半是网络限制导致连不上更新服务器，可点右上角关闭后改用「前往手动更新」。</p>
+          <p class="up-tip">若长时间无进展（多半是网络限制连不上更新服务器），可点右上角 × 退出自动更新，改用「前往手动更新」。系统也会在 30 秒无进展后自动提示。</p>
         </template>
 
         <template v-else-if="status === 'installing'">
@@ -40,12 +40,15 @@
 </template>
 
 <script setup>
-import { useUpdater, closeUpdateOverlay, retryUpdate, openManualUpdate } from '@/composables/useUpdater'
+import { useUpdater, closeUpdateOverlay, cancelUpdate, retryUpdate, openManualUpdate } from '@/composables/useUpdater'
 
 const { visible, progress, stageText, status, errorMsg, downloaded, total } = useUpdater()
 
 function onClose() {
-  closeUpdateOverlay()
+  /* 下载中点 ×：退出自动更新并提示手动更新（而非直接收起，避免用户以为更新完成）。
+     其余状态：直接关闭浮层。 */
+  if (status.value === 'downloading') cancelUpdate()
+  else closeUpdateOverlay()
 }
 function onRetry() {
   retryUpdate()

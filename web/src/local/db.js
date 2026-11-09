@@ -231,9 +231,18 @@ async function readDbFile() {
   const fs = await ensureFS()
   if (!fs || !fs.Filesystem) return null
   try {
-    const r = await fs.Filesystem.readFile({ path: DB_FILE_NAME, directory: fs.Directory.Data })
+    /* 原生插件的 readFile 一旦挂起（文件被系统清理/锁住/磁盘异常）会永久 pending，
+       没有超时就会让启动永远卡在「正在恢复数据」并被系统 ANR 杀掉（闪退）。
+       这里给它一个独立超时兜底：读不到就当「无可用镜像」，往下走其它来源/重建空白库。 */
+    const r = await withTimeout(
+      fs.Filesystem.readFile({ path: DB_FILE_NAME, directory: fs.Directory.Data }),
+      20000,
+      '本地文件数据库读取'
+    )
     if (r && r.data) return b64ToU8(r.data)
-  } catch (e) { /* 文件不存在 = 尚未镜像，忽略 */ }
+  } catch (e) {
+    console.warn('[db] 文件镜像读取失败/超时，放弃该来源', e && e.message)
+  }
   return null
 }
 
@@ -652,7 +661,14 @@ async function buildFreshDb(SQL) {
 
 /* 从损坏（malformed）但尚可打开的库中尽量抢救可读数据：
    逐表抽取表结构 + 全部行，写入一个全新的干净库；迁移/读取失败的单表会被跳过，
-   不阻断其它表的抢救。返回 { db, rowCount }；若连表清单都读不出则返回 null。 */
+   不阻断其它表的抢救。返回 { db, rowCount }；若连表清单都读不出、或超出安全上限
+   （大库整表重拷会瞬间再吃一份内存 → OOM 闪退）则返回 null，由调用方保留原库。
+
+   安全上限：salvage 本身在内存里重建整库，若数据量过大（行数过多）继续拷贝会
+   直接撑爆 WebView 内存、被系统杀掉（表现就是「卡在恢复数据 + 闪退」）。
+   故设硬性行数上限，超限即放弃抢救——数据完整性可后续从云端备份修复，
+   但「能进应用」优先级高于「抢救更多行」。 */
+const SALVAGE_MAX_ROWS = 200000
 function salvageFromCorrupt(SQL, badDb) {
   let tbls
   try {
@@ -678,6 +694,12 @@ function salvageFromCorrupt(SQL, badDb) {
         const stmt = clean.prepare('INSERT OR IGNORE INTO "' + tname + '" VALUES (' + ph + ')')
         for (const row of d[0].values) {
           try { stmt.run(row); rowCount++ } catch (e2) { /* 单行损坏则跳过 */ }
+          /* 行数超限：放弃抢救，避免大库整表重拷 OOM 闪退 */
+          if (rowCount >= SALVAGE_MAX_ROWS) {
+            stmt.free()
+            console.warn('[db] salvage: 已达安全行数上限 ' + SALVAGE_MAX_ROWS + '，放弃后续抢救')
+            return null
+          }
         }
         stmt.free()
       }
@@ -729,6 +751,15 @@ export async function initDb() {
   /* 尝试打开拿到的字节；主来源坏则尝试备用来源兜底，避免「进不去应用」死循环。
      注意：只把「拿到字节但解析失败」判为损坏，瞬时不读不算（避免误删好数据）。 */
   let loadedRaw = null
+  /* 体积护栏：异常大的库（>100MB，基本是损坏/被错误写入，或把整段 base64 当库存了）
+     强行 new SQL.Database + 后续 export 会把 WASM 堆瞬间撑爆 → OOM 被系统杀掉
+     （表现就是「卡在恢复数据 + 闪退」）。数据本就已丢失，先进应用比崩在启动重要，
+     故直接放弃加载、往下走「重建空白库」。 */
+  const DB_SIZE_HARD_CAP = 100 * 1024 * 1024
+  if (bytes && bytes.byteLength > DB_SIZE_HARD_CAP) {
+    console.error('[db] 本地库体积异常(' + bytes.byteLength + 'B)，放弃加载，重建空白库')
+    bytes = null
+  }
   if (bytes) {
     try {
       const t = new SQL.Database(new Uint8Array(bytes))
@@ -742,7 +773,7 @@ export async function initDb() {
       } catch (e2) {
         console.warn('[db] 备用来源读取失败', e2 && e2.message)
       }
-      if (alt && alt.byteLength) {
+      if (alt && alt.byteLength && alt.byteLength <= DB_SIZE_HARD_CAP) {
         try {
           const t = new SQL.Database(new Uint8Array(alt))
           t.exec('PRAGMA foreign_keys = ON')
@@ -763,39 +794,37 @@ export async function initDb() {
     try {
       migrate()
     } catch (e) {
-      console.error('[db] migrate 出错，尝试从损坏库抢救可读数据', e)
-      /* 先把原始损坏字节留底（App 私有文件侧车），便于极端情况下人工恢复，
-         避免后续落盘把损坏文件覆盖得无法挽回。 */
-      try {
-        if (bytes && bytes.byteLength && NATIVE) {
-          const fs = await ensureFS()
-          if (fs && fs.Filesystem) {
-            await fs.Filesystem.writeFile({ path: 'eunoia-db.corrupt', data: u8ToB64(bytes), directory: fs.Directory.Data, recursive: true })
-          }
-        }
-      } catch (e2) { /* ignore */ }
-      const salvaged = salvageFromCorrupt(SQL, state.raw)
-      if (salvaged && salvaged.rowCount > 0) {
-        /* 用干净库替换损坏库，并补齐新表/字段，数据重新可读 */
-        try { state.raw.close() } catch (e3) { /* ignore */ }
-        state.raw = salvaged.db
-        stmtCache.clear()
-        try { migrate() } catch (e4) { console.warn('[db] 干净库 migrate 失败', e4 && e4.message) }
-        markDirty()
-        lastInitWarning = '本地数据库文件部分损坏，已自动抢救出 ' + salvaged.rowCount + ' 条可读数据。仍有部分损坏数据可能无法恢复，建议尽快从「云端备份」恢复以确保完整。'
-      } else {
-        lastInitWarning = '本地数据已加载，但结构升级时出错：' + (e && e.message ? e.message : e) + '。若部分功能异常，建议从「云端备份」恢复。'
-      }
+      /* 能走到这里说明库已经成功打开（loadedRaw 已就绪），只是结构迁移（migrate）抛错。
+         这种情况下绝不能再去「逐表整库重拷」——那会把整库再复制一份进 WASM 堆，
+         大库（含音乐/图片 base64）瞬间翻倍内存 → OOM 被系统杀掉（正是「卡在恢复数据 +
+         闪退」的真凶之一）。库本身可读，直接保留原库、仅提示告警即可；真正打不开的损坏库
+         由上方 new SQL.Database 的 try/catch 兜底（换备用来源 / 重建空白库）。 */
+      console.error('[db] migrate 出错，保留原库并提示（不重拷，避免 OOM）', e)
+      lastInitWarning = '本地数据已加载，但结构升级时出错：' + (e && e.message ? e.message : e) + '。若部分功能异常，建议从「云端备份」恢复。'
     }
     // 同步双来源（延迟非阻塞），保证二者一致
     /* 主来源读取失败时不要再往 IndexedDB 写回：此时连接状态不明，
        写回既可能失败拖慢启动，也可能把较旧的文件镜像盖到主存储上。 */
+    const rawBytes = bytes
     if (fromFile && !idbFailed) {
-      const b = state.raw.export()
-      try { stmtCache.clear(); state.raw.exec('PRAGMA foreign_keys = ON') } catch (e) {}
-      try { await idbPut(IDB_KEY, b) } catch (e) {}
-      tryMirrorToFile(true, b)
-    } else {
+      /* 关键修复：整库 export() 会再复制一份完整数据库进 WASM 堆，大库（含音乐/图片
+         base64）瞬间翻倍内存，正是「卡在恢复数据 + 闪退(OOM)」的主因之一。
+         故不在启动关键路径上同步 export+写回，改为进入应用后非阻塞地、且只对小库
+         （≤60MB）做整库回写；超大库直接跳过——文件镜像本身就是完整来源，
+         不回写也不会丢数据，但能保住启动不被 OOM 杀掉。 */
+      setTimeout(() => {
+        if (!state.raw || !rawBytes) return
+        if (rawBytes.byteLength > 60 * 1024 * 1024) return
+        try {
+          const b = state.raw.export()
+          stmtCache.clear()
+          try { state.raw.exec('PRAGMA foreign_keys = ON') } catch (e) { /* ignore */ }
+          idbPut(IDB_KEY, b).catch(() => {})
+          tryMirrorToFile(true, b)
+        } catch (e) { /* 后台回写失败不影响使用 */ }
+      }, 0)
+    } else if (!fromFile) {
+      /* 来自 IndexedDB：镜像一份到文件（非阻塞，写入/导入后自然触发亦可） */
       tryMirrorToFile(true)
     }
     console.log('[db] 已从' + (fromFile ? '本地文件' : 'IndexedDB') + '恢复本地数据')
