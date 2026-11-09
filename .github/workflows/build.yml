@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: write   # 用于创建/更新 Releases 与 tag
+  issues: write     # 用于失败时将 gradle 报错写入诊断 Issue（调试期）
 
 # 同一时间只跑一个 APK 构建，新的触发会取消排队中的旧任务
 concurrency:
@@ -197,12 +198,17 @@ jobs:
           rm -f /tmp/gradle.log
           for i in 1 2 3; do
             echo "=== 第 $i 次尝试 assembleDebug ==="
-            if ./gradlew assembleDebug --no-daemon --network-timeout 900000 --stacktrace 2>&1 | tee -a /tmp/gradle.log; then
+            # 注意：先把 gradle 输出落盘到 /tmp/gradle.log（便于失败时排查），再用 $? 判断 gradle 真实退出码；
+            # 不要写成 `./gradlew | tee` 再用 if 判断——管道会让 if 拿到 tee 的退出码（恒为 0），
+            # 导致 gradle 实际失败时也被误判为成功。
+            ./gradlew assembleDebug --no-daemon --network-timeout 900000 --stacktrace > /tmp/gradle.log 2>&1
+            rc=$?
+            if [ "$rc" -eq 0 ]; then
               ok=1
               echo "构建成功"
               break
             fi
-            echo "第 $i 次构建失败，30s 后重试..."
+            echo "第 $i 次构建失败（gradle 退出码 $rc），30s 后重试..."
             sleep 30
           done
           if [ "$ok" -ne 1 ]; then
@@ -211,23 +217,34 @@ jobs:
           fi
 
       - name: Surface build failure log (diagnostics)
-        # 调试用：CI 原始日志需 admin 权限才能下载（匿名 403），故把 gradle 失败日志推到 ci-diag
-        # 分支，便于通过 raw.githubusercontent.com 直接读取真实报错，精准定位后此步骤可删。
+        # 调试用：CI 原始日志需 admin 权限才能下载（匿名 403），故把 gradle 失败日志写到公开的
+        # GitHub Issue（ci-diag 标签），便于通过 WebFetch 直接读取真实报错。定位后此步骤可删。
         if: failure()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           RUN: ${{ github.run_number }}
-        working-directory: ${{ github.workspace }}
         run: |
-          git config user.email "ci@eunoia.local"
-          git config user.name "CI Diagnostics"
-          git fetch origin ci-diag || true
-          git checkout -B ci-diag origin/ci-diag 2>/dev/null || git checkout -B ci-diag
-          mkdir -p ci-diag
-          cp /tmp/gradle.log "ci-diag/gradle-run$RUN.log" 2>/dev/null || echo "no gradle log captured"
-          git add -A
-          git commit -m "ci diag run $RUN" || echo "nothing to commit"
-          git push origin ci-diag || echo "push failed"
+          {
+            echo "CI APK build failure diagnostics — run #$RUN ($(date -u))"
+            echo
+            echo "=== tail of gradle log ==="
+            tail -n 150 /tmp/gradle.log 2>/dev/null || echo "(no gradle.log captured)"
+          } > /tmp/diag.txt
+          BODY=$(python3 -c "import json,sys; print(json.dumps(open('/tmp/diag.txt').read()))")
+          EXIST=$(curl -s -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/alin715901/eunoia/issues?state=open&labels=ci-diag" \
+            | python3 -c "import sys,json; d=json.load(sys.stdin); print(d[0]['number'] if d else '')" 2>/dev/null)
+          if [ -n "$EXIST" ]; then
+            curl -s -X PATCH -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" \
+              -H "Content-Type: application/json" -d "{\"body\":$BODY}" \
+              "https://api.github.com/repos/alin715901/eunoia/issues/$EXIST" >/dev/null
+            echo "updated diagnostic issue #$EXIST"
+          else
+            curl -s -X POST -H "Authorization: Bearer $GITHUB_TOKEN" -H "Accept: application/vnd.github+json" \
+              -H "Content-Type: application/json" -d "{\"title\":\"CI APK build diagnostics\",\"body\":$BODY,\"labels\":[\"ci-diag\"]}" \
+              "https://api.github.com/repos/alin715901/eunoia/issues" >/dev/null
+            echo "created diagnostic issue"
+          fi
 
       - name: Rename APK for release
         run: cp android/app/build/outputs/apk/debug/app-debug.apk eunoia.apk
