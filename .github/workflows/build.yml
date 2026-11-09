@@ -24,10 +24,10 @@ env:
 jobs:
   build-apk:
     name: Build & Release APK
-    # 重要：ubuntu-latest 已于 2026-10-19~11-19 从 24.04 迁移到 26.04，新镜像移除了预装的
+    # 固定 ubuntu-24.04：ubuntu-latest 已于 2026-10-19~11-19 迁移到 26.04，新镜像移除了预装的
     # Android SDK（/usr/local/lib/android/sdk）。本工作流依赖预装 SDK + sdkmanager，一旦落到
-    # 26.04 就会在「Set up Android SDK」步骤秒退（表现为 APK 构建快速失败，而网页部署不受影响）。
-    # 固定 24.04 恢复已知良好环境；下方 SDK 步骤另加 cmdline-tools 缺失兜底，确保将来切 26.04 也不崩。
+    # 26.04 会在「Set up Android SDK」步骤秒退。固定 24.04 锁定已知良好环境；下方 SDK 步骤另加
+    # cmdline-tools 缺失兜底（现场下载），确保将来即使切到无预装 SDK 的镜像也不会静默失败。
     runs-on: ubuntu-24.04
     defaults:
       run:
@@ -193,7 +193,9 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          # 重试循环：应对 CI 偶发的依赖下载超时/网络抖动（同一安卓代码在 v2.5.2 曾成功，属环境偶发）
+          # 重试循环：应对 CI 全新 runner 首次下载依赖时的偶发网络抖动。
+          # 注意：gradle 输出先落盘再用 $? 判断真实退出码，绝不要写成 `./gradlew | tee` 后用 if 判断
+          # （管道会让 if 拿到 tee 的退出码，恒为 0，导致 gradle 实际失败时也被误判为成功）。
           ok=0
           rm -f /tmp/gradle.log
           for i in 1 2 3; do
@@ -217,8 +219,9 @@ jobs:
           fi
 
       - name: Surface build failure log (diagnostics)
-        # 调试用：CI 原始日志需 admin 权限才能下载（匿名 403），故把 gradle 失败日志写到公开的
-        # GitHub Issue（ci-diag 标签），便于通过 WebFetch 直接读取真实报错。定位后此步骤可删。
+        # 安全网：GitHub 的原始 CI 日志需 admin 权限才能下载（匿名 403），故把 gradle 失败日志写到
+        # 公开的 GitHub Issue（ci-diag 标签），始终复用同一个 Issue（先查后建/更新），失败时即可直接
+        # 读到真实报错，避免再次陷入「盲猜十几轮」的困境。正常构建不会触发本步骤。
         if: failure()
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
