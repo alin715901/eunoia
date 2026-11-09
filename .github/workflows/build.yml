@@ -44,6 +44,19 @@ jobs:
           distribution: temurin
           java-version: 17
 
+      - name: Cache Gradle dependencies
+        # 关键修复：CI 每次都是全新 runner，首次需全量下载 AGP/Kotlin/androidx 等依赖，
+        # 网络波动即超时导致 assembleDebug 偶发失败。缓存 ~/.gradle 后，第二次起复用依赖，
+        # 基本杜绝此类超时（首次 cache miss 仍可能失败，多跑一次即可）。
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-${{ hashFiles('web/android/**/*.gradle*', 'web/android/**/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
+
       - name: Install web dependencies
         run: npm ci
 
@@ -112,7 +125,7 @@ jobs:
         run: |
           cd android
           chmod +x gradlew
-          ./gradlew assembleDebug --no-daemon --network-timeout 600000
+          ./gradlew assembleDebug --no-daemon --network-timeout 900000
 
       - name: Rename APK for release
         run: cp android/app/build/outputs/apk/debug/app-debug.apk eunoia.apk
