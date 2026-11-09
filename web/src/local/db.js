@@ -650,6 +650,44 @@ async function buildFreshDb(SQL) {
   console.log('[db] 已重建空白库（建表 + migrate + 种子数据完成）')
 }
 
+/* 从损坏（malformed）但尚可打开的库中尽量抢救可读数据：
+   逐表抽取表结构 + 全部行，写入一个全新的干净库；迁移/读取失败的单表会被跳过，
+   不阻断其它表的抢救。返回 { db, rowCount }；若连表清单都读不出则返回 null。 */
+function salvageFromCorrupt(SQL, badDb) {
+  let tbls
+  try {
+    const r = badDb.exec("SELECT name, sql FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
+    if (!r || !r.length) return null
+    tbls = r[0].values
+  } catch (e) {
+    console.warn('[db] salvage: 读取表清单失败', e && e.message)
+    return null
+  }
+  const clean = new SQL.Database()
+  clean.exec('PRAGMA foreign_keys = OFF')
+  let rowCount = 0
+  for (const t of tbls) {
+    const tname = t[0]
+    const tsql = t[1]
+    try {
+      if (tsql) clean.exec(tsql)
+      const d = badDb.exec('SELECT * FROM "' + tname + '"')
+      if (d && d.length && d[0].values.length) {
+        const cols = d[0].columns
+        const ph = cols.map(() => '?').join(',')
+        const stmt = clean.prepare('INSERT OR IGNORE INTO "' + tname + '" VALUES (' + ph + ')')
+        for (const row of d[0].values) {
+          try { stmt.run(row); rowCount++ } catch (e2) { /* 单行损坏则跳过 */ }
+        }
+        stmt.free()
+      }
+    } catch (e) {
+      console.warn('[db] salvage: 表 ' + tname + ' 不可读，跳过', e && e.message)
+    }
+  }
+  return { db: clean, rowCount }
+}
+
 export async function initDb() {
   lastInitWarning = null
   setDbProgress(8)
@@ -725,8 +763,29 @@ export async function initDb() {
     try {
       migrate()
     } catch (e) {
-      console.error('[db] migrate 出错（已尽量保留本地数据）', e)
-      lastInitWarning = '本地数据已加载，但结构升级时出错：' + (e && e.message ? e.message : e) + '。若部分功能异常，建议从「云端备份」恢复。'
+      console.error('[db] migrate 出错，尝试从损坏库抢救可读数据', e)
+      /* 先把原始损坏字节留底（App 私有文件侧车），便于极端情况下人工恢复，
+         避免后续落盘把损坏文件覆盖得无法挽回。 */
+      try {
+        if (bytes && bytes.byteLength && NATIVE) {
+          const fs = await ensureFS()
+          if (fs && fs.Filesystem) {
+            await fs.Filesystem.writeFile({ path: 'eunoia-db.corrupt', data: u8ToB64(bytes), directory: fs.Directory.Data, recursive: true })
+          }
+        }
+      } catch (e2) { /* ignore */ }
+      const salvaged = salvageFromCorrupt(SQL, state.raw)
+      if (salvaged && salvaged.rowCount > 0) {
+        /* 用干净库替换损坏库，并补齐新表/字段，数据重新可读 */
+        try { state.raw.close() } catch (e3) { /* ignore */ }
+        state.raw = salvaged.db
+        stmtCache.clear()
+        try { migrate() } catch (e4) { console.warn('[db] 干净库 migrate 失败', e4 && e4.message) }
+        markDirty()
+        lastInitWarning = '本地数据库文件部分损坏，已自动抢救出 ' + salvaged.rowCount + ' 条可读数据。仍有部分损坏数据可能无法恢复，建议尽快从「云端备份」恢复以确保完整。'
+      } else {
+        lastInitWarning = '本地数据已加载，但结构升级时出错：' + (e && e.message ? e.message : e) + '。若部分功能异常，建议从「云端备份」恢复。'
+      }
     }
     // 同步双来源（延迟非阻塞），保证二者一致
     /* 主来源读取失败时不要再往 IndexedDB 写回：此时连接状态不明，

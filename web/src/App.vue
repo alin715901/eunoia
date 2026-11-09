@@ -77,10 +77,12 @@
     <!-- 启动告警（如本地数据损坏已重建空白库）：置顶持久提示 + 去云端恢复 -->
     <Transition name="up-banner">
       <div v-if="showInitWarning" class="init-warn">
-        <span class="init-warn-dot" />
-        <span class="init-warn-text">{{ showInitWarning }}</span>
-        <button class="init-warn-btn" @click="goCloudRestore">去云端恢复</button>
-        <button class="init-warn-close" @click="showInitWarning = ''" aria-label="关闭">×</button>
+        <div class="init-warn-top">
+          <span class="init-warn-dot" />
+          <button class="init-warn-close" @click="showInitWarning = ''" aria-label="关闭">×</button>
+        </div>
+        <p class="init-warn-text">{{ showInitWarning }}</p>
+        <button class="init-warn-btn" @click="goCloudRestore">去导入数据/云端恢复</button>
       </div>
     </Transition>
   </div>
@@ -649,7 +651,9 @@ html[data-theme='dark'] .boot-screen {
 .up-banner-enter-active, .up-banner-leave-active { transition: all .25s ease; }
 .up-banner-enter-from, .up-banner-leave-to { opacity: 0; transform: translate(-50%, 12px); }
 
-/* 启动告警（本地数据损坏已重建空白库等）：顶部红条 + 去云端恢复 + 关闭 */
+/* 启动告警（本地数据损坏已重建空白库等）：顶部红条 + 去云端恢复 + 关闭
+   改为纵向卡片布局：顶部状态行（圆点+关闭）→ 整行提示文字 → 去云端恢复按钮。
+   避免窄屏下文字被挤压成竖条、按钮压字。 */
 .init-warn {
   position: fixed;
   left: 50%;
@@ -657,22 +661,31 @@ html[data-theme='dark'] .boot-screen {
   transform: translateX(-50%);
   z-index: 9999;
   display: flex;
-  align-items: center;
-  gap: 10px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  width: min(680px, 94vw);
   max-width: min(680px, 94vw);
-  padding: 10px 14px;
+  padding: 12px 14px;
   border-radius: 12px;
   background: #fff4f1;
   color: #b4543a;
   font-size: 13px;
-  line-height: 1.5;
+  line-height: 1.6;
   box-shadow: 0 6px 20px rgba(0, 0, 0, .16);
   border: 1px solid color-mix(in oklab, #b4543a 30%, transparent);
+  box-sizing: border-box;
 }
 html[data-theme='dark'] .init-warn {
   background: #3a201b;
   color: #ffb4a1;
   border-color: color-mix(in oklab, #ffb4a1 30%, transparent);
+}
+.init-warn-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
 }
 .init-warn-dot {
   flex: 0 0 auto;
@@ -682,16 +695,23 @@ html[data-theme='dark'] .init-warn {
   background: #e0563a;
   animation: up-pulse 1.4s ease-in-out infinite;
 }
-.init-warn-text { flex: 1 1 auto; min-width: 0; }
+.init-warn-text {
+  margin: 0;
+  width: 100%;
+  text-align: left;
+  /* 关键：整行宽度换行，长英文单词（如 malformed）也能断行，不再逐字竖排 */
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
 .init-warn-btn {
-  flex: 0 0 auto;
+  align-self: stretch;
   border: none;
   background: #e0563a;
   color: #fff;
   font-size: 13px;
   font-weight: 600;
   border-radius: 999px;
-  padding: 6px 14px;
+  padding: 9px 14px;
   cursor: pointer;
 }
 .init-warn-close {
@@ -703,6 +723,7 @@ html[data-theme='dark'] .init-warn {
   line-height: 1;
   cursor: pointer;
   opacity: .7;
+  padding: 0 2px;
 }
 .init-warn-close:hover { opacity: 1; }
 </style>
