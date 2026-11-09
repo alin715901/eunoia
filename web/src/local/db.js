@@ -789,55 +789,67 @@ export async function initDb() {
   if (loadedRaw) {
     state.raw = loadedRaw
     setDbProgress(82)
-    /* 跑 migrate（幂等，补齐新表新列）。即便 migrate 抛错也尽量保留已加载的本地数据，
-       仅在告警里提示，不让结构迁移异常把用户挡在门外。 */
+    /* 跑 migrate（幂等，补齐新表新列）。migrate 抛错本身就是「库已损坏」的强信号：
+       结构迁移会触碰各表页，一旦某页损坏就会抛 "database disk image is malformed"。
+       无论是否损坏，都先记录 migrate 是否失败，下面统一判断是否需要重建。 */
+    let migrateFailed = false
     try {
       migrate()
     } catch (e) {
-      /* 能走到这里说明库已经成功打开（loadedRaw 已就绪），只是结构迁移（migrate）抛错。
-         这种情况下绝不能再去「逐表整库重拷」——那会把整库再复制一份进 WASM 堆，
-         大库（含音乐/图片 base64）瞬间翻倍内存 → OOM 被系统杀掉（正是「卡在恢复数据 +
-         闪退」的真凶之一）。库本身可读，直接保留原库、仅提示告警即可；真正打不开的损坏库
-         由上方 new SQL.Database 的 try/catch 兜底（换备用来源 / 重建空白库）。 */
-      console.error('[db] migrate 出错，保留原库并提示（不重拷，避免 OOM）', e)
+      migrateFailed = true
+      console.error('[db] migrate 出错（疑似损坏，稍后尝试自动重建为干净库）', e)
       lastInitWarning = '本地数据已加载，但结构升级时出错：' + (e && e.message ? e.message : e) + '。若部分功能异常，建议从「云端备份」恢复。'
     }
-    /* 完整性自检 + 安全重建：能打开 ≠ 没损坏。页面级损坏（如 zika 设置表所在页出错）
+    /* 完整性自检 + 安全重建：能打开 ≠ 没损坏。页面级损坏（如 OSS 设置表所在页出错）
        在「读」时往往无感，但一「写」（例如保存 OSS 配置）就会抛
        "database disk image is malformed"，导致保存失败、设置写不进去。
-       故在启动期主动做一次 PRAGMA integrity_check；若损坏，则把可读数据抢救进一个
-       全新的干净库（salvageFromCorrupt，自带体积/行数护栏，不会 OOM），后续所有读写都
-       落在干净库上，保存等写操作不再 malformed。即便某张损坏表读不出数据，其表结构仍会被
-       重建为空表（干净），写操作同样能成功。
-       体积护栏（≤60MB）与 SALVAGE_MAX_ROWS 共用，避免大库重建时 OOM 闪退。 */
-    if (bytes && bytes.byteLength <= 60 * 1024 * 1024) {
+       判定损坏有三种信号，任一命中即重建：
+         1) migrate 抛错（上面已捕获）——触碰到了损坏页；
+         2) PRAGMA integrity_check 返回非 OK 行；
+         3) integrity_check 因损坏严重而直接抛错（同样视为损坏，绝不能误判为健康）。
+       重建把可读数据抢救进全新干净库（salvageFromCorrupt，自带行数护栏，不会 OOM），
+       后续所有读写都落在干净库上，保存等写操作不再 malformed；即便某张损坏表读不出数据，
+       其表结构仍会被重建为空表（干净），写操作同样能成功。
+       体积护栏与打开期硬上限 DB_SIZE_HARD_CAP 一致（≤100MB）：能走到这里的库都已被成功加载
+       进内存（>100MB 在打开期就已被判异常并重建空白库），重建只是内存里再长一份干净库；
+       SALVAGE_MAX_ROWS 共用，避免行数过大 OOM。此前用 60MB 护栏会把 60–100MB 的库（聊天 /
+       图片 / 音乐 base64 极易超 60MB）挡在修复门外，使得这些库仍报 malformed、修复形同虚设。 */
+    let corrupt = false
+    if (migrateFailed) {
+      corrupt = true
+    } else {
       try {
         const chk = state.raw.exec('PRAGMA integrity_check(1)')
         const verdict = chk && chk[0] && chk[0].values && chk[0].values[0]
           ? String(chk[0].values[0][0]).toUpperCase()
           : 'OK'
-        if (verdict !== 'OK') {
-          console.warn('[db] 完整性自检发现损坏(' + verdict + ')，尝试重建为干净库')
-          const salvaged = salvageFromCorrupt(SQL, state.raw)
-          if (salvaged && salvaged.rowCount > 0) {
-            try { state.raw.close() } catch (e2) { /* ignore */ }
-            state.raw = salvaged.db
-            stmtCache.clear()
-            try { migrate() } catch (e2) { console.warn('[db] 干净库 migrate 失败', e2 && e2.message) }
-            lastInitWarning = '本地数据库文件部分损坏，已自动修复为干净库（抢救出 ' + salvaged.rowCount + ' 条可读数据）。若部分功能异常，建议从「云端备份」恢复以确保完整。'
-            /* 把干净库立即落盘，避免下次启动又读到损坏文件 */
-            try {
-              const cb = state.raw.export()
-              try { idbPut(IDB_KEY, cb) } catch (e2) { /* ignore */ }
-              tryMirrorToFile(true, cb)
-            } catch (e2) { /* ignore */ }
-          } else {
-            console.warn('[db] integrity_check 报损坏，但抢救未取到可读数据，保留原库')
-          }
+        if (verdict !== 'OK') corrupt = true
+      } catch (e) {
+        /* integrity_check 自身因损坏严重而抛错，同样视为损坏，进入重建 */
+        corrupt = true
+        console.warn('[db] integrity_check 抛错（视为损坏）', e && e.message)
+      }
+    }
+    if (corrupt && bytes && bytes.byteLength <= DB_SIZE_HARD_CAP) {
+      try {
+        const salvaged = salvageFromCorrupt(SQL, state.raw)
+        if (salvaged && salvaged.rowCount > 0) {
+          try { state.raw.close() } catch (e2) { /* ignore */ }
+          state.raw = salvaged.db
+          stmtCache.clear()
+          try { migrate() } catch (e2) { console.warn('[db] 干净库 migrate 失败', e2 && e2.message) }
+          lastInitWarning = '本地数据库文件部分损坏，已自动修复为干净库（抢救出 ' + salvaged.rowCount + ' 条可读数据）。若部分功能异常，建议从「云端备份」恢复以确保完整。'
+          /* 干净库落盘交给启动期后续的非阻塞回写（见下方「同步双来源」，已按小库才同步
+             export 做了 OOM 防护）以及正常的 markDirty→flush / tryMirrorToFile——这里不额外
+             整库 export，避免大库瞬间翻倍内存。 */
+        } else {
+          console.warn('[db] 检出损坏，但抢救未取到可读数据，保留原库')
         }
       } catch (e) {
-        console.warn('[db] integrity_check 失败，保留原库', e && e.message)
+        console.warn('[db] 重建干净库失败，保留原库', e && e.message)
       }
+    } else if (corrupt) {
+      console.warn('[db] 检出损坏但库体积超过硬上限，跳过重建（打开期应已重建空白库）')
     }
     // 同步双来源（延迟非阻塞），保证二者一致
     /* 主来源读取失败时不要再往 IndexedDB 写回：此时连接状态不明，
