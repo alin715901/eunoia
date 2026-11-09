@@ -77,6 +77,48 @@ jobs:
         # 注意：cap sync 只拷贝 dist 并更新原生插件，不会重新构建网页，故 dist 的相对路径（./）不受影响。
         run: npx cap sync android
 
+      - name: 兜底补齐插件注册（防 cap sync 漏写 settings/build.gradle 致配置阶段失败）
+        # 根因：app/build.gradle 手动引用了 :capacitor-browser，但 cap sync 偶尔不会把它写进被 git
+        # 跟踪的 capacitor.settings.gradle（与 HEAD 陈旧版本叠加），导致 Gradle 配置阶段报
+        # "Project with path ':capacitor-browser' could not be found" 而构建失败。
+        # 这里扫描 node_modules/@capacitor 下实际已安装（含 android 子目录）的插件，自动构造正确的
+        # project 名（:capacitor-<包名后缀>）与目录（../node_modules/@capacitor/<包名后缀>/android），
+        # 确保 capacitor.settings.gradle 与 app/capacitor.build.gradle 都注册了它们，作为 cap sync 的兜底。
+        run: |
+          node -e '
+            const fs=require("fs");
+            const path=require("path");
+            const capDir="node_modules/@capacitor";
+            const entries=fs.readdirSync(capDir,{withFileTypes:true});
+            const present=[];
+            for(const e of entries){
+              if(e.isDirectory() && fs.existsSync(path.join(capDir,e.name,"android"))){
+                present.push(e.name);
+              }
+            }
+            const sf="android/capacitor.settings.gradle";
+            let s=fs.readFileSync(sf,"utf8");
+            for(const name of present){
+              const proj=":capacitor-"+name;
+              if(!s.includes("include \x27"+proj+"\x27")){
+                s+="\ninclude \x27"+proj+"\x27\nproject(\x27"+proj+"\x27).projectDir = new File(\x27../node_modules/@capacitor/"+name+"/android\x27)\n";
+                console.log("settings 补齐 include "+proj);
+              }
+            }
+            fs.writeFileSync(sf,s);
+            const bf="android/app/capacitor.build.gradle";
+            let b=fs.readFileSync(bf,"utf8");
+            for(const name of present){
+              const proj=":capacitor-"+name;
+              if(!b.includes("project(\x27"+proj+"\x27)")){
+                b=b.replace("dependencies {","dependencies {\n    implementation project(\x27"+proj+"\x27)");
+                console.log("capacitor.build.gradle 补齐 implementation "+proj);
+              }
+            }
+            fs.writeFileSync(bf,b);
+            console.log("插件注册兜底完成："+present.map(n=>":capacitor-"+n).join(", "));
+          '
+
       - name: Set up Android SDK (accept licenses + install platform 34 / build-tools)
         # 关键修复：先真正接受全部许可证，再显式安装 compileSdk 34 所需的 platform 与 build-tools，
         # 避免 Gradle 配置阶段因「许可证未接受 / SDK 包缺失」秒退（表现为 45s 左右红叉）。
