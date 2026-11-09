@@ -802,6 +802,43 @@ export async function initDb() {
       console.error('[db] migrate 出错，保留原库并提示（不重拷，避免 OOM）', e)
       lastInitWarning = '本地数据已加载，但结构升级时出错：' + (e && e.message ? e.message : e) + '。若部分功能异常，建议从「云端备份」恢复。'
     }
+    /* 完整性自检 + 安全重建：能打开 ≠ 没损坏。页面级损坏（如 zika 设置表所在页出错）
+       在「读」时往往无感，但一「写」（例如保存 OSS 配置）就会抛
+       "database disk image is malformed"，导致保存失败、设置写不进去。
+       故在启动期主动做一次 PRAGMA integrity_check；若损坏，则把可读数据抢救进一个
+       全新的干净库（salvageFromCorrupt，自带体积/行数护栏，不会 OOM），后续所有读写都
+       落在干净库上，保存等写操作不再 malformed。即便某张损坏表读不出数据，其表结构仍会被
+       重建为空表（干净），写操作同样能成功。
+       体积护栏（≤60MB）与 SALVAGE_MAX_ROWS 共用，避免大库重建时 OOM 闪退。 */
+    if (bytes && bytes.byteLength <= 60 * 1024 * 1024) {
+      try {
+        const chk = state.raw.exec('PRAGMA integrity_check(1)')
+        const verdict = chk && chk[0] && chk[0].values && chk[0].values[0]
+          ? String(chk[0].values[0][0]).toUpperCase()
+          : 'OK'
+        if (verdict !== 'OK') {
+          console.warn('[db] 完整性自检发现损坏(' + verdict + ')，尝试重建为干净库')
+          const salvaged = salvageFromCorrupt(SQL, state.raw)
+          if (salvaged && salvaged.rowCount > 0) {
+            try { state.raw.close() } catch (e2) { /* ignore */ }
+            state.raw = salvaged.db
+            stmtCache.clear()
+            try { migrate() } catch (e2) { console.warn('[db] 干净库 migrate 失败', e2 && e2.message) }
+            lastInitWarning = '本地数据库文件部分损坏，已自动修复为干净库（抢救出 ' + salvaged.rowCount + ' 条可读数据）。若部分功能异常，建议从「云端备份」恢复以确保完整。'
+            /* 把干净库立即落盘，避免下次启动又读到损坏文件 */
+            try {
+              const cb = state.raw.export()
+              try { idbPut(IDB_KEY, cb) } catch (e2) { /* ignore */ }
+              tryMirrorToFile(true, cb)
+            } catch (e2) { /* ignore */ }
+          } else {
+            console.warn('[db] integrity_check 报损坏，但抢救未取到可读数据，保留原库')
+          }
+        }
+      } catch (e) {
+        console.warn('[db] integrity_check 失败，保留原库', e && e.message)
+      }
+    }
     // 同步双来源（延迟非阻塞），保证二者一致
     /* 主来源读取失败时不要再往 IndexedDB 写回：此时连接状态不明，
        写回既可能失败拖慢启动，也可能把较旧的文件镜像盖到主存储上。 */
