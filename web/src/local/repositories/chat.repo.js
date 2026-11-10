@@ -1,13 +1,25 @@
 import db from '../db'
 
+/* 消息按真实时间 created_at 排序（而非插入顺序 id/seq），并用 id 作同秒兜底，
+   保证「主动发」等后插入但时间更早的消息不会排到时间更晚的消息之后。
+   cursor 为翻页锚点：取本页最旧一条的复合键 created_at:id，下一页取严格更早的页，
+   避免按 id 翻页时漏掉「时间新但 id 旧」的主动消息。 */
 function getMessages(contactId, cursor = null, limit = 50) {
+  let curT = null
+  let curI = null
+  if (cursor != null && cursor !== '') {
+    const parts = String(cursor).split(':')
+    curT = Number(parts[0])
+    curI = Number(parts[1])
+  }
   const rows = db
     .prepare(
       `SELECT * FROM chat_messages
-       WHERE contact_id = ? AND (? IS NULL OR id < ?)
-       ORDER BY id DESC LIMIT ?`
+       WHERE contact_id = ?
+         AND (? IS NULL OR created_at < ? OR (created_at = ? AND id < ?))
+       ORDER BY created_at DESC, id DESC LIMIT ?`
     )
-    .all(contactId, cursor, cursor, limit);
+    .all(contactId, curT, curT, curI, limit);
   return rows.reverse();
 }
 
@@ -20,7 +32,7 @@ function getAllMessages(contactId) {
   return db
     .prepare(
       `SELECT id, sender, content_type, text, asset_path, recalled, created_at
-       FROM chat_messages WHERE contact_id = ? ORDER BY id ASC`
+       FROM chat_messages WHERE contact_id = ? ORDER BY created_at ASC, id ASC`
     )
     .all(contactId);
 }

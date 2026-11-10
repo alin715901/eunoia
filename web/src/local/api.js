@@ -123,11 +123,10 @@ export async function searchMessages(q, contactId = null) {
   return rows
 }
 
-// 消息列表（游标分页，cursor 为最旧一条 id）
+// 消息列表（游标分页，cursor 为最旧一条的复合键 created_at:id，按时间翻页）
 export async function getMessages(contactId, cursor = null) {
-  const cur = cursor ? Number(cursor) : null
-  const rows = chatRepo.getMessages(Number(contactId), cur)
-  const nextCursor = rows.length ? rows[0].id : null
+  const rows = chatRepo.getMessages(Number(contactId), cursor)
+  const nextCursor = rows.length ? `${rows[0].created_at}:${rows[0].id}` : null
   return { messages: rows, nextCursor }
 }
 

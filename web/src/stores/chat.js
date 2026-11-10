@@ -12,10 +12,12 @@ function dedupe(list, incoming) {
     out.push(m)
     if (m.id != null) ids.add(m.id)
   }
-  // 按 seq / created_at 排序
+  // 按真实时间 created_at 排序（id 作同秒兜底），保证主动发等后插入但时间更早的消息排在正确位置
   out.sort((a, b) => {
-    if (a.seq != null && b.seq != null) return a.seq - b.seq
-    return new Date(a.created_at) - new Date(b.created_at)
+    const ta = Number(a.created_at) || 0
+    const tb = Number(b.created_at) || 0
+    if (ta !== tb) return ta - tb
+    return (a.id || 0) - (b.id || 0)
   })
   return out
 }
@@ -197,8 +199,10 @@ export const useChatStore = defineStore('chat', {
         if (!old.some((x) => x.id === m.id)) merged.push(m)
       }
       merged.sort((a, b) => {
-        if (a.seq != null && b.seq != null) return a.seq - b.seq
-        return new Date(a.created_at) - new Date(b.created_at)
+        const ta = Number(a.created_at) || 0
+        const tb = Number(b.created_at) || 0
+        if (ta !== tb) return ta - tb
+        return (a.id || 0) - (b.id || 0)
       })
       this.messagesByContact[contactId] = trimWindow(merged)
     },
@@ -215,8 +219,10 @@ export const useChatStore = defineStore('chat', {
         else merged.push(m)
       }
       merged.sort((a, b) => {
-        if (a.seq != null && b.seq != null) return a.seq - b.seq
-        return new Date(a.created_at) - new Date(b.created_at)
+        const ta = Number(a.created_at) || 0
+        const tb = Number(b.created_at) || 0
+        if (ta !== tb) return ta - tb
+        return (a.id || 0) - (b.id || 0)
       })
       this.messagesByContact[contactId] = trimWindow(merged, incoming.map((m) => m.id))
     },
