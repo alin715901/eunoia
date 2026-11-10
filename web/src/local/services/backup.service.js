@@ -476,6 +476,12 @@ const DEDUP = {
   listen_together: ['contact_id', 'from_side', 'song_id', 'song_title', 'message_id', 'created_at'],
   cinema_together: ['contact_id', 'from_side', 'film_title', 'message_id', 'created_at'],
   photo_walls: ['name', 'created_at'],
+  /* 照片墙元素：与照片墙是父子关系（wall_id 外键），照片墙被去重归并后，
+     元素的 wall_id 会重映射到本地墙 id，故指纹也要纳入 wall_id（重映射后比较）。
+     位置 (x,y) + 缩放/旋转/层级 + 样式 + 时间足以区分「同一张元素」——
+     刻意排除 content（图片元素的 dataURL 是巨型 blob，随全库载入会 OOM，
+     与顶部注释的去重原则一致；同墙同坐标同时间基本是同一张）。 */
+  photo_wall_elements: ['wall_id', 'type', 'x', 'y', 'scale', 'rotation', 'z', 'font', 'frame', 'created_at'],
   poke_library: ['content'],
   proactive_jobs: ['contact_id', 'fire_at', 'payload']
 }
