@@ -19,7 +19,7 @@ function getMessages(contactId, cursor = null, limit = 50) {
          AND (? IS NULL OR created_at < ? OR (created_at = ? AND id < ?))
        ORDER BY created_at DESC, id DESC LIMIT ?`
     )
-    .all(contactId, curT, curT, curI, limit);
+    .all(contactId, curT, curT, curT, curI, limit);
   return rows.reverse();
 }
 
