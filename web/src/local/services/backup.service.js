@@ -453,9 +453,72 @@ async function scopedDelete(ids) {
   }
 }
 
-/* 合并模式：id 重映射 + 同名归并。
- * pass1 先建映射（同步，不写库，仅遍历备份行）；pass2 分批插入，
- * 每 IMPORT_CHUNK 行一个事务、批间让出主线程，避免长阻塞导致 ANR 卡退。 */
+/* ─────────── 合并去重（业务主键指纹）───────────
+ * 合并不是复制：本地已存在「内容完全相同」的行就跳过（把备份 id 映射到本地 id，
+ * 引用它的其它表随之归并），仅当本地没有相同内容时才插入新行。
+ * 否则把同一份已含本地数据的备份再合并一次，就会成对复制——正是历史上「合并后到处重复」。
+ * 注意：指纹列刻意排除巨型 blob（图片 / 音频 dataURL），只取轻量内容列判定去重，
+ * 避免大库一次性把全部 base64 读进内存触发 OOM；纯图片消息靠
+ * (contact_id, sender, content_type, created_at) 等轻量字段区分已足够（同秒同发者同类型基本是同一张）。 */
+const DEDUP = {
+  chat_messages: ['contact_id', 'sender', 'content_type', 'text', 'duration', 'author_member_id', 'is_proactive', 'recalled', 'quote_text', 'created_at'],
+  favorites: ['contact_id', 'sender', 'content_type', 'text', 'created_at'],
+  letters: ['contact_id', 'sender', 'opening', 'closing', 'sentences', 'created_at'],
+  moments: ['contact_id', 'author', 'author_contact_id', 'text', 'created_at'],
+  moment_interactions: ['moment_id', 'contact_id', 'type', 'content', 'from_card', 'created_at'],
+  anniversaries: ['contact_id', 'title', 'date', 'calendar', 'type', 'repeat_yearly'],
+  divinations: ['contact_id', 'method', 'spread', 'drawn', 'created_at'],
+  cards: ['group_id', 'owner_contact_id', 'category', 'content', 'duration', 'blocked', 'created_at'],
+  card_groups: ['owner_contact_id', 'category', 'scope', 'name', 'created_at'],
+  app_items: ['module', 'contact_id', 'title', 'body', 'created_at'],
+  red_packet_grabs: ['message_id', 'grabber'],
+  companion_invites: ['contact_id', 'from_side', 'activity', 'mode', 'message_id', 'created_at'],
+  listen_together: ['contact_id', 'from_side', 'song_id', 'song_title', 'message_id', 'created_at'],
+  cinema_together: ['contact_id', 'from_side', 'film_title', 'message_id', 'created_at'],
+  photo_walls: ['name', 'created_at'],
+  poke_library: ['content'],
+  proactive_jobs: ['contact_id', 'fire_at', 'payload']
+}
+
+function normFp(v) {
+  if (v === null || v === undefined) return ''
+  if (typeof v === 'number') return String(v)
+  return String(v)
+}
+
+/* 把本地已有行按业务主键指纹建索引（指纹 → 本地 id），用于合并时判定「是否已存在」。 */
+function buildLocalDedup(t, cols, pk) {
+  const m = new Map()
+  try {
+    const rows = db.prepare(`SELECT ${pk}, ${cols.join(', ')} FROM ${t}`).all()
+    for (const r of rows) {
+      const fp = cols.map((c) => normFp(r[c])).join('\u0001')
+      if (!m.has(fp)) m.set(fp, r[pk])
+    }
+  } catch (e) { /* 表不存在 / 列缺失则不去重该表 */ }
+  return m
+}
+
+/* 计算单条备份行在「本地 id 空间」的指纹：FK 列先按 maps 重映射到本地 id，
+   再与本地行的指纹（已是本地 id）同空间比较，确保能命中本地已合并的联系人。 */
+function incomingFp(t, row, cols, maps, refs) {
+  return cols.map((c) => {
+    let v = row[c]
+    const target = refs[c]
+    if (target) {
+      if (v === null || v === undefined || v === '') return '' // 断开引用 → 与本地一致视为空
+      const nv = Number(v)
+      const mp = maps[target]
+      v = mp && mp.has(nv) ? mp.get(nv) : zeroOrNull(t, c)
+    }
+    return normFp(v)
+  }).join('\u0001')
+}
+
+/* 合并模式：id 重映射 + 同名归并 + 内容去重（详见 DEDUP）。
+ * pass1 先建 id 映射（同步，不写库）；随后为内容表建本地指纹索引；
+ * pass2 分批插入，每行先查是否与本地已有行内容相同——相同则跳过并映射 id，
+ * 不同才插入（分配新 id）。每 IMPORT_CHUNK 行一个事务、批间让出主线程，避免 ANR。 */
 async function applyMerge(tables, known, refTables, ctx) {
   const maps = {}
   const skip = new Set()
@@ -478,12 +541,23 @@ async function applyMerge(tables, known, refTables, ctx) {
     }
     maps[t] = map
   }
+  /* 为内容表建立「本地指纹 → 本地 id」索引（仅取本地确实存在的列，列缺失则跳过该表去重） */
+  const localDedup = {}
+  for (const t of known) {
+    if (!DEDUP[t]) continue
+    const pk = ID_TABLES[t]
+    if (!pk) continue
+    const cols = DEDUP[t].filter((c) => localCols(t).has(c))
+    if (cols.length < DEDUP[t].length) continue // 本地缺列 → 不去重，避免 SELECT 报错
+    localDedup[t] = buildLocalDedup(t, cols, pk)
+  }
   const inserted = {}
   for (const t of known) {
     const rows = tables[t]
     if (!rows.length) continue
     emitProgress(ctx, 'import', `正在导入${LABELS[t] || t}…`)
     const pk = ID_TABLES[t]
+    const refs = REFS[t] || {}
     /* 合并时的写入策略：
      * global_settings 同 key 覆盖值；
      * contact_settings / contact_desktop / wallets 主键是 contact_id，
@@ -493,17 +567,30 @@ async function applyMerge(tables, known, refTables, ctx) {
     let verb = 'INSERT'
     if (t === 'global_settings') verb = 'INSERT OR REPLACE'
     else if (!pk || t === 'contact_settings' || t === 'contact_desktop' || t === 'wallets') verb = 'INSERT OR IGNORE'
+    const dedupCols = localDedup[t] ? DEDUP[t].filter((c) => localCols(t).has(c)) : null
     let n = 0
     for (let i = 0; i < rows.length; i += IMPORT_CHUNK) {
       const piece = rows.slice(i, i + IMPORT_CHUNK)
       db.transaction(() => {
         const cols = localCols(t)
-        const refs = REFS[t] || {}
         const useCols = Object.keys(piece[0]).filter((c) => cols.has(c))
         const sql = `${verb} INTO ${t} (${useCols.join(',')}) VALUES (${useCols.map(() => '?').join(',')})`
         const stmt = db.prepare(sql)
         for (const row of piece) {
-          if (pk && skip.has(`${t}:${row[pk]}`)) continue
+          if (pk) {
+            if (skip.has(`${t}:${row[pk]}`)) continue
+            /* 内容去重：本地已有相同内容则跳过，并把备份 id 映射到本地 id，
+               后续引用（如红包领取、朋友圈互动、收藏）随之归并到本地行。 */
+            if (dedupCols && localDedup[t]) {
+              const fp = incomingFp(t, row, dedupCols, maps, refs)
+              const localId = localDedup[t].get(fp)
+              if (localId !== undefined) {
+                maps[t].set(row[pk], localId)
+                skip.add(`${t}:${row[pk]}`)
+                continue
+              }
+            }
+          }
           const vals = useCols.map((c) => {
             if (pk && c === pk) {
               const mapped = maps[t].get(row[pk])
