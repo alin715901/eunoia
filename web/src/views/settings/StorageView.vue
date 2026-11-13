@@ -345,13 +345,60 @@ function pickFile() {
 }
 
 /* 读文件为原始字节（不是文本）：gzip 备份是二进制，readAsText 会把压缩字节
-   按字符解码破坏数据；统一走 ArrayBuffer 再由 backupCodec 自动识别压缩 / 未压缩。 */
+   按字符解码破坏数据；统一走 ArrayBuffer 再由 backupCodec / 解码 Worker 自动识别压缩 / 未压缩。 */
 function readBytes(file) {
   return new Promise((resolve, reject) => {
     const r = new FileReader()
     r.onload = () => resolve(r.result)
     r.onerror = () => reject(r.error || new Error('读取失败'))
     r.readAsArrayBuffer(file)
+  })
+}
+
+/* 在 Web Worker 里完成「gzip 解压 → JSON.parse → 校验」，把高内存的解码阶段
+ * 移出主线程。主线程只接收解析后的对象树，峰值内存大幅下降；且解码若 OOM / 抛错，
+ * 由 worker.onerror 捕获，只报错、完全不碰数据库，绝不变砖或丢数据。
+ * 兼容降级：环境不支持 Worker 时退回主线程同步解码（decodeBackupBinary）。 */
+function decodeWithWorker(bytes) {
+  return new Promise((resolve, reject) => {
+    let worker
+    const cleanup = () => { try { if (worker) worker.terminate() } catch (e) { /* ignore */ } }
+    try {
+      if (typeof Worker === 'undefined') {
+        // 降级：无 Worker 环境，主线程解码
+        try { resolve(decodeBackupBinary(bytes)) } catch (e) { reject(e) }
+        return
+      }
+      worker = new Worker(new URL('../../workers/importDecode.worker.js', import.meta.url), { type: 'module' })
+      const timer = setTimeout(() => {
+        cleanup()
+        reject(new Error('备份解析超时（文件可能过大或已损坏）'))
+      }, 5 * 60 * 1000)
+      worker.onmessage = (ev) => {
+        const data = ev.data || {}
+        if (!data.ok) {
+          clearTimeout(timer)
+          cleanup()
+          reject(new Error(data.error || '备份解析失败'))
+          return
+        }
+        if (!data.payload) return // 仅握手/其它消息，忽略
+        clearTimeout(timer)
+        cleanup()
+        resolve(data.payload)
+      }
+      worker.onerror = (e) => {
+        // Worker 崩溃（含解码阶段 OOM）：绝不抛到主线程导致 App 闪退，转为干净报错
+        clearTimeout(timer)
+        cleanup()
+        reject(new Error('备份解析失败：设备内存可能不足或文件已损坏，请尝试分板块导出/导入'))
+      }
+      // 转移 ArrayBuffer 所有权，避免主线程再持有一份副本
+      worker.postMessage({ bytes }, [bytes])
+    } catch (e) {
+      cleanup()
+      reject(e)
+    }
   })
 }
 
@@ -374,7 +421,7 @@ async function onFilePicked(e) {
   parseError.value = ''
   pending.value = null
   try {
-    const data = decodeBackupBinary(await readBytes(file))
+    const data = await decodeWithWorker(await readBytes(file))
     const err = validateBackupFile(data)
     if (err) {
       parseError.value = err

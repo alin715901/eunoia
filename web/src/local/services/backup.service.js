@@ -7,11 +7,12 @@
  */
 import db, { setImporting, reloadFromStorage } from '../db'
 import { CARE_TEXTS_KEY } from '../../utils/careTexts'
+import { FORMAT, VERSION, validateBackup } from './importPure'
 
-const FORMAT = 'eunoia-backup'
-const VERSION = 1
 /* 供 UI 层做「即将下载的数据是否合法」的最终校验（拦 Promise / 空对象） */
 export const BACKUP_FORMAT = FORMAT
+/* 校验函数由 importPure 提供（与解码 Worker 共用同一份判定，避免漂移）。 */
+export { validateBackup }
 
 const fail = (msg) => {
   throw new Error(msg)
@@ -303,17 +304,8 @@ export function buildBackup(scope) {
 
 /* ─────────── 导入 ─────────── */
 
-export function validateBackup(obj) {
-  if (!obj || typeof obj !== 'object') return '文件不是有效的备份'
-  if (obj.format !== FORMAT) return '不是本应用生成的备份文件'
-  if (!obj.tables || typeof obj.tables !== 'object' || Array.isArray(obj.tables)) return '备份文件缺少数据表'
-  for (const [t, rows] of Object.entries(obj.tables)) {
-    if (!Array.isArray(rows)) return `备份文件损坏：表 ${t} 数据异常`
-    if (rows.some((r) => !r || typeof r !== 'object' || Array.isArray(r))) return `备份文件损坏：表 ${t} 存在无效记录`
-  }
-  if (obj.version > VERSION) return '备份文件版本过新，请升级应用后再导入'
-  return null
-}
+/* validateBackup 由 importPure 导入并重新导出（见文件顶部 import）；
+   此处不再重复定义，保证与解码 Worker 共用同一份判定逻辑。 */
 
 /* 同名联系人 / 同源歌曲匹配（合并时把 ref 行归并到本地已有行，避免重复） */
 function matchContact(row) {
