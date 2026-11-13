@@ -984,12 +984,32 @@ export function dbHasUnsyncedChanges() {
   return !!(state.dirty || state.pendingFlush || state.deferredFlush || dirtySeq !== savedSeq)
 }
 
-// 清空本地数据并重建（供以后做「重置账号」用）
+// 清空本地数据并重建（供「重置数据」用）
+// 关键修复：必须同时把全新空白库写回 IndexedDB 与 App 私有文件镜像。
+// 旧实现只把 IndexedDB 置空、再调 initDb() 从文件镜像重读 —— 而文件镜像仍是
+// 被「合并=复制」撑大的旧库，于是「重置」后每次启动都重新加载那个超大/损坏库
+// → OOM 闪退、重进也进不去（砖头状态）。这里直接把空白库字节同步落盘两处，
+// 重启后 initDb 读到的是干净空库，绝不再去碰旧镜像。
 export async function resetDb() {
-  state.raw = null
+  try { if (state.raw) state.raw.close() } catch (e) { /* ignore */ }
   stmtCache.clear()
-  await idbPut(IDB_KEY, new Uint8Array())
-  return initDb()
+  const SQL = await loadSqlJs()
+  state.raw = new SQL.Database()
+  state.raw.exec('PRAGMA foreign_keys = ON')
+  state.raw.exec(schemaSql)
+  /* schema.sql 只含初始表，songs / song_favs 等后续新增表由 migrate() 补齐
+     （migrate 设计成「全新库也完整跑一遍」）。 */
+  migrate()
+  runSeed()
+  const bytes = state.raw.export()
+  stmtCache.clear()
+  try { state.raw.exec('PRAGMA foreign_keys = ON') } catch (e) { /* ignore */ }
+  /* 同步写回两处存储，确保重启不再读到被撑大的旧文件镜像。
+     空白库体积极小，export() 翻倍内存可忽略，不存在 OOM 风险。 */
+  await idbPut(IDB_KEY, bytes)
+  if (NATIVE) {
+    try { await writeDbFile(bytes) } catch (e) { console.warn('[db] 重置镜像写入失败', e && e.message) }
+  }
 }
 
 /* 导出整个数据库字节（云端备份用）。注意 export() 会使语句缓存全部失效 */
