@@ -5,6 +5,7 @@
  */
 import db, { resetDb, flushNow } from './db'
 import { prepareUpload } from '../utils/image'
+import { gzipJsonText, decodeBackupBinary } from '../utils/backupCodec'
 import * as chatRepo from './repositories/chat.repo'
 import * as chatService from './services/chat.service'
 import * as contactsRepo from './repositories/contacts.repo'
@@ -1516,7 +1517,12 @@ export async function backupToOss(opts = {}) {
   const payload = backupService.buildBackup({ type: 'full' })
   payload.device_id = getDeviceId()
   payload.device_label = getDeviceLabel()
-  const blob = new Blob([JSON.stringify(payload)], { type: 'application/json' })
+  /* 云端备份 gzip 压缩：base64 图片段可被收回约 3/4（图片为主实测 ~75%），
+     字段名/结构等文本冗余压得更狠（文本为主可到 30% 以下），
+     综合体积与流量都明显下降。下载端 decodeBackupBinary 按魔数自动识别新旧格式，
+     旧版未压缩备份照常可恢复。 */
+  const gz = gzipJsonText(JSON.stringify(payload))
+  const blob = new Blob([gz], { type: 'application/gzip' })
   const r = await ossUpload(cfg, blob, OSS_BACKUP_PATH)
   const rev = Math.max(st.cloudRev, st.localRev) + 1
   const meta = {
@@ -1559,14 +1565,15 @@ export async function archiveCurrentOssBackup() {
 }
 
 /* 从云端下载备份 JSON 并校验（只下载，不导入）。
-   供恢复弹窗先展示备份信息（时间 / 范围 / 条数），再由用户选合并 / 覆盖 */
+   供恢复弹窗先展示备份信息（时间 / 范围 / 条数），再由用户选合并 / 覆盖。
+   v2.6.3 起云端备份为 gzip；decodeBackupBinary 按魔数自动识别新旧格式。 */
 export async function downloadOssBackup() {
   const cfg = readOssCfg(readGlobalSettings())
   if (!ossReady(cfg)) throw new Error('请先填写并保存 OSS 配置')
   const blob = await ossDownload(cfg, OSS_BACKUP_PATH)
-  const text = await blob.text()
+  const buf = await blob.arrayBuffer()
   let payload
-  try { payload = JSON.parse(text) } catch (e) { throw new Error('云端备份文件格式不正确') }
+  try { payload = decodeBackupBinary(buf) } catch (e) { throw new Error('云端备份文件格式不正确（若本机是旧版本，请先升级应用）') }
   const err = backupService.validateBackup(payload)
   if (err) throw new Error(err)
   return payload
@@ -1607,9 +1614,9 @@ export async function downloadOssArchive(key) {
   const head = cfg.prefix ? cfg.prefix + '/' : ''
   const path = head && full.startsWith(head) ? full.slice(head.length) : full
   const blob = await ossDownload(cfg, path)
-  const text = await blob.text()
+  const buf = await blob.arrayBuffer()
   let payload
-  try { payload = JSON.parse(text) } catch (e) { throw new Error('历史备份文件格式不正确') }
+  try { payload = decodeBackupBinary(buf) } catch (e) { throw new Error('历史备份文件格式不正确（若本机是旧版本，请先升级应用）') }
   const err = backupService.validateBackup(payload)
   if (err) throw new Error(err)
   return payload

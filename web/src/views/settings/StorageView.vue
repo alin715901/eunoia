@@ -47,7 +47,7 @@
           <button class="mini-btn" @click="openExport('contacts')">按联系人导出</button>
           <button class="mini-btn" :disabled="importing" @click="pickFile">{{ importing ? '导入中…' : '导入数据' }}</button>
         </div>
-        <input ref="fileEl" type="file" accept=".json,application/json" class="bk-file" @change="onFilePicked" />
+        <input ref="fileEl" type="file" accept=".json,.gz,application/json,application/gzip" class="bk-file" @change="onFilePicked" />
       </div>
 
       <!-- 重置数据 -->
@@ -189,6 +189,7 @@ import { fmtBackupTime, backupScopeText, backupTotalRows, backupFeatureSummary }
 import { BACKUP_FORMAT } from '@/local/services/backup.service'
 import { prepareReload } from '@/local/db'
 import { exportJsonFile } from '@/utils/exportFile'
+import { decodeBackupBinary } from '@/utils/backupCodec'
 import { confirmDialog } from '@/utils/dialog'
 import { useNotificationsStore } from '@/stores/notifications'
 
@@ -343,12 +344,14 @@ function pickFile() {
   if (fileEl.value) fileEl.value.click()
 }
 
-function readText(file) {
+/* 读文件为原始字节（不是文本）：gzip 备份是二进制，readAsText 会把压缩字节
+   按字符解码破坏数据；统一走 ArrayBuffer 再由 backupCodec 自动识别压缩 / 未压缩。 */
+function readBytes(file) {
   return new Promise((resolve, reject) => {
     const r = new FileReader()
-    r.onload = () => resolve(String(r.result || ''))
+    r.onload = () => resolve(r.result)
     r.onerror = () => reject(r.error || new Error('读取失败'))
-    r.readAsText(file)
+    r.readAsArrayBuffer(file)
   })
 }
 
@@ -356,14 +359,22 @@ async function onFilePicked(e) {
   const file = e.target.files && e.target.files[0]
   e.target.value = ''
   if (!file) return
-  if (file.size > 80 * 1024 * 1024) {
-    toast.pushToast({ title: '文件过大', text: '备份文件超过 80MB，无法导入' })
+  /* 体积护栏：仅拦明显不可行的超大文件（极低内存设备解析会 OOM）。
+     此前 80MB 硬上限过严——旧版「合并=复制」bug 会把数据整表复制、备份被撑大，
+     导致正常备份也被挡在外面无法导入。放开后由 importBackup 自身的崩溃回滚
+     （失败时 reloadFromStorage 恢复到导入前磁盘状态）保证本地数据不丢。 */
+  /* 体积护栏：压缩备份(.json.gz)体积只有未压缩的 1/3 左右，同一护栏能放行更大的原数据。
+     此前 80MB 硬上限过严——旧版「合并=复制」bug 会把数据整表复制、备份被撑大，
+     导致正常备份也被挡在外面无法导入。放开后由 importBackup 自身的崩溃回滚
+     （失败时 reloadFromStorage 恢复到导入前磁盘状态）保证本地数据不丢。 */
+  if (file.size > 300 * 1024 * 1024) {
+    toast.pushToast({ title: '文件过大', text: '备份文件超过 300MB，可能无法在低端设备导入（可尝试分板块导出/导入）' })
     return
   }
   parseError.value = ''
   pending.value = null
   try {
-    const data = JSON.parse(await readText(file))
+    const data = decodeBackupBinary(await readBytes(file))
     const err = validateBackupFile(data)
     if (err) {
       parseError.value = err

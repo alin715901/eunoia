@@ -521,6 +521,51 @@ function incomingFp(t, row, cols, maps, refs) {
   }).join('\u0001')
 }
 
+/* 导入前对「备份自身」做一遍内部去重（详见 DEDUP）。
+ * 旧版「合并=复制」bug 会把同一份数据整表复制，导出的备份里就自带大量内部重复行；
+ * 若直接灌入——合并模式本地无对应行时不触发「本地去重」，覆盖模式先删后灌也不去重——
+ * 重复会被原样保留，库依旧臃肿、依旧 OOM 闪退。故导入前先按业务指纹在备份内部去重：
+ * 保留首次出现的行，把被丢弃重复行的 id 重映射到保留行 id（含跨表外键，如收藏指向的消息、
+ * 朋友圈互动回复），使其引用仍正确。仅作用于传入数据，绝不改动本地库。 */
+function dedupeIncoming(tables, known) {
+  const remaps = {} // t -> Map(被丢弃旧id -> 保留旧id)
+  for (const t of known) {
+    const cols = DEDUP[t]
+    const pk = ID_TABLES[t]
+    if (!cols || !pk) continue
+    const rows = tables[t]
+    if (!rows || rows.length < 2) continue
+    const validCols = cols.filter((c) => localCols(t).has(c))
+    if (validCols.length < cols.length) continue // 缺列则不去重，避免 SELECT 报错
+    const seen = new Map()
+    const remap = new Map()
+    const kept = []
+    for (const row of rows) {
+      const fp = validCols.map((c) => normFp(row[c])).join('\u0001')
+      const hit = seen.get(fp)
+      if (hit === undefined) { seen.set(fp, row[pk]); kept.push(row) }
+      else remap.set(row[pk], hit) // 该重复行 id 映射到保留行 id
+    }
+    if (remap.size) { tables[t] = kept; remaps[t] = remap }
+  }
+  /* 跨表外键重映射：把指向「被丢弃重复行」的引用改指保留行（如 favorites.message_id
+     指向被去重的 chat_messages.id、moment_interactions.reply_to 指向被去重的自身行）。 */
+  for (const t of known) {
+    const remap = remaps[t]
+    if (!remap) continue
+    const refs = REFS[t] || {}
+    for (const r of tables[t]) {
+      for (const [col, target] of Object.entries(refs)) {
+        const v = r[col]
+        if (v === null || v === undefined || v === '') continue
+        const nv = Number(v)
+        const tgtRemap = remaps[target]
+        if (tgtRemap && tgtRemap.has(nv)) r[col] = tgtRemap.get(nv)
+      }
+    }
+  }
+}
+
 /* 合并模式：id 重映射 + 同名归并 + 内容去重（详见 DEDUP）。
  * pass1 先建 id 映射（同步，不写库）；随后为内容表建本地指纹索引；
  * pass2 分批插入，每行先查是否与本地已有行内容相同——相同则跳过并映射 id，
@@ -723,6 +768,10 @@ export async function importBackup(payload, mode, onProgress) {
   const known = names.filter((t) => /^[a-z_]+$/.test(t) && tableExists(t))
   const unknown = names.filter((t) => !known.includes(t))
   if (!known.length) fail('备份里没有可导入的数据表')
+  /* 导入前对备份自身做内部去重：旧版「合并=复制」bug 使备份里自带大量重复行，
+     直接灌入（无论合并还是覆盖）都会把重复原样保留、库依旧臃肿。去重后既保证结果无重复，
+     也显著减小导入体积、降低大库 OOM 闪退概率。仅改传入数据，不动本地库。 */
+  dedupeIncoming(tables, known)
   /* 总行数（用于进度百分比）。合并模式可能有同名归并跳过，但占比极小，忽略不影响观感。 */
   let total = 0
   for (const t of known) {
