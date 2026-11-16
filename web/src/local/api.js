@@ -1303,6 +1303,11 @@ export async function importBackup(payload, mode, onProgress) {
     try { onProgress({ phase: 'prepare', label: '正在准备数据…', done: 0, total: 0 }) } catch (e) { /* ignore */ }
   }
   const r = await backupService.importBackup(payload, mode, onProgress)
+  /* backupService 已在写入完成后把 payload.tables 置空（释放音乐封面等大对象树）。
+     这里让出一个宏任务，给 WebView 的 GC 一个回收窗口，避免紧接着 flushNow→export()
+     复制整库时，刚释放的对象树还没被回收、与导出副本短暂叠加触发 OOM 闪退。
+     一次让出即可，代价可忽略；不阻塞、不改变落盘的强一致性保证。 */
+  await new Promise((resolve) => setTimeout(resolve, 0))
   if (onProgress) {
     try { onProgress({ phase: 'save', label: '正在保存数据…', done: 0, total: 0 }) } catch (e) { /* ignore */ }
   }

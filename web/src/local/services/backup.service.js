@@ -801,6 +801,13 @@ export async function importBackup(payload, mode, onProgress) {
   if (payload.care_texts) {
     try { localStorage.setItem(CARE_TEXTS_KEY, JSON.stringify(payload.care_texts)) } catch (e) { /* 存储失败忽略 */ }
   }
+  /* 关键：写入完成后立刻释放备份对象树的引用（音乐封面/歌词 base64 可达数十~上百 MB）。
+     调用方（StorageView 的 pending.value / OssView 的 pending）还持有同一个 payload，
+     若不解开，随后 flushNow → export() 复制整库时，这份对象树仍在内存 → 峰值翻倍 OOM。
+     置空 tables 只断开「数据行」这一大头；payload 对象本身仍有效，调用方后续只读
+     care_texts / inserted / text 等，不再依赖 tables，安全。
+     (dedupeIncoming 已就地改过 tables，数据此刻已全部落进 WASM 库，无需再留。) */
+  try { payload.tables = null } catch (e) { /* ignore */ }
   const parts = Object.entries(inserted)
     .filter(([, n]) => n > 0)
     .map(([t, n]) => `${LABELS[t] || t} ${n} 条`)

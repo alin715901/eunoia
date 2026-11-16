@@ -477,7 +477,16 @@ export function setImporting(v) {
   state.importing = !!v
   if (!v && (state.dirty || state.pendingFlush)) {
     state.deferredFlush = true
-    flush().catch(() => {})
+    /* 关键：绝不在此同步调用 flush()。
+       flush() 里的 export() 会把整个库复制一份进 WASM 堆；而此刻调用方（导入入口）
+       往往仍持有刚解码出来的整棵备份对象树（音乐封面 / 歌词 base64 尤其大）。
+       两份巨型数据挤在同一个同步调用栈里叠加，正是「导入音乐过程中闪退」的根因。
+       真正的落盘交给调用链上层 api.js 的 flushNow()：它在 backupService 返回后才
+       await，那时 payload.tables 已被释放（见 backup.service.js 的 importBackup）。
+       这里只排一个兜底 timer，保证调用方万一没显式 flushNow 也最终会落盘——
+       400ms 后对象树早已释放，再 export 已无叠加风险；失败回滚路径同理
+       （reloadFromStorage 已把内存库恢复为最后一次成功落盘的干净状态）。 */
+    if (!state.timer) state.timer = setTimeout(() => { state.timer = null; flush() }, 400)
   }
 }
 

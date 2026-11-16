@@ -111,26 +111,30 @@
         <p class="imp-err">{{ parseError }}</p>
       </template>
       <template v-else-if="pending">
-        <div class="imp-info">
-          <div class="imp-row"><span>备份时间</span><span>{{ fmtTime(pending.created_at) }}</span></div>
-          <div class="imp-row"><span>数据范围</span><span>{{ scopeText(pending.scope) }}</span></div>
-          <div class="imp-row"><span>数据量</span><span>{{ totalRows(pending) }} 条</span></div>
-        </div>
-        <div class="bk-feats">
-          <div v-for="f in featSummary.features" :key="f.key" class="feat-row">
-            <span class="ck-name">{{ f.label }}</span>
-            <span class="ck-count">{{ f.count }} 条</span>
+        <!-- 导入进行中：概要块依赖 pending.tables，而写入完成后该引用已被主动释放以省内存
+             （见 backup.service.js），此时读它会显示 0 / 空备份引起误解。导入中只显示进度条。 -->
+        <template v-if="!importing">
+          <div class="imp-info">
+            <div class="imp-row"><span>备份时间</span><span>{{ fmtTime(pending.created_at) }}</span></div>
+            <div class="imp-row"><span>数据范围</span><span>{{ scopeText(pending.scope) }}</span></div>
+            <div class="imp-row"><span>数据量</span><span>{{ totalRows(pending) }} 条</span></div>
           </div>
-          <div v-for="o in featSummary.others" :key="o.label" class="feat-row">
-            <span class="ck-name">{{ o.label }}</span>
-            <span class="ck-count">{{ o.count }} 条</span>
+          <div class="bk-feats">
+            <div v-for="f in featSummary.features" :key="f.key" class="feat-row">
+              <span class="ck-name">{{ f.label }}</span>
+              <span class="ck-count">{{ f.count }} 条</span>
+            </div>
+            <div v-for="o in featSummary.others" :key="o.label" class="feat-row">
+              <span class="ck-name">{{ o.label }}</span>
+              <span class="ck-count">{{ o.count }} 条</span>
+            </div>
+            <p v-if="!featSummary.features.length && !featSummary.others.length" class="exp-empty">（空备份）</p>
           </div>
-          <p v-if="!featSummary.features.length && !featSummary.others.length" class="exp-empty">（空备份）</p>
-        </div>
-        <p class="imp-warn">
-          覆盖会用备份内容替换本机数据。此备份含歌曲 <b>{{ ((pending.tables && pending.tables.songs) || []).length }}</b> 首；
-          若备份时间早于本机新增的歌曲/聊天，覆盖后这些新增内容会丢失。备份里没有的板块会自动保留，不确定请选「合并」。
-        </p>
+          <p class="imp-warn">
+            覆盖会用备份内容替换本机数据。此备份含歌曲 <b>{{ ((pending.tables && pending.tables.songs) || []).length }}</b> 首；
+            若备份时间早于本机新增的歌曲/聊天，覆盖后这些新增内容会丢失。备份里没有的板块会自动保留，不确定请选「合并」。
+          </p>
+        </template>
         <!-- 导入中：显示进度（正在导入什么 + 进度条），替代下方按钮 -->
         <div v-if="importing" class="imp-progress">
           <div class="imp-prog-label">{{ progress.label || '正在导入…' }}</div>
